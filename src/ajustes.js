@@ -76,9 +76,22 @@ function leerAjustes(directorio) {
     // 'no' apaga el acortador; cualquier otra cosa lo deja encendido, porque
     // is.gd no pide credenciales.
     acortador: elegir('PIO_ACORTADOR', 'acortador'),
+    // Cuánto tarda un pío en nacer, en segundos. Vacío es el valor de siempre;
+    // las pruebas lo ponen en cero para no esperar en cada una.
+    incubacion: segundosOpcionales(process.env.PIO_INCUBACION_SEGUNDOS, guardado.incubacionSegundos),
     altas: numero('PIO_ALTAS_POR_HORA', 'altas'),
     subidas: numero('PIO_SUBIDAS_POR_HORA', 'subidas'),
   };
+}
+
+// A diferencia de numero(), acá el cero vale: es "sin espera".
+function segundosOpcionales(...candidatos) {
+  for (const crudo of candidatos) {
+    if (crudo === undefined || crudo === null || crudo === '') continue;
+    const n = Number(crudo);
+    if (Number.isFinite(n) && n >= 0) return n * 1000;
+  }
+  return null;
 }
 
 // Devuelve {} si no hay nada que partir: asi el que llama no tiene que

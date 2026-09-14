@@ -32,6 +32,11 @@ const baja = (tabla, clave) => ({ tabla, clave, valor: null });
 // es caro, y sin espera alguien podria reservarse nombres a repeticion.
 const ESPERA_CAMBIO = 30 * 24 * 60 * 60 * 1000;
 
+// Todo pío nace como huevo: durante estos segundos sólo lo ve quien lo
+// escribió, que todavía puede deshacerlo. Es la pausa que frena lo que se
+// escribe en caliente, sin necesidad de un botón de editar.
+const INCUBACION = 15 * 1000;
+
 // Cuanto vale una sesion, contado desde que se abrio. Es absoluto y no
 // deslizante a proposito: renovarlo con cada uso obligaria a escribir en la
 // base en cada peticion, o a agregar una columna. Dos meses es bastante mas de
@@ -48,6 +53,7 @@ const sesionVencida = (sesion, ahora) => ahora - (sesion.creada || 0) > VIDA_SES
 class Almacen {
   constructor(directorio, ajustes = {}, opciones = {}) {
     this.deposito = opciones.deposito || crearDeposito(directorio, ajustes, opciones);
+    this.incubacion = ajustes.incubacion == null ? INCUBACION : Number(ajustes.incubacion);
     this.datos = vacio();
     // Se arranca a cargar sin bloquear: quien necesite los datos espera esta
     // promesa. Así crearServidor() sigue siendo síncrono y las pruebas no
@@ -538,6 +544,8 @@ class Almacen {
       meGusta: [],
       repios: [],
     };
+    // Los píos de antes no tienen `nace`: nacieron hace rato.
+    if (this.incubacion > 0) nuevo.nace = nuevo.creado + this.incubacion;
     this.datos.pios.push(nuevo);
     const cambios = [cambioPio(nuevo)];
     for (const aviso of this.avisarDelPio(cuenta, nuevo)) cambios.push(cambioAviso(aviso));
@@ -843,7 +851,7 @@ class Almacen {
 
   avisosDe(cuenta, limite = 50) {
     return this.datos.notificaciones
-      .filter((n) => n.para === cuenta.usuario)
+      .filter((n) => n.para === cuenta.usuario && this.avisoListo(n))
       .sort((a, b) => b.creado - a.creado)
       .slice(0, limite);
   }
@@ -853,7 +861,8 @@ class Almacen {
     // insignia con un número que no lleva a nada es peor que ninguna.
     const callados = new Set([...(cuenta.silenciados || []), ...(this.datos.ocultos || [])]);
     return this.datos.notificaciones
-      .filter((n) => n.para === cuenta.usuario && !n.leida && !callados.has(n.de)).length;
+      .filter((n) => n.para === cuenta.usuario && !n.leida && !callados.has(n.de) && this.avisoListo(n))
+      .length;
   }
 
   async marcarLeidos(cuenta) {
@@ -868,8 +877,23 @@ class Almacen {
     return tocados.length;
   }
 
-  contarRespuestas(id) {
-    return this.respuestasDe(id).length;
+  contarRespuestas(id, yo = null) {
+    return this.respuestasDe(id).filter((p) => this.visiblePara(p, yo)).length;
+  }
+
+  esHuevo(pio, ahora = Date.now()) {
+    return !!(pio && pio.nace && ahora < pio.nace);
+  }
+
+  // Un huevo sólo lo ve quien lo puso.
+  visiblePara(pio, yo) {
+    return !!pio && (!this.esHuevo(pio) || (!!yo && yo.usuario === pio.autor));
+  }
+
+  // Un aviso de un pío que todavía es huevo espera a que nazca: avisar de algo
+  // que quien recibe el aviso no puede ver sería un aviso roto.
+  avisoListo(aviso) {
+    return !aviso.pio || !this.esHuevo(this.buscarPio(aviso.pio));
   }
 }
 

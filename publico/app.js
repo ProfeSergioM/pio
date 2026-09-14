@@ -846,8 +846,16 @@ function tarjetaPio(pio, opciones = {}) {
         ? `<div class="contexto"><a href="#/c/${escapar(pio.corral)}">${escapar(T('pio.enCorral', { corral: pio.corral }))}</a></div>`
         : ''));
 
+  const cascaron = pio.huevo
+    ? `<div class="contexto huevo-aviso" data-nace="${Date.now() + pio.naceEn}">
+         <span data-cuenta>${escapar(T('huevo.nace', { s: Math.ceil(pio.naceEn / 1000) }))}</span>
+         <button class="enlace-boton" type="button" data-deshacer="${escapar(pio.id)}">${escapar(T('huevo.deshacer'))}</button>
+       </div>`
+    : '';
+
   return `
-    <article class="pio ${opciones.destacado ? 'destacado' : ''}" data-id="${pio.id}">
+    <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''}" data-id="${pio.id}">
+      ${cascaron}
       ${contexto}
       ${avatar(pio.autor.usuario)}
       <div>
@@ -1479,23 +1487,104 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
   error.hidden = true;
   try {
     const alt = $('#alt-adjunto');
-    await api('/pios', {
-      metodo: 'POST',
-      cuerpo: {
-        texto: areaTexto.value,
-        respuestaA: estado.respondiendoA,
-        corral: corralActual,
-        adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
-      },
-    });
+    const borrador = {
+      texto: areaTexto.value,
+      respuestaA: estado.respondiendoA,
+      corral: corralActual,
+      adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
+    };
+    const { pio } = await api('/pios', { metodo: 'POST', cuerpo: borrador });
     dialogo.close();
-    avisar(T(estado.respondiendoA ? 'toast.respuesta' : 'toast.pio'));
+    if (pio.huevo) {
+      borradores.set(pio.id, borrador);
+      mostrarHuevo(pio);
+    } else {
+      avisar(T(borrador.respuestaA ? 'toast.respuesta' : 'toast.pio'));
+    }
     await pintar();
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
   }
 });
+
+// --- el huevo -------------------------------------------------------------
+
+// Lo que se escribió, por si hay que devolverlo al deshacer. Sólo vive en esta
+// pestaña: pasados los quince segundos ya no sirve para nada.
+const borradores = new Map();
+let barraHuevo = null;
+
+function mostrarHuevo(pio) {
+  if (barraHuevo) barraHuevo.remove();
+  barraHuevo = document.createElement('div');
+  barraHuevo.className = 'huevo-barra';
+  barraHuevo.setAttribute('role', 'status');
+  barraHuevo.dataset.nace = String(Date.now() + pio.naceEn);
+  barraHuevo.dataset.respuesta = pio.respuestaA ? '1' : '';
+  barraHuevo.innerHTML = `
+    <span data-cuenta></span>
+    <button class="enlace-boton" type="button" data-deshacer="${escapar(pio.id)}">${escapar(T('huevo.deshacer'))}</button>`;
+  document.body.appendChild(barraHuevo);
+  latirHuevos();
+}
+
+// Un solo reloj para todos los huevos en pantalla: la barra y las tarjetas.
+function latirHuevos() {
+  const ahora = Date.now();
+  for (const el of document.querySelectorAll('[data-nace]')) {
+    const faltan = Math.ceil((Number(el.dataset.nace) - ahora) / 1000);
+    const cuenta = el.querySelector('[data-cuenta]');
+    if (faltan > 0) {
+      const clave = el === barraHuevo ? (el.dataset.respuesta ? 'huevo.barraRespuesta' : 'huevo.barra') : 'huevo.nace';
+      if (cuenta) cuenta.textContent = T(clave, { s: faltan });
+      continue;
+    }
+    if (el === barraHuevo) {
+      // Nació: se dice un momento y la barra se va sola.
+      el.removeAttribute('data-nace');
+      el.innerHTML = `<span>${escapar(T('huevo.nacio'))}</span>`;
+      setTimeout(() => { if (barraHuevo === el) { el.remove(); barraHuevo = null; } }, 1600);
+    } else {
+      const articulo = el.closest('.pio');
+      if (articulo) articulo.classList.remove('huevo');
+      el.remove();
+    }
+  }
+}
+setInterval(latirHuevos, 500);
+
+async function deshacerHuevo(id) {
+  const borrador = borradores.get(id);
+  try {
+    await api(`/pios/${encodeURIComponent(id)}`, { metodo: 'DELETE' });
+  } catch (err) {
+    avisar(err.message);
+    return;
+  }
+  borradores.delete(id);
+  if (barraHuevo) { barraHuevo.remove(); barraHuevo = null; }
+  await pintar();
+
+  // Vuelve al borrador tal como estaba: deshacer es para corregir, y
+  // corregir sin el texto sería escribirlo de nuevo.
+  if (borrador) {
+    abrirDialogo(borrador.respuestaA);
+    areaTexto.value = borrador.texto;
+    adjunto = borrador.adjunto;
+    pintarAdjunto();
+    actualizarMedidor();
+  }
+  avisar(T('huevo.deshecho'));
+}
+
+document.addEventListener('click', (ev) => {
+  const boton = ev.target.closest('[data-deshacer]');
+  if (!boton) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  deshacerHuevo(boton.dataset.deshacer);
+}, true);
 
 // --- columna derecha ------------------------------------------------------
 

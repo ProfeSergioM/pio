@@ -398,6 +398,30 @@ a { color: inherit; text-decoration: none; }
   overflow-wrap: anywhere;
 }
 
+/* --- el huevo ---------------------------------------------------------- */
+
+/* Tenue y con una raya de color: se nota que todavía no es del todo un pío. */
+.pio.huevo { opacity: .72; box-shadow: inset 3px 0 0 var(--amarillo); }
+.huevo-aviso { display: flex; gap: 10px; align-items: center; }
+
+.enlace-boton {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 700; color: var(--pico);
+}
+.enlace-boton:hover { text-decoration: underline; }
+
+.huevo-barra {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+  display: flex; gap: 16px; align-items: center;
+  padding: 10px 18px; border-radius: 999px;
+  background: var(--texto); color: var(--fondo);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .25); font-weight: 600;
+}
+.huevo-barra .enlace-boton { color: var(--amarillo); }
+@media (max-width: 700px) {
+  .huevo-barra { bottom: 84px; }
+}
+
 /* --- compartir --------------------------------------------------------- */
 
 .menu-compartir {

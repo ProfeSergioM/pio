@@ -272,6 +272,10 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       await almacen.borrar(yo, id);
       return { datos: { ok: true } };
     }
+    if (metodo === 'POST' && id && (accion === 'megusta' || accion === 'repio' || accion === 'hilo')
+      && almacen.buscarPio(id) && !almacen.visiblePara(almacen.buscarPio(id), yo)) {
+      throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
+    }
     if (metodo === 'POST' && id && accion === 'megusta') {
       exigir(yo);
       await almacen.alternarMeGusta(yo, id);
@@ -284,7 +288,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
     if (metodo === 'GET' && id && accion === 'hilo') {
       const pio = almacen.buscarPio(id);
-      if (!pio) throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
+      if (!pio || !almacen.visiblePara(pio, yo)) throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
 
       // Subir por los padres necesita memoria de por dónde se pasó: sin eso,
       // dos píos que se responden mutuamente cuelgan el servidor para siempre.
@@ -302,7 +306,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       const arbol = ramasDe(almacen, pio.id, yo, cuenta, 0);
       return {
         datos: {
-          antes: antes.map((p) => serializar(almacen, p, yo)),
+          antes: antes.filter((p) => almacen.visiblePara(p, yo)).map((p) => serializar(almacen, p, yo)),
           pio: serializar(almacen, pio, yo),
           despues: arbol,
           respuestasTotales: cuenta.total,
@@ -578,7 +582,8 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       .slice(0, 10)
       .map((u) => perfil(almacen, u, yo));
     const pios = almacen.datos.pios
-      .filter((p) => p.texto.toLowerCase().includes(q) && !callado(almacen, yo, p.autor))
+      .filter((p) => p.texto.toLowerCase().includes(q) && !callado(almacen, yo, p.autor)
+        && almacen.visiblePara(p, yo))
       .sort((a, b) => b.creado - a.creado)
       .slice(0, PAGINA)
       .map((p) => serializar(almacen, p, yo));
@@ -589,7 +594,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     const cuenta = new Map();
     const corte = Date.now() - 7 * 24 * 60 * 60 * 1000;
     for (const p of almacen.datos.pios) {
-      if (p.creado < corte || (almacen.datos.ocultos || []).includes(p.autor)) continue;
+      if (p.creado < corte || (almacen.datos.ocultos || []).includes(p.autor) || almacen.esHuevo(p)) continue;
       for (const e of p.etiquetas) cuenta.set(e, (cuenta.get(e) || 0) + 1);
     }
     const tendencias = [...cuenta.entries()]
@@ -607,7 +612,9 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
 // leer de más viejo a más nuevo es lo que la hace seguible.
 function ramasDe(almacen, id, yo, cuenta, hondo) {
   if (hondo >= HONDO_MAXIMO) return [];
-  const hijos = almacen.respuestasDe(id).sort((a, b) => a.creado - b.creado);
+  const hijos = almacen.respuestasDe(id)
+    .filter((p) => almacen.visiblePara(p, yo))
+    .sort((a, b) => a.creado - b.creado);
   const salida = [];
   for (const hijo of hijos) {
     if (cuenta.total >= RAMAS_MAXIMAS) break;
@@ -669,6 +676,12 @@ function linea(almacen, params, yo) {
   // Lo silenciado no se muestra en ninguna línea, salvo en el perfil de esa
   // misma cuenta: si alguien entra a mirarla a propósito, esconderle lo que
   // fue a buscar sería confuso.
+  // Los huevos ajenos no se muestran en ninguna línea, ni siquiera en el
+  // perfil de quien los puso.
+  for (let i = entradas.length - 1; i >= 0; i -= 1) {
+    if (!almacen.visiblePara(entradas[i].pio, yo)) entradas.splice(i, 1);
+  }
+
   if (tipo !== 'usuario') {
     for (let i = entradas.length - 1; i >= 0; i -= 1) {
       const e = entradas[i];
@@ -707,7 +720,11 @@ function serializar(almacen, pio, yo) {
     yoMeGusta: !!yo && pio.meGusta.includes(yo.usuario),
     repios: pio.repios.length,
     yoRepio: !!yo && pio.repios.some((r) => r.usuario === yo.usuario),
-    respuestas: almacen.contarRespuestas(pio.id),
+    respuestas: almacen.contarRespuestas(pio.id, yo),
+    // Lo que falta para nacer, contado acá: el reloj del teléfono de cada uno
+    // puede estar corrido, el del servidor es uno solo.
+    huevo: almacen.esHuevo(pio),
+    naceEn: almacen.esHuevo(pio) ? pio.nace - Date.now() : 0,
     adjunto: pio.adjunto || null,
     corral: pio.corral || null,
     mio: !!yo && pio.autor === yo.usuario,

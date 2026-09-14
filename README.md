@@ -109,6 +109,14 @@ queda apagada y lo dice.
 
 ## Decisiones que vale la pena conocer
 
+**Todo pío nace como huevo.** Durante 15 segundos sólo lo ve quien lo escribió,
+con un "Deshacer" que lo borra y devuelve el texto al borrador para corregirlo.
+Nadie más lo ve: ni en las líneas, ni en la búsqueda, ni en las tendencias, y
+los avisos de menciones y respuestas esperan a que nazca. Es la pausa que frena
+lo que se escribe en caliente sin necesidad de un botón de editar. La espera se
+cambia con `PIO_INCUBACION_SEGUNDOS`; las pruebas la ponen en cero.
+
+
 **El límite se cuenta en puntos de código, no en unidades UTF-16.** Un emoji
 vale 1, no 2: `[...texto].length`. Entran 100 🐤 justos, y 101 no. La misma
 cuenta la hace el cliente (para el anillo) y el servidor (para decidir).

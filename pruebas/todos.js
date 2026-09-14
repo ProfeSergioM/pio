@@ -8,6 +8,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+// Sin incubación: casi todas las pruebas publican y leen enseguida. Las del
+// huevo la encienden a mano.
+process.env.PIO_INCUBACION_SEGUNDOS = '0';
 const { crearServidor } = require('../servidor');
 const LAT = require('../src/latido');
 const FRASES = require('../src/frases');
@@ -2247,6 +2250,85 @@ async function main() {
 
   await new Promise((listo) => conCom.close(listo));
   fs.rmSync(carpetaCom, { recursive: true, force: true });
+  // --- el huevo ------------------------------------------------------------
+
+  grupo('El huevo');
+
+  const carpetaHue = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-hue-'));
+  const conHue = crearServidor({ datos: carpetaHue, api: { altas: 100, incubacion: 15000 } });
+  await new Promise((listo) => conHue.listen(0, '127.0.0.1', listo));
+  const baseHue = `http://127.0.0.1:${conHue.address().port}`;
+  const pedirHue = async (ruta, o = {}) => {
+    const r = await fetch(`${baseHue}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceHue = async (usuario) => (await pedirHue('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+
+  const gallinaT = await naceHue('ponedora');
+  const vecinoT = await naceHue('vecino');
+  const nacer = (id) => { conHue.almacen.buscarPio(id).nace = Date.now() - 1; };
+
+  const puesto = await pedirHue('/pios', {
+    metodo: 'POST', token: gallinaT, cuerpo: { texto: 'recién puesto @vecino #granja' },
+  });
+  const huevoId = puesto.datos.pio.id;
+  probar('un pío nuevo nace como huevo', puesto.datos.pio.huevo === true);
+  probar('y dice cuánto le falta', puesto.datos.pio.naceEn > 14000 && puesto.datos.pio.naceEn <= 15000,
+    String(puesto.datos.pio.naceEn));
+
+  const idsHue = async (ruta, token) => (await pedirHue(ruta, { token })).datos.pios.map((p) => p.id);
+  probar('quien lo puso lo ve en la plaza', (await idsHue('/pios?tipo=plaza', gallinaT)).includes(huevoId));
+  probar('los demás todavía no', !(await idsHue('/pios?tipo=plaza', vecinoT)).includes(huevoId));
+  probar('ni sin sesión', !(await idsHue('/pios?tipo=plaza')).includes(huevoId));
+  probar('ni en su perfil', !(await idsHue('/pios?tipo=usuario&usuario=ponedora', vecinoT)).includes(huevoId));
+  probar('ni en la búsqueda', !(await pedirHue('/buscar?q=puesto', { token: vecinoT })).datos.pios.length);
+  probar('ni en tendencias', !(await pedirHue('/tendencias')).datos.tendencias.some((x) => x.etiqueta === 'granja'));
+  probar('ni se abre su hilo', (await pedirHue(`/pios/${huevoId}/hilo`, { token: vecinoT })).estado === 404);
+  probar('ni se le puede dar me gusta',
+    (await pedirHue(`/pios/${huevoId}/megusta`, { metodo: 'POST', token: vecinoT })).estado === 404);
+  // Avisar de algo que quien recibe el aviso no puede ver sería un aviso roto.
+  const avisosHue = await pedirHue('/notificaciones', { token: vecinoT });
+  probar('la mención espera a que nazca', avisosHue.datos.notificaciones.length === 0
+    && avisosHue.datos.sinLeer === 0, JSON.stringify(avisosHue.datos.sinLeer));
+
+  // Las respuestas a un huevo propio tampoco se cuentan para los demás.
+  const respHue = await pedirHue('/pios', {
+    metodo: 'POST', token: gallinaT, cuerpo: { texto: 'me contesto', respuestaA: huevoId },
+  });
+  nacer(huevoId);
+  probar('una respuesta que es huevo no se cuenta para los demás',
+    (await pedirHue(`/pios/${huevoId}/hilo`, { token: vecinoT })).datos.pio.respuestas === 0);
+  probar('para quien la puso, sí',
+    (await pedirHue(`/pios/${huevoId}/hilo`, { token: gallinaT })).datos.pio.respuestas === 1);
+  nacer(respHue.datos.pio.id);
+
+  probar('al nacer, lo ve todo el mundo', (await idsHue('/pios?tipo=plaza')).includes(huevoId));
+  probar('ya no es huevo', (await pedirHue(`/pios/${huevoId}/hilo`)).datos.pio.huevo === false);
+  probar('y la mención llega', (await pedirHue('/notificaciones', { token: vecinoT })).datos.sinLeer === 1);
+
+  // Deshacer es borrar antes de que nazca: nadie se entera de nada.
+  const arrepentido = (await pedirHue('/pios', {
+    metodo: 'POST', token: gallinaT, cuerpo: { texto: 'mejor no @vecino' },
+  })).datos.pio.id;
+  const deshecho = await pedirHue(`/pios/${arrepentido}`, { metodo: 'DELETE', token: gallinaT });
+  probar('un huevo se puede deshacer', deshecho.estado === 200);
+  probar('y del arrepentido no queda aviso', (await pedirHue('/notificaciones', { token: vecinoT })).datos.sinLeer === 1);
+  probar('ni rastro', !conHue.almacen.buscarPio(arrepentido));
+
+  // Los píos de antes del huevo nacieron hace rato.
+  probar('un pío sin fecha de nacimiento no es huevo',
+    conHue.almacen.esHuevo({ id: 'viejo', creado: 1 }) === false);
+
+  await new Promise((listo) => conHue.close(listo));
+  fs.rmSync(carpetaHue, { recursive: true, force: true });
+
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

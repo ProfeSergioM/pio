@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const M = require('./modelo');
 const { crearDeposito, vacio } = require('./deposito');
+const E = require('./emojis');
 const { esReservado } = require('./reservados');
 
 // Cada cambio dice qué registro tocar. El depósito de archivo los ignora y
@@ -41,6 +42,13 @@ class Almacen {
 
   async guardar(cambios) {
     await this.deposito.guardar(this.datos, cambios || []);
+  }
+
+  // Los del sitio, ya listos para dibujar. Sin nada guardado, los de fábrica:
+  // asi un Pio recien instalado ya tiene emojis y no una lista vacia.
+  emojis() {
+    const propios = E.servibles(this.datos.emojis);
+    return propios.length ? propios : E.porDefecto();
   }
 
   proximoId(prefijo) {

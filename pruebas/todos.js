@@ -1312,6 +1312,57 @@ async function main() {
 
   await new Promise((listo) => conEnl.close(listo));
   fs.rmSync(carpetaEnl, { recursive: true, force: true });
+  // --- emojis del sitio ---------------------------------------------------
+
+  grupo('Emojis');
+  const EMO = require('../src/emojis');
+
+  const defecto = EMO.porDefecto();
+  probar('vienen cinco de fábrica', defecto.length === 5, String(defecto.length));
+  probar('el primero es el pollito', defecto[0].nombre === 'pollito');
+  probar('cada uno trae con qué dibujarse', defecto.every((e) => e.src.startsWith('data:image/svg')));
+  // Doscientos bytes cada uno: no hace falta archivo ni servicio para esto.
+  probar('y pesan poco', defecto.every((e) => e.src.length < 400));
+
+  const colados = EMO.servibles([
+    { nombre: 'MAL NOMBRE', caracter: 'x' },
+    { nombre: 'a', caracter: 'x' },
+    { nombre: 'con-guion', caracter: 'x' },
+    { nombre: 'sinnada' },
+    { nombre: 'inseguro', url: 'http://ejemplo.com/x.png' },
+    { nombre: 'bueno', caracter: '🐤' },
+    { nombre: 'bueno', caracter: '🥚' },
+    { nombre: 'remoto', url: 'https://res.cloudinary.com/n/x.png' },
+  ]);
+  probar('lo que no sirve se descarta en silencio',
+    colados.map((e) => e.nombre).join() === 'bueno,remoto', colados.map((e) => e.nombre).join());
+  // Un emoji repetido tapando a otro sería un cambio invisible de significado.
+  probar('el repetido no pisa al primero', colados[0].src.includes('%F0%9F%90%A4'));
+  probar('una imagen remota tiene que ser https', colados[1].src.startsWith('https://'));
+
+  // --- y por HTTP ---
+
+  const carpetaEmo = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-emo-'));
+  const conEmo = crearServidor({ datos: carpetaEmo });
+  await new Promise((listo) => conEmo.listen(0, '127.0.0.1', listo));
+  const baseEmo = `http://127.0.0.1:${conEmo.address().port}`;
+
+  const sinSesion = await fetch(`${baseEmo}/api/emojis`).then((r) => r.json());
+  probar('se piden sin sesión', sinSesion.emojis.length === 5);
+
+  // Lo que guarde el panel de administración le gana a los de fábrica.
+  await conEmo.almacen.listo;
+  conEmo.almacen.datos.emojis = [{ nombre: 'propio', caracter: '🦜' }];
+  const conPropios = await fetch(`${baseEmo}/api/emojis`).then((r) => r.json());
+  probar('lo guardado reemplaza a los de fábrica',
+    conPropios.emojis.length === 1 && conPropios.emojis[0].nombre === 'propio');
+
+  conEmo.almacen.datos.emojis = [];
+  const devuelta = await fetch(`${baseEmo}/api/emojis`).then((r) => r.json());
+  probar('y vaciarlo devuelve los de fábrica', devuelta.emojis.length === 5);
+
+  await new Promise((listo) => conEmo.close(listo));
+  fs.rmSync(carpetaEmo, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

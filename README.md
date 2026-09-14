@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 267 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 277 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -87,6 +87,7 @@ queda apagada y lo dice.
 | [`src/imagenes.js`](src/imagenes.js) | Subida de imágenes: ImgBB o Cloudinary |
 | [`src/gifs.js`](src/gifs.js) | Búsqueda de GIF en Giphy |
 | [`src/enlaces.js`](src/enlaces.js) | Acortar direcciones, con proveedor de repuesto |
+| [`src/emojis.js`](src/emojis.js) | Los emojis propios del sitio |
 | [`src/deposito.js`](src/deposito.js) | Dónde vive todo: archivo JSON o Supabase |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |
@@ -354,7 +355,6 @@ crezca sin control.
   5000 y más de 10.000. Chiquitas, y sólo en el perfil — no en cada pío, que
   es donde ensuciarían la lectura.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
-- Emojis propios del sitio, escritos como `:pollito:`.
 - Corrales: subtemas con su propio feed y una pestaña de chat.
 - Panel de administración.
 - Nadie puede cambiar ni recuperar su clave. Si un pollito la olvida, queda

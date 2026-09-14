@@ -12,7 +12,11 @@ const path = require('path');
 // Asi ninguno obliga al otro a trabajar de mas, y cambiar de uno a otro no
 // toca ni una linea del codigo de dominio.
 
-const vacio = () => ({ usuarios: [], pios: [], sesiones: {}, notificaciones: [], secuencia: 0 });
+const vacio = () => ({
+  usuarios: [], pios: [], sesiones: {}, notificaciones: [], secuencia: 0,
+  // Vacío significa "los de fábrica"; el panel de administración lo llena.
+  emojis: [],
+});
 
 // Que columna es la llave y como se arma la fila. Lo que de verdad se consulta
 // va en columnas propias; el objeto entero viaja en `datos`, con la misma forma
@@ -104,7 +108,7 @@ class DepositoSupabase {
       this.pedir('pio_pios?select=datos'),
       this.pedir('pio_sesiones?select=token,usuario,creada'),
       this.pedir('pio_avisos?select=datos'),
-      this.pedir('pio_meta?select=clave,valor&clave=eq.secuencia'),
+      this.pedir('pio_meta?select=clave,valor'),
     ]);
 
     const datos = vacio();
@@ -114,7 +118,10 @@ class DepositoSupabase {
       datos.sesiones[s.token] = { usuario: s.usuario, creada: Number(s.creada) };
     }
     datos.notificaciones = (avisos || []).map((f) => f.datos).filter(Boolean);
-    datos.secuencia = Number(((meta || [])[0] || {}).valor) || 0;
+    const enMeta = (clave) => ((meta || []).find((f) => f.clave === clave) || {}).valor;
+    datos.secuencia = Number(enMeta('secuencia')) || 0;
+    const guardados = enMeta('emojis');
+    datos.emojis = Array.isArray(guardados) ? guardados : [];
     return datos;
   }
 

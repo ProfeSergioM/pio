@@ -118,9 +118,21 @@ function escapar(texto) {
   ));
 }
 
-// Enlaza #etiquetas y @menciones sobre el texto ya escapado.
+// Los emojis del sitio, tal como los manda el servidor. Se piden una vez al
+// arrancar; hasta que lleguen, un :pollito: se ve como :pollito:, que es
+// mucho mejor que no ver el texto.
+let emojisDelSitio = new Map();
+
+// Enlaza #etiquetas y @menciones sobre el texto ya escapado, y cambia los
+// :nombre: por su imagen.
 function enriquecer(texto) {
   return escapar(texto)
+    .replace(/:([a-z0-9_]{2,20}):/g, (entero, nombre) => {
+      const src = emojisDelSitio.get(nombre);
+      return src
+        ? `<img class="emoji" src="${escapar(src)}" alt=":${escapar(nombre)}:" title=":${escapar(nombre)}:">`
+        : entero;
+    })
     .replace(/#([\p{L}\p{N}_]{1,50})/gu, (m, e) => `<a href="#/e/${encodeURIComponent(e.toLowerCase())}">${m}</a>`)
     .replace(/@([a-zA-Z0-9_]{3,15})/g, (m, u) => `<a href="#/u/${u.toLowerCase()}">${m}</a>`);
 }
@@ -1139,6 +1151,15 @@ function pintarYoLateral() {
 
 // Qué hay encendido en este Pío. Se pregunta una vez y decide qué botones
 // tienen sentido: mostrar uno que va a fallar seguro es peor que no mostrarlo.
+async function cargarEmojis() {
+  try {
+    const { emojis } = await api('/emojis');
+    emojisDelSitio = new Map(emojis.map((e) => [e.nombre, e.src]));
+  } catch (err) {
+    /* sin emojis el sitio anda igual, sólo se ven los :nombre: en crudo */
+  }
+}
+
 async function cargarConfig() {
   try {
     const config = await api('/config');
@@ -1154,6 +1175,7 @@ function mostrarApp() {
   $('#portada').hidden = true;
   $('#app').hidden = false;
   cargarConfig();
+  cargarEmojis();
   pintarYoLateral();
   if (!location.hash) location.hash = '#/nido';
   else pintar();

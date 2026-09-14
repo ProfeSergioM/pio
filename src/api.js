@@ -258,6 +258,14 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
   }
 
+  // --- emojis del sitio ----------------------------------------------------
+
+  // Sin sesión: son parte del decorado del sitio, no de nadie en particular,
+  // y el cliente los necesita para dibujar cualquier pío.
+  if (recurso === 'emojis' && metodo === 'GET') {
+    return { datos: { emojis: almacen.emojis() } };
+  }
+
   // --- acortar direcciones ------------------------------------------------
 
   // Pide sesión por lo mismo que los GIF: sin eso sería un acortador abierto,

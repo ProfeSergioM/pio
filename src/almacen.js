@@ -514,7 +514,7 @@ class Almacen {
     return this.datos.pios.find((p) => p.id === id) || null;
   }
 
-  async publicar(cuenta, texto, respuestaA, adjunto, corral) {
+  async publicar(cuenta, texto, respuestaA, adjunto, corral, extra = {}) {
     // Con imagen el texto puede faltar, porque la imagen ya dice algo. Lo que
     // no cambia nunca es el limite de cien.
     const limpio = M.normalizarTexto(texto);
@@ -544,6 +544,9 @@ class Almacen {
       meGusta: [],
       repios: [],
     };
+    // La respuesta a la pregunta del día vive en la plaza y no contesta a nadie:
+    // una respuesta a otro pío o un pío de corral no pueden serlo.
+    if (extra.pregunta && !nuevo.respuestaA && !nuevo.corral) nuevo.pregunta = extra.pregunta;
     // Los píos de antes no tienen `nace`: nacieron hace rato.
     if (this.incubacion > 0) nuevo.nace = nuevo.creado + this.incubacion;
     this.datos.pios.push(nuevo);

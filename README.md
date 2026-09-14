@@ -109,6 +109,21 @@ queda apagada y lo dice.
 
 ## Decisiones que vale la pena conocer
 
+**La plaza termina.** No hay desplazamiento infinito: donde empieza lo que ya
+viste aparece "Hasta aquí lo nuevo", y si no hay nada nuevo, "Estás al día".
+Más atrás se sigue con un botón. Lo visto se recuerda en el navegador.
+
+**Una pregunta del día**, la misma para todos, arriba de la plaza. Son cuarenta
+([`src/preguntas.js`](src/preguntas.js)) y cambian a medianoche de
+`PIO_ZONA_HORARIA` (por defecto `America/Santiago`). La fecha de la respuesta la
+pone el servidor.
+
+**Los me gusta no tienen marcador público.** El número sólo lo ve quien escribió
+el pío; los demás ven si ellos dieron el suyo.
+
+**💯 Cien justos.** Un pío de exactamente cien caracteres lleva la marca. Es un
+guiño, no un puntaje.
+
 **Todo pío nace como huevo.** Durante 15 segundos sólo lo ve quien lo escribió,
 con un "Deshacer" que lo borra y devuelve el texto al borrador para corregirlo.
 Nadie más lo ve: ni en las líneas, ni en la búsqueda, ni en las tendencias, y

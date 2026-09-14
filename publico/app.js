@@ -339,7 +339,7 @@ async function pintar() {
     const destino = n.dataset.nav;
     n.classList.toggle('activa', destino === (vista || 'nido'));
   });
-  $('#atras').hidden = !['u', 'p', 'e', 'c'].includes(vista);
+  $('#atras').hidden = !['u', 'p', 'e', 'c', 'pregunta'].includes(vista);
 
   // Al salir de un corral se vuelve a piar a la plaza; si no, uno se lleva el
   // corral puesto sin darse cuenta.
@@ -362,6 +362,7 @@ async function pintar() {
     else if (vista === 'avisos') await vistaAvisos();
     else if (vista === 'disenos') await vistaDisenos();
     else if (vista === 'admin') await vistaAdmin(params.get('ver'));
+    else if (vista === 'pregunta') await vistaPregunta(argumento);
     else if (vista === 'corrales') await vistaCorrales();
     else if (vista === 'c') await vistaCorral(argumento, params.get('ver'));
     else await vistaLinea('nido');
@@ -388,13 +389,113 @@ function cabecera(titulo, subtitulo, extra = '') {
     </div>`;
 }
 
+// --- la pregunta del día ----------------------------------------------------
+
+let preguntaDeHoy = null;
+
+const textoPregunta = (p) => (idioma === 'en' ? p.en : p.es);
+
+function cajaPregunta(p) {
+  return `
+    <section class="pregunta-dia">
+      <span class="pregunta-etiqueta">${escapar(T('pregunta.etiqueta'))}</span>
+      <p class="pregunta-texto">${escapar(textoPregunta(p))}</p>
+      <div class="pregunta-pie">
+        <a href="#/pregunta">${escapar(T('pregunta.respuestas', { n: p.respuestas }))}</a>
+        <button class="boton principal chico" type="button" data-responder-pregunta>${escapar(T('pregunta.responder'))}</button>
+      </div>
+    </section>`;
+}
+
+async function vistaPregunta(fecha) {
+  const { pregunta } = await api(`/pregunta${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`);
+  if (pregunta.hoy) preguntaDeHoy = pregunta;
+  cabecera(textoPregunta(pregunta), T(pregunta.hoy ? 'pregunta.subHoy' : 'pregunta.subOtro', {
+    fecha: new Date(`${pregunta.fecha}T12:00:00`).toLocaleDateString(diccionario().fechas, { day: 'numeric', month: 'long' }),
+  }), pregunta.hoy
+    ? `<button class="boton principal" type="button" data-responder-pregunta>${escapar(T('pregunta.responder'))}</button>`
+    : '');
+  const datos = await api(`/pios?tipo=pregunta&fecha=${encodeURIComponent(pregunta.fecha)}`);
+  // Adentro de la pregunta no hace falta que cada tarjeta diga que la respondió.
+  $('#contenido').innerHTML = datos.pios.length
+    ? datos.pios.map((p) => tarjetaPio(p, { enPregunta: true })).join('')
+    : listaPios([], { emoji: '❓', texto: T('pregunta.vacio') });
+}
+
+// --- "estás al día" -----------------------------------------------------------
+
+// Hasta dónde se leyó cada línea, en este navegador. No hace falta que viaje al
+// servidor: si se pierde, lo peor que pasa es que no aparece la marca una vez.
+const claveVisto = (tipo) => `pio.visto.${estado.yo ? estado.yo.usuario : ''}.${tipo}`;
+function leerVisto(tipo) {
+  try { return Number(localStorage.getItem(claveVisto(tipo))) || 0; } catch (err) { return 0; }
+}
+function guardarVisto(tipo, orden) {
+  try { localStorage.setItem(claveVisto(tipo), String(orden)); } catch (err) { /* sin almacenamiento, sin marca */ }
+}
+
+function marcaAlDia(arriba) {
+  return `<div class="al-dia">${escapar(T(arriba ? 'aldia.arriba' : 'aldia.medio'))}</div>`;
+}
+
+function pieLinea(hayMas, ultimoOrden) {
+  return hayMas
+    ? `<div class="pie-linea"><button class="boton fantasma" type="button" data-mas="${ultimoOrden}">${escapar(T('aldia.mas'))}</button></div>`
+    : `<div class="pie-linea chico">${escapar(T('aldia.fin'))}</div>`;
+}
+
+// Pinta los píos poniendo la marca donde empieza lo que ya se había visto.
+// Lo propio no cuenta como nuevo: acabar de piar y ver "hay novedades" encima
+// del pío de uno sería mentirle.
+function lineaConMarca(pios, visto) {
+  if (!visto) return pios.map((p) => tarjetaPio(p)).join('');
+  let corte = pios.findIndex((p) => p.orden <= visto);
+  if (corte > 0 && pios.slice(0, corte).every((p) => p.mio)) corte = 0;
+  return pios.map((p, i) => (i === corte ? marcaAlDia(i === 0) : '') + tarjetaPio(p)).join('');
+}
+
 async function vistaLinea(tipo) {
   cabecera(T(`${tipo}.titulo`), T(`${tipo}.sub`));
-  const datos = await api(`/pios?tipo=${tipo}`);
+  const [datos, pregunta] = await Promise.all([
+    api(`/pios?tipo=${tipo}`),
+    tipo === 'plaza' ? api('/pregunta').then((r) => r.pregunta).catch(() => null) : null,
+  ]);
+  if (pregunta) preguntaDeHoy = pregunta;
   const vacio = tipo === 'nido'
     ? { emoji: '🪹', texto: T('nido.vacio') }
     : { emoji: '🌱', texto: T('plaza.vacio') };
-  $('#contenido').innerHTML = listaPios(datos.pios, vacio);
+
+  const visto = leerVisto(tipo);
+  const pios = datos.pios;
+  const cuerpo = pios.length
+    ? lineaConMarca(pios, visto) + pieLinea(datos.hayMas, pios[pios.length - 1].orden)
+    : listaPios(pios, vacio);
+  $('#contenido').innerHTML = (pregunta ? cajaPregunta(pregunta) : '') + cuerpo;
+  if (pios.length) guardarVisto(tipo, Math.max(visto, pios[0].orden));
+
+  engancharMas(tipo);
+}
+
+// Más antiguos, a pedido. Nada de desplazamiento infinito: la línea termina, y
+// seguir hacia atrás es una decisión, no un accidente del pulgar.
+function engancharMas(tipo) {
+  const boton = $('#contenido').querySelector('[data-mas]');
+  if (!boton) return;
+  boton.addEventListener('click', async () => {
+    boton.disabled = true;
+    try {
+      const datos = await api(`/pios?tipo=${tipo}&antes=${encodeURIComponent(boton.dataset.mas)}`);
+      const pie = boton.closest('.pie-linea');
+      pie.insertAdjacentHTML('beforebegin', datos.pios.map((p) => tarjetaPio(p)).join(''));
+      pie.outerHTML = datos.pios.length
+        ? pieLinea(datos.hayMas, datos.pios[datos.pios.length - 1].orden)
+        : pieLinea(false, 0);
+      engancharMas(tipo);
+    } catch (err) {
+      boton.disabled = false;
+      avisar(err.message);
+    }
+  });
 }
 
 async function vistaEtiqueta(etiqueta) {
@@ -842,7 +943,9 @@ function tarjetaPio(pio, opciones = {}) {
     : (pio.respuestaA && !opciones.enCascada
       ? `<div class="contexto"><a href="#/p/${escapar(pio.respuestaA)}">${escapar(T('pio.respuestaA', { usuario: pio.respuestaAUsuario }))}</a></div>`
       // Dentro del corral no hace falta decir en qué corral se está.
-      : (pio.corral && !opciones.enCorral
+      : pio.pregunta && !opciones.enPregunta
+        ? `<div class="contexto"><a href="#/pregunta/${escapar(pio.pregunta)}">${escapar(T('pio.pregunta'))}</a></div>`
+        : (pio.corral && !opciones.enCorral
         ? `<div class="contexto"><a href="#/c/${escapar(pio.corral)}">${escapar(T('pio.enCorral', { corral: pio.corral }))}</a></div>`
         : ''));
 
@@ -863,6 +966,7 @@ function tarjetaPio(pio, opciones = {}) {
           <a class="pio-nombre" href="#/u/${escapar(pio.autor.usuario)}" data-parar>${escapar(pio.autor.nombre)}</a>
           <span class="pio-usuario">@${escapar(pio.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(pio.creado)}</span>
+          ${largo(pio.texto) === LIMITE ? `<span class="cien-justos" title="${escapar(T('pio.cienJustos'))}" aria-label="${escapar(T('pio.cienJustos'))}">💯</span>` : ''}
         </div>
         ${pio.texto ? `<p class="texto">${enriquecer(pio.texto)}</p>` : ''}
         ${pio.adjunto ? `
@@ -873,7 +977,7 @@ function tarjetaPio(pio, opciones = {}) {
         <div class="acciones">
           <button class="accion" data-accion="responder" title="${escapar(T('accion.responder'))}">💬 <span>${pio.respuestas || ''}</span></button>
           <button class="accion repio ${pio.yoRepio ? 'activa' : ''}" data-accion="repio" title="${escapar(T('accion.repiar'))}">🔁 <span>${pio.repios || ''}</span></button>
-          <button class="accion ${pio.yoMeGusta ? 'activa' : ''}" data-accion="megusta" title="${escapar(T('accion.megusta'))}">${pio.yoMeGusta ? '❤️' : '🤍'} <span>${pio.meGusta || ''}</span></button>
+          <button class="accion ${pio.yoMeGusta ? 'activa' : ''}" data-accion="megusta" title="${escapar(T('accion.megusta'))}">${pio.yoMeGusta ? '❤️' : '🤍'} <span>${pio.meGusta ? pio.meGusta : ''}</span></button>
           <button class="accion" data-accion="compartir" title="${escapar(T('accion.compartir'))}"
                   data-autor="${escapar(pio.autor.usuario)}" data-texto="${escapar(pio.texto || '')}">📤</button>
           ${pio.mio ? `<button class="accion borrar" data-accion="borrar" title="${escapar(T('accion.borrar'))}">🗑️</button>` : ''}
@@ -1039,6 +1143,12 @@ document.body.addEventListener('click', async (ev) => {
   if (otroIdioma) {
     ev.preventDefault();
     cambiarIdioma(otroIdioma.dataset.idioma);
+    return;
+  }
+
+  if (ev.target.closest('[data-responder-pregunta]') && preguntaDeHoy) {
+    ev.preventDefault();
+    abrirDialogo(null, preguntaDeHoy);
     return;
   }
 
@@ -1441,11 +1551,14 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
 const dialogo = $('#dialogo-piar');
 const areaTexto = $('#texto-pio');
 
-function abrirDialogo(respuestaA = null) {
+function abrirDialogo(respuestaA = null, pregunta = null) {
   estado.respondiendoA = respuestaA;
-  $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta' : 'dialogo.nuevo');
-  $('#dialogo-contexto').hidden = !respuestaA;
-  $('#dialogo-contexto').textContent = respuestaA ? T('dialogo.contexto') : '';
+  estado.pregunta = respuestaA ? null : pregunta;
+  $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta' : (estado.pregunta ? 'dialogo.pregunta' : 'dialogo.nuevo'));
+  $('#dialogo-contexto').hidden = !respuestaA && !estado.pregunta;
+  $('#dialogo-contexto').textContent = respuestaA
+    ? T('dialogo.contexto')
+    : (estado.pregunta ? textoPregunta(estado.pregunta) : '');
   areaTexto.value = '';
   adjunto = null;
   pintarAdjunto();
@@ -1490,10 +1603,13 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
     const borrador = {
       texto: areaTexto.value,
       respuestaA: estado.respondiendoA,
-      corral: corralActual,
+      corral: estado.pregunta ? null : corralActual,
+      pregunta: estado.pregunta || null,
       adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
     };
-    const { pio } = await api('/pios', { metodo: 'POST', cuerpo: borrador });
+    const { pio } = await api('/pios', {
+      metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta }),
+    });
     dialogo.close();
     if (pio.huevo) {
       borradores.set(pio.id, borrador);
@@ -1569,7 +1685,7 @@ async function deshacerHuevo(id) {
   // Vuelve al borrador tal como estaba: deshacer es para corregir, y
   // corregir sin el texto sería escribirlo de nuevo.
   if (borrador) {
-    abrirDialogo(borrador.respuestaA);
+    abrirDialogo(borrador.respuestaA, borrador.pregunta);
     areaTexto.value = borrador.texto;
     adjunto = borrador.adjunto;
     pintarAdjunto();

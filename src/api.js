@@ -11,6 +11,10 @@ const C = require('./corrales');
 const MSG = require('./mensajes');
 const E = require('./emojis');
 const { crearLatido } = require('./latido');
+const PR = require('./preguntas');
+
+// Dónde vive el sitio si nadie dice otra cosa. Pío nació en Chile.
+const ZONA_POR_DEFECTO = 'America/Santiago';
 
 // De donde se acepta que venga un adjunto. El cliente manda una URL, y una URL
 // que manda el cliente es un dato, no una verdad: si no se comprobara, cualquiera
@@ -56,6 +60,7 @@ function crearApi(almacen, opciones = {}) {
     }),
     google: new Google(opciones.googleClienteId, opciones.google),
     latido: crearLatido(almacen, opciones),
+    zona: opciones.zonaHoraria || ZONA_POR_DEFECTO,
     // Se normalizan una vez acá: comparar a mano en cada petición es donde se
     // cuela el descuido que deja entrar a quien no debe.
     admins: new Set((opciones.admins || []).map((x) => String(x).toLowerCase())),
@@ -261,9 +266,12 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       if (cuerpo.corral && !dondeVa) {
         throw new ErrorPio(404, C.mensaje({ clave: 'corral.noexiste' }), 'corral.noexiste');
       }
+      // La fecha la pone el servidor: si la mandara el cliente, cualquiera
+      // podría contestar la pregunta de otro día.
       const pio = await almacen.publicar(
         yo, cuerpo.texto, cuerpo.respuestaA, limpiarAdjunto(cuerpo.adjunto),
         dondeVa ? dondeVa.nombre : null,
+        { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null },
       );
       return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
     }
@@ -590,6 +598,20 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     return { datos: { pios, usuarios } };
   }
 
+  if (recurso === 'pregunta' && metodo === 'GET') {
+    const hoy = PR.hoy(servicios.zona);
+    const pedida = url.searchParams.get('fecha') || hoy;
+    // Las de mañana no: adelantarlas le quita la gracia a la de cada día.
+    if (!PR.esFecha(pedida) || pedida > hoy) {
+      throw new ErrorPio(404, 'No hay pregunta para ese día.', 'pregunta.noesta');
+    }
+    const pregunta = PR.preguntaDe(pedida);
+    const respuestas = almacen.datos.pios
+      .filter((p) => p.pregunta === pedida && almacen.visiblePara(p, yo) && !callado(almacen, yo, p.autor))
+      .length;
+    return { datos: { pregunta: Object.assign(pregunta, { hoy: pedida === hoy, respuestas }) } };
+  }
+
   if (recurso === 'tendencias' && metodo === 'GET') {
     const cuenta = new Map();
     const corte = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -663,6 +685,9 @@ function linea(almacen, params, yo) {
   } else if (tipo === 'etiqueta') {
     const etiqueta = String(params.get('etiqueta') || '').toLowerCase().replace(/^#/, '');
     for (const p of almacen.datos.pios) if (p.etiquetas.includes(etiqueta)) agregar(p, p.creado, null);
+  } else if (tipo === 'pregunta') {
+    const fecha = String(params.get('fecha') || '');
+    for (const p of almacen.datos.pios) if (fecha && p.pregunta === fecha) agregar(p, p.creado, null);
   } else if (tipo === 'megusta') {
     const quien = M.normalizarUsuario(params.get('usuario'));
     for (const p of almacen.datos.pios) if (p.meGusta.includes(quien)) agregar(p, p.creado, null);
@@ -716,7 +741,10 @@ function serializar(almacen, pio, yo) {
     autor: autor
       ? { usuario: autor.usuario, nombre: autor.nombre }
       : { usuario: pio.autor, nombre: pio.autor },
-    meGusta: pio.meGusta.length,
+    // El número sólo lo ve quien escribió el pío. La competencia por
+    // corazones es lo que más cansa de las otras redes; saber si a uno le
+    // gustó a alguien no necesita un marcador a la vista de todos.
+    meGusta: yo && yo.usuario === pio.autor ? pio.meGusta.length : null,
     yoMeGusta: !!yo && pio.meGusta.includes(yo.usuario),
     repios: pio.repios.length,
     yoRepio: !!yo && pio.repios.some((r) => r.usuario === yo.usuario),
@@ -727,6 +755,7 @@ function serializar(almacen, pio, yo) {
     naceEn: almacen.esHuevo(pio) ? pio.nace - Date.now() : 0,
     adjunto: pio.adjunto || null,
     corral: pio.corral || null,
+    pregunta: pio.pregunta || null,
     mio: !!yo && pio.autor === yo.usuario,
   };
 }

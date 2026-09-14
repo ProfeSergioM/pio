@@ -76,6 +76,8 @@ function leerAjustes(directorio) {
     // 'no' apaga el acortador; cualquier otra cosa lo deja encendido, porque
     // is.gd no pide credenciales.
     acortador: elegir('PIO_ACORTADOR', 'acortador'),
+    // Dónde vive el sitio, para saber cuándo empieza el día de la pregunta.
+    zonaHoraria: elegir('PIO_ZONA_HORARIA', 'zonaHoraria'),
     // Cuánto tarda un pío en nacer, en segundos. Vacío es el valor de siempre;
     // las pruebas lo ponen en cero para no esperar en cada una.
     incubacion: segundosOpcionales(process.env.PIO_INCUBACION_SEGUNDOS, guardado.incubacionSegundos),

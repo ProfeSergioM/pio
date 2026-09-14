@@ -158,9 +158,15 @@ async function main() {
 
   grupo('Me gusta y repíos');
   const gusto = await pedir(`/pios/${pioA}/megusta`, { metodo: 'POST', token: tokenB });
-  probar('me gusta suma 1', gusto.datos.pio.meGusta === 1 && gusto.datos.pio.yoMeGusta === true);
+  // El número sólo lo ve quien escribió el pío; quien da el me gusta sabe que lo dio.
+  probar('me gusta queda marcado', gusto.datos.pio.yoMeGusta === true);
+  probar('quien da me gusta no ve el marcador', gusto.datos.pio.meGusta === null);
+  probar('quien escribió el pío sí',
+    (await pedir(`/pios/${pioA}/hilo`, { token: tokenA })).datos.pio.meGusta === 1);
+  probar('y sin sesión tampoco se ve', (await pedir(`/pios/${pioA}/hilo`)).datos.pio.meGusta === null);
   const noGusto = await pedir(`/pios/${pioA}/megusta`, { metodo: 'POST', token: tokenB });
-  probar('volver a tocar lo saca', noGusto.datos.pio.meGusta === 0 && noGusto.datos.pio.yoMeGusta === false);
+  probar('volver a tocar lo saca', noGusto.datos.pio.yoMeGusta === false
+    && (await pedir(`/pios/${pioA}/hilo`, { token: tokenA })).datos.pio.meGusta === 0);
   await pedir(`/pios/${pioA}/megusta`, { metodo: 'POST', token: tokenB });
 
   const meGustaDeB = await pedir('/pios?tipo=megusta&usuario=calandria', { token: tokenB });
@@ -1155,7 +1161,7 @@ async function main() {
   probar('la sesión sigue viva con el nombre nuevo',
     (await pedirRen('/yo', { token: tokenViejo })).datos.yo.usuario === 'jilguero');
 
-  const suyos = (await pedirRen(`/pios?tipo=usuario&usuario=jilguero`)).datos.pios;
+  const suyos = (await pedirRen(`/pios?tipo=usuario&usuario=jilguero`, { token: tokenViejo })).datos.pios;
   probar('los píos viejos vienen con él', suyos.length === 1 && suyos[0].id === mio);
   probar('el me gusta no se perdió', suyos[0].meGusta === 1);
   probar('el repío tampoco', suyos[0].repios === 1);
@@ -2328,6 +2334,76 @@ async function main() {
 
   await new Promise((listo) => conHue.close(listo));
   fs.rmSync(carpetaHue, { recursive: true, force: true });
+
+  // --- la pregunta del día -------------------------------------------------
+
+  grupo('La pregunta del día');
+  const PR = require('../src/preguntas');
+
+  probar('hay cuarenta preguntas', PR.PREGUNTAS.length === 40);
+  probar('todas entran en un pío', PR.PREGUNTAS.every(([es, en]) => [...es].length <= 100 && [...en].length <= 100));
+  const cuarentaDias = new Set(Array.from({ length: 40 }, (_, i) =>
+    PR.preguntaDe(new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10)).es));
+  probar('en cuarenta días pasan las cuarenta, sin repetir', cuarentaDias.size === 40);
+  probar('el mismo día da la misma pregunta', PR.preguntaDe('2026-09-14').es === PR.preguntaDe('2026-09-14').es);
+  probar('una fecha inventada no tiene pregunta', PR.preguntaDe('2026-02-30') === null && PR.preguntaDe('ayer') === null);
+  // Render corre en UTC: a las 22 de Chile ya es mañana allá.
+  const nocheChile = Date.UTC(2026, 8, 15, 2, 0);
+  probar('el día es el de donde vive el sitio, no el del servidor',
+    PR.hoy('America/Santiago', nocheChile) === '2026-09-14' && PR.hoy('UTC', nocheChile) === '2026-09-15');
+  probar('una zona mal escrita no rompe nada', PR.hoy('Marte/Olympus', nocheChile) === '2026-09-15');
+
+  const carpetaPre = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-pre-'));
+  const conPre = crearServidor({ datos: carpetaPre, api: { altas: 100 } });
+  await new Promise((listo) => conPre.listen(0, '127.0.0.1', listo));
+  const basePre = `http://127.0.0.1:${conPre.address().port}`;
+  const pedirPre = async (ruta, o = {}) => {
+    const r = await fetch(`${basePre}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const curiosaT = (await pedirPre('/registro', {
+    metodo: 'POST', cuerpo: { usuario: 'curiosa', nombre: 'Curiosa', clave: 'semillas' },
+  })).datos.token;
+
+  const deHoy = await pedirPre('/pregunta');
+  probar('la API da la pregunta de hoy', deHoy.estado === 200 && deHoy.datos.pregunta.hoy === true
+    && !!deHoy.datos.pregunta.es && !!deHoy.datos.pregunta.en);
+  probar('arranca sin respuestas', deHoy.datos.pregunta.respuestas === 0);
+  const fechaHoy = deHoy.datos.pregunta.fecha;
+
+  const respondida = await pedirPre('/pios', {
+    metodo: 'POST', token: curiosaT, cuerpo: { texto: 'Pan con palta', pregunta: true },
+  });
+  probar('se responde con un pío', respondida.estado === 201 && respondida.datos.pio.pregunta === fechaHoy);
+  probar('y se cuenta', (await pedirPre('/pregunta')).datos.pregunta.respuestas === 1);
+  probar('la respuesta está en la plaza',
+    (await pedirPre('/pios?tipo=plaza')).datos.pios.some((p) => p.id === respondida.datos.pio.id));
+  probar('y en la lista de la pregunta',
+    (await pedirPre(`/pios?tipo=pregunta&fecha=${fechaHoy}`)).datos.pios.length === 1);
+
+  // La fecha la decide el servidor.
+  const trampa = await pedirPre('/pios', {
+    metodo: 'POST', token: curiosaT, cuerpo: { texto: 'contesto la de otro día', pregunta: '2020-01-01' },
+  });
+  probar('el cliente no elige de qué día es la pregunta', trampa.datos.pio.pregunta === fechaHoy);
+
+  const otroPio = (await pedirPre('/pios', { metodo: 'POST', token: curiosaT, cuerpo: { texto: 'algo' } })).datos.pio.id;
+  const contestando = await pedirPre('/pios', {
+    metodo: 'POST', token: curiosaT, cuerpo: { texto: 'a otro pío', respuestaA: otroPio, pregunta: true },
+  });
+  probar('una respuesta a otro pío no cuenta como respuesta a la pregunta', contestando.datos.pio.pregunta === null);
+
+  probar('las de mañana no se adelantan', (await pedirPre('/pregunta?fecha=2999-01-01')).estado === 404);
+  probar('las de días pasados sí se pueden ver', (await pedirPre('/pregunta?fecha=2026-01-01')).datos.pregunta.hoy === false);
+  probar('una fecha rara da 404', (await pedirPre('/pregunta?fecha=cualquiera')).estado === 404);
+
+  await new Promise((listo) => conPre.close(listo));
+  fs.rmSync(carpetaPre, { recursive: true, force: true });
 
   // --- resumen ------------------------------------------------------------
 

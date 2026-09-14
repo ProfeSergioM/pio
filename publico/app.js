@@ -339,7 +339,11 @@ async function pintar() {
     const destino = n.dataset.nav;
     n.classList.toggle('activa', destino === (vista || 'nido'));
   });
-  $('#atras').hidden = !['u', 'p', 'e'].includes(vista);
+  $('#atras').hidden = !['u', 'p', 'e', 'c'].includes(vista);
+
+  // Al salir de un corral se vuelve a piar a la plaza; si no, uno se lleva el
+  // corral puesto sin darse cuenta.
+  if (vista !== 'c') corralActual = null;
 
   const contenido = $('#contenido');
   contenido.innerHTML = `<div class="cargando">${escapar(T('cargando'))}</div>`;
@@ -353,6 +357,8 @@ async function pintar() {
     else if (vista === 'e') await vistaEtiqueta(argumento);
     else if (vista === 'avisos') await vistaAvisos();
     else if (vista === 'disenos') await vistaDisenos();
+    else if (vista === 'corrales') await vistaCorrales();
+    else if (vista === 'c') await vistaCorral(argumento);
     else await vistaLinea('nido');
   } catch (err) {
     contenido.innerHTML = `<div class="vacio"><span class="emoji">💥</span>${escapar(err.message)}</div>`;
@@ -607,6 +613,97 @@ async function cargarAvisos() {
   } catch { /* la insignia no rompe la vista */ }
 }
 
+// --- corrales -------------------------------------------------------------
+
+// En qué corral se está piando. Lo fija la vista: si estás dentro de un
+// corral, lo que escribas se queda ahí; si no, va a la plaza.
+let corralActual = null;
+
+function tarjetaCorral(corral) {
+  return `
+    <div class="sugerencia">
+      <a class="crece" href="#/c/${escapar(corral.nombre)}">
+        <b>${escapar(corral.titulo)}</b>
+        <span>${escapar(corral.descripcion || T('corral.gente', { n: corral.suscritos }))}</span>
+      </a>
+      <span class="chico">${escapar(T('corral.pios', { n: corral.pios }))}</span>
+      <button class="boton ${corral.estoy ? 'fantasma' : 'principal'}" data-corral="${escapar(corral.nombre)}">
+        ${escapar(T(corral.estoy ? 'corral.salir' : 'corral.entrar'))}
+      </button>
+    </div>`;
+}
+
+async function vistaCorrales() {
+  cabecera(T('corrales.titulo'), T('corrales.sub'),
+    `<button class="boton principal" id="armar-corral">${escapar(T('corrales.crear'))}</button>`);
+  const { corrales } = await api('/corrales');
+  $('#contenido').innerHTML = corrales.length
+    ? `<div class="tarjeta" style="margin:12px 16px">${corrales.map(tarjetaCorral).join('')}</div>`
+    : `<div class="vacio"><span class="emoji">🚜</span>${escapar(T('corrales.vacio'))}</div>`;
+  $('#armar-corral').addEventListener('click', abrirCorral);
+}
+
+async function vistaCorral(nombre) {
+  const { corral } = await api(`/corrales/${encodeURIComponent(nombre)}`);
+  corralActual = corral.nombre;
+  cabecera(corral.titulo, corral.descripcion || T('corral.dueno', { usuario: corral.dueno }));
+
+  const datos = await api(`/pios?tipo=corral&corral=${encodeURIComponent(corral.nombre)}`);
+  $('#contenido').innerHTML = `
+    <div class="perfil-caja">
+      <div class="perfil-datos">
+        <span><b>${corral.suscritos}</b> ${escapar(T('corral.gente', { n: corral.suscritos }).replace(/^\d+\s/, ''))}</span>
+        <span>${escapar(T('corral.pios', { n: corral.pios }))}</span>
+        <span>${escapar(T('corral.dueno', { usuario: corral.dueno }))}</span>
+      </div>
+      <div class="perfil-botones" style="margin-top:12px">
+        <button class="boton ${corral.estoy ? 'fantasma' : 'principal'}" data-corral="${escapar(corral.nombre)}">
+          ${escapar(T(corral.estoy ? 'corral.salir' : 'corral.entrar'))}
+        </button>
+      </div>
+    </div>
+    ${datos.pios.map((p) => tarjetaPio(p, { enCorral: true })).join('') || `<div class="vacio"><span class="emoji">🚜</span>${escapar(T('corral.vacio'))}</div>`}`;
+}
+
+function abrirCorral() {
+  const forma = $('#forma-corral');
+  forma.reset();
+  $('#error-corral').hidden = true;
+  $('#dialogo-corral').showModal();
+}
+
+$('#cerrar-corral').addEventListener('click', () => $('#dialogo-corral').close());
+
+$('#forma-corral').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const forma = ev.target;
+  const error = $('#error-corral');
+  const enviar = forma.querySelector('button[type=submit]');
+  if (enviar.disabled) return;
+  enviar.disabled = true;
+  error.hidden = true;
+  try {
+    // Sin nombre corto se arma con el título: pedir dos cosas para lo mismo es
+    // pedirle al usuario que haga de traductor.
+    const { corral } = await api('/corrales', {
+      metodo: 'POST',
+      cuerpo: {
+        nombre: aUsuario(forma.nombre.value || forma.titulo.value),
+        titulo: forma.titulo.value,
+        descripcion: forma.descripcion.value,
+      },
+    });
+    $('#dialogo-corral').close();
+    avisar(T('corral.creado'));
+    location.hash = `#/c/${corral.nombre}`;
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  } finally {
+    enviar.disabled = false;
+  }
+});
+
 // --- piezas de interfaz ---------------------------------------------------
 
 function listaPios(pios, vacio) {
@@ -623,7 +720,10 @@ function tarjetaPio(pio, opciones = {}) {
     ? `<div class="contexto">${T('pio.repiadoPor', { usuario: escapar(pio.repiadoPor) })}</div>`
     : (pio.respuestaA && !opciones.enCascada
       ? `<div class="contexto">${escapar(T('pio.respuestaA'))}</div>`
-      : '');
+      // Dentro del corral no hace falta decir en qué corral se está.
+      : (pio.corral && !opciones.enCorral
+        ? `<div class="contexto"><a href="#/c/${escapar(pio.corral)}">${escapar(T('pio.enCorral', { corral: pio.corral }))}</a></div>`
+        : ''));
 
   return `
     <article class="pio ${opciones.destacado ? 'destacado' : ''}" data-id="${pio.id}">
@@ -674,6 +774,18 @@ function filaUsuario(perfil) {
 // --- interacción sobre los píos -------------------------------------------
 
 document.body.addEventListener('click', async (ev) => {
+  const alCorral = ev.target.closest('[data-corral]');
+  if (alCorral) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    try {
+      const { corral } = await api(`/corrales/${encodeURIComponent(alCorral.dataset.corral)}/seguir`, { metodo: 'POST' });
+      avisar(T(corral.estoy ? 'corral.adentro' : 'corral.salir'));
+      await pintar();
+    } catch (err) { avisar(err.message); }
+    return;
+  }
+
   const elegido = ev.target.closest('[data-gif]');
   if (elegido) {
     ev.preventDefault();
@@ -1157,6 +1269,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       cuerpo: {
         texto: areaTexto.value,
         respuestaA: estado.respondiendoA,
+        corral: corralActual,
         adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
       },
     });

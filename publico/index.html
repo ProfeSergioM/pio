@@ -89,6 +89,7 @@
     <a class="nav" href="#/avisos" data-nav="avisos">
       <span class="con-insignia">🔔<b class="insignia" id="insignia" hidden></b></span><em data-t="nav.avisos"></em>
     </a>
+    <a class="nav" href="#/corrales" data-nav="corrales"><span>🚜</span><em data-t="nav.corrales"></em></a>
     <a class="nav" href="#/buscar" data-nav="buscar"><span>🔍</span><em data-t="nav.buscar"></em></a>
     <a class="nav" href="#/yo" data-nav="yo"><span>🐣</span><em data-t="nav.perfil"></em></a>
     <a class="nav" href="#/disenos" data-nav="disenos"><span>🎨</span><em data-t="nav.disenos"></em></a>
@@ -152,6 +153,39 @@
       <button class="boton principal" id="enviar-pio" type="submit" data-t="boton.piar" disabled></button>
     </div>
     <p id="error-pio" class="error" role="alert" hidden></p>
+  </form>
+</dialog>
+
+<dialog id="dialogo-corral" class="dialogo">
+  <form method="dialog" class="dialogo-caja" id="forma-corral" novalidate>
+    <div class="dialogo-cabecera">
+      <button type="button" class="icono" id="cerrar-corral" data-t-titulo="dialogo.cerrar">✕</button>
+      <span data-t="corral.nuevo"></span>
+    </div>
+
+    <label class="campo">
+      <span data-t="corral.titulo"></span>
+      <input name="titulo" maxlength="40" data-t-ph="corral.titulo.ph">
+    </label>
+
+    <label class="campo">
+      <span data-t="corral.nombre"></span>
+      <div class="con-arroba">
+        <span>/</span>
+        <input name="nombre" maxlength="20" autocomplete="off" data-corral>
+      </div>
+      <small class="chico" data-t="corral.nombre.ayuda"></small>
+    </label>
+
+    <label class="campo">
+      <span data-t="corral.descripcion"></span>
+      <input name="descripcion" maxlength="140" data-t-ph="corral.descripcion.ph">
+    </label>
+
+    <p id="error-corral" class="error" role="alert" hidden></p>
+    <div class="dialogo-pie">
+      <button class="boton principal" type="submit" data-t="corral.crear"></button>
+    </div>
   </form>
 </dialog>
 

@@ -63,6 +63,8 @@ function crearApi(almacen, opciones = {}) {
     // La primera petición espera a que termine la carga inicial; el resto la
     // encuentra resuelta y no paga nada.
     await almacen.listo;
+    // Que una barrida falle no es motivo para tirar abajo la petición.
+    await almacen.barrerSesiones().catch(() => {});
 
     try {
       const cuerpo = await leerCuerpo(req, url);

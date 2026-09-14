@@ -24,6 +24,17 @@ const baja = (tabla, clave) => ({ tabla, clave, valor: null });
 // es caro, y sin espera alguien podria reservarse nombres a repeticion.
 const ESPERA_CAMBIO = 30 * 24 * 60 * 60 * 1000;
 
+// Cuanto vale una sesion, contado desde que se abrio. Es absoluto y no
+// deslizante a proposito: renovarlo con cada uso obligaria a escribir en la
+// base en cada peticion, o a agregar una columna. Dos meses es bastante mas de
+// lo que dura la paciencia de nadie con una pestana abierta.
+const VIDA_SESION = 60 * 24 * 60 * 60 * 1000;
+// Cada cuanto se barren las vencidas. Hacerlo en cada peticion seria recorrer
+// todas las sesiones para nada mil veces por minuto.
+const ENTRE_BARRIDAS = 60 * 60 * 1000;
+
+const sesionVencida = (sesion, ahora) => ahora - (sesion.creada || 0) > VIDA_SESION;
+
 // Persistencia en un unico JSON. Alcanza de sobra para el tamano de Pio y
 // deja el estado legible a ojo, que es comodo para depurar.
 class Almacen {
@@ -38,6 +49,9 @@ class Almacen {
 
   async cargar() {
     this.datos = await this.deposito.cargar();
+    // Al arrancar se barre sin esperar a la primera hora: es el momento en que
+    // mas basura acumulada puede haber.
+    this.ultimaBarrida = 0;
     return this;
   }
 
@@ -252,7 +266,28 @@ class Almacen {
 
   porToken(token) {
     const sesion = token ? this.datos.sesiones[token] : null;
-    return sesion ? this.buscarUsuario(sesion.usuario) : null;
+    if (!sesion) return null;
+    // Una sesion vencida se trata como inexistente aunque todavia este en la
+    // base: de sacarla se encarga la barrida, sin hacer esperar a nadie.
+    if (sesionVencida(sesion, Date.now())) return null;
+    return this.buscarUsuario(sesion.usuario);
+  }
+
+  // Saca de la base las sesiones vencidas. Se llama en cada peticion, pero
+  // recorre la lista una vez por hora como mucho.
+  async barrerSesiones(forzar) {
+    const ahora = Date.now();
+    if (!forzar && ahora - (this.ultimaBarrida || 0) < ENTRE_BARRIDAS) return 0;
+    this.ultimaBarrida = ahora;
+
+    const cambios = [];
+    for (const [token, sesion] of Object.entries(this.datos.sesiones)) {
+      if (!sesionVencida(sesion, ahora)) continue;
+      delete this.datos.sesiones[token];
+      cambios.push(baja('pio_sesiones', token));
+    }
+    if (cambios.length) await this.guardar(cambios);
+    return cambios.length;
   }
 
   // Valida TODO antes de tocar nada. Antes se aplicaba campo por campo, y si

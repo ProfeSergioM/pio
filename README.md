@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 333 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 341 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -107,6 +107,12 @@ cuenta la hace el cliente (para el anillo) y el servidor (para decidir).
 **El servidor nunca confía en el cliente.** El anillo rojo es cortesía; quien
 rechaza los 101 caracteres es `validarPio` en el servidor, y hay una prueba
 que le pega por HTTP para comprobarlo.
+
+**Las sesiones vencen a los dos meses**, contados desde que se abrieron. Es
+absoluto y no deslizante a propósito: renovarlo con cada uso obligaría a
+escribir en la base en cada petición. Las vencidas se barren de la base, y esa
+barrida recorre la lista una vez por hora como mucho — hacerlo en cada pedido
+sería trabajo tirado mil veces por minuto.
 
 **Las claves van con `scrypt` + sal por cuenta** y se comparan con
 `timingSafeEqual`. Las sesiones son un token al portador guardado junto a los
@@ -384,4 +390,3 @@ crezca sin control.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
 - Corrales: subtemas con su propio feed y una pestaña de chat.
 - Panel de administración.
-- Las sesiones no vencen nunca.

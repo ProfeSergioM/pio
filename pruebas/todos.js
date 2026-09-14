@@ -1615,6 +1615,59 @@ async function main() {
 
   await new Promise((listo) => conCla.close(listo));
   fs.rmSync(carpetaCla, { recursive: true, force: true });
+  // --- vencimiento de sesiones --------------------------------------------
+
+  grupo('Sesiones que vencen');
+
+  const carpetaSes = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-ses-'));
+  const conSes = crearServidor({ datos: carpetaSes });
+  await new Promise((listo) => conSes.listen(0, '127.0.0.1', listo));
+  const baseSes = `http://127.0.0.1:${conSes.address().port}`;
+  await conSes.almacen.listo;
+
+  const yoCon = (token) => fetch(`${baseSes}/api/yo`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => r.status);
+
+  const naceSes = await fetch(`${baseSes}/api/registro`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario: 'jilguero', nombre: 'Jilguero', clave: 'semillas' }),
+  }).then((r) => r.json());
+
+  probar('una sesión recién abierta sirve', (await yoCon(naceSes.token)) === 200);
+
+  // Se la envejece a mano: esperar dos meses en una prueba no es opción.
+  const DOS_MESES = 60 * 24 * 60 * 60 * 1000;
+  conSes.almacen.datos.sesiones[naceSes.token].creada = Date.now() - DOS_MESES - 1000;
+
+  probar('pasados dos meses ya no sirve', (await yoCon(naceSes.token)) === 401);
+  probar('y el 401 es de sesión, para que el cliente sepa echarte',
+    (await fetch(`${baseSes}/api/yo`, { headers: { Authorization: `Bearer ${naceSes.token}` } })
+      .then((r) => r.json())).clave === 'sesion.falta');
+
+  // La barrida la saca de la base, no sólo la ignora.
+  const barridas = await conSes.almacen.barrerSesiones(true);
+  probar('la barrida se lleva las vencidas', barridas === 1, String(barridas));
+  probar('y ya no está guardada', !conSes.almacen.datos.sesiones[naceSes.token]);
+
+  const fresca = await fetch(`${baseSes}/api/sesion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario: 'jilguero', clave: 'semillas' }),
+  }).then((r) => r.json());
+  probar('una sesión nueva sobrevive a la barrida',
+    (await conSes.almacen.barrerSesiones(true)) === 0
+    && (await yoCon(fresca.token)) === 200);
+
+  // Recorrer todas las sesiones en cada petición sería trabajo tirado.
+  conSes.almacen.datos.sesiones[fresca.token].creada = Date.now() - DOS_MESES - 1000;
+  probar('sin forzar, no barre más de una vez por hora',
+    (await conSes.almacen.barrerSesiones()) === 0);
+  probar('pero forzada, sí', (await conSes.almacen.barrerSesiones(true)) === 1);
+
+  await new Promise((listo) => conSes.close(listo));
+  fs.rmSync(carpetaSes, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

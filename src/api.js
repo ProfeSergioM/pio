@@ -35,6 +35,7 @@ function crearApi(almacen, opciones = {}) {
   });
   const servicios = {
     proxies: Number(opciones.proxies) || 0,
+    ipCabecera: opciones.ipCabecera || null,
     altas,
     subidas: new Limite({
       cuantos: opciones.subidas || SUBIDAS_POR_HORA,
@@ -76,7 +77,10 @@ function crearApi(almacen, opciones = {}) {
 
 async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
   const { altas, google, imagenes, gifs } = servicios;
-  const dedonde = () => deDonde(req, servicios.proxies);
+  const dedonde = () => deDonde(req, {
+    proxies: servicios.proxies,
+    cabecera: servicios.ipCabecera,
+  });
   const metodo = req.method.toUpperCase();
   const [recurso, id, accion] = partes;
 
@@ -249,21 +253,6 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       if (err instanceof ErrorImagen) throw new ErrorPio(400, err.message, err.clave);
       throw err;
     }
-  }
-
-  // TEMPORAL: para averiguar qué cabecera de proxy llega en el despliegue.
-  // Se saca apenas se sepa. No devuelve nada del sitio, sólo lo que ve el
-  // servidor de la petición que uno mismo acaba de hacer.
-  if (recurso === 'diagnostico' && metodo === 'GET') {
-    return {
-      datos: {
-        xff: (req.headers['x-forwarded-for'] || null),
-        otras: Object.keys(req.headers).filter((h) => /forward|real-ip|client-ip|cf-/i.test(h)),
-        socket: (req.socket && req.socket.remoteAddress) || null,
-        proxiesConfigurados: servicios.proxies,
-        claveDelCubo: dedonde(),
-      },
-    };
   }
 
   // --- gifs ---------------------------------------------------------------

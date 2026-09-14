@@ -23,10 +23,17 @@ services:
     healthCheckPath: /api/config
 
     envVars:
-      # Render pone exactamente un balanceador delante. Sin esto, el límite de
-      # altas vería la IP del proxy y metería a todo el mundo en el mismo cubo.
+      # Render pone Cloudflare delante de su propio balanceador, y esa cabecera
+      # la sobrescribe Cloudflare en cada petición: el cliente no puede
+      # falsificarla. Sin esto, el límite de altas vería la IP interna del
+      # balanceador, que rota, y cada alta estrenaría cubo.
+      - key: PIO_IP_CABECERA
+        value: "cf-connecting-ip"
+
+      # Respaldo por si algún día no está esa cabecera: contar saltos. Son tres
+      # —visitante, borde de Cloudflare, balanceador de Render—, no uno.
       - key: PIO_PROXIES
-        value: "1"
+        value: "3"
 
       - key: NODE_VERSION
         value: "20"

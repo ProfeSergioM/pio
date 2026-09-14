@@ -58,8 +58,26 @@ class Limite {
 //   un proxy    (proxies = 1) -> "cliente"                  -> cliente
 //   mintiendo   (proxies = 1) -> "inventada, cliente"        -> cliente
 //   dos proxies (proxies = 2) -> "cliente, proxy1"           -> cliente
-function deDonde(req, proxies = 0) {
-  const saltos = Number(proxies) || 0;
+// Hay plataformas que ponen una cabecera propia con la IP del visitante y la
+// sobrescriben siempre, asi que el cliente no puede falsificarla. En Render,
+// que tiene Cloudflare delante, es 'cf-connecting-ip'. Cuando se configura una,
+// gana: es mas firme que contar saltos, porque no depende de cuantos proxies
+// haya ni de que no cambien manana.
+//
+// Solo se mira si esta configurada a mano. Por defecto no se le cree a ninguna
+// cabecera, porque cualquiera puede inventarla.
+function deDonde(req, opciones = 0) {
+  const conf = (opciones && typeof opciones === 'object') ? opciones : { proxies: opciones };
+
+  if (conf.cabecera) {
+    const valor = req.headers && req.headers[String(conf.cabecera).toLowerCase()];
+    if (valor) {
+      const primera = String(valor).split(',')[0].trim();
+      if (primera) return primera.replace(/^::ffff:/, '');
+    }
+  }
+
+  const saltos = Number(conf.proxies) || 0;
   if (saltos > 0) {
     const cabecera = (req.headers && req.headers['x-forwarded-for']) || '';
     const partes = String(cabecera).split(',').map((x) => x.trim()).filter(Boolean);

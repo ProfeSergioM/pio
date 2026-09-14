@@ -379,6 +379,46 @@ async function main() {
   probar('con cero proxies la cabecera se sigue ignorando',
     traves('1.2.3.4', 0) === '10.0.0.9');
 
+  // Lo que de verdad manda Render: el visitante, el borde de Cloudflare y el
+  // balanceador interno, que rota en cada petición. Con un solo salto se
+  // tomaba ese último y cada alta estrenaba cubo. Son tres.
+  const COMO_RENDER = '181.172.77.97, 172.68.174.95, 10.28.241.110';
+  probar('tres saltos dan con el visitante real',
+    traves(COMO_RENDER, 3) === '181.172.77.97');
+  probar('un solo salto agarraba el balanceador, que rota',
+    traves(COMO_RENDER, 1) === '10.28.241.110');
+  probar('y mentir delante de esos tres sigue sin servir',
+    traves('9.9.9.9, ' + COMO_RENDER, 3) === '181.172.77.97');
+
+  // Una cabecera que la plataforma sobrescribe siempre es más firme que
+  // contar saltos, porque no depende de cuántos proxies haya.
+  const porCabecera = (cabeceras, conf) => L.deDonde({
+    socket: { remoteAddress: '10.0.0.9' },
+    headers: cabeceras,
+  }, conf);
+
+  probar('la cabecera de confianza gana sobre el conteo de saltos',
+    porCabecera(
+      { 'cf-connecting-ip': '181.172.77.97', 'x-forwarded-for': '9.9.9.9' },
+      { proxies: 1, cabecera: 'cf-connecting-ip' },
+    ) === '181.172.77.97');
+
+  probar('si esa cabecera no viene, se vuelve al conteo de saltos',
+    porCabecera(
+      { 'x-forwarded-for': COMO_RENDER },
+      { proxies: 3, cabecera: 'cf-connecting-ip' },
+    ) === '181.172.77.97');
+
+  probar('sin configurarla, esa cabecera no se mira aunque venga',
+    porCabecera(
+      { 'cf-connecting-ip': '1.2.3.4' },
+      { proxies: 0 },
+    ) === '10.0.0.9');
+
+  probar('un número suelto sigue significando saltos, como antes',
+    L.deDonde({ socket: { remoteAddress: '10.0.0.9' }, headers: { 'x-forwarded-for': '1.2.3.4' } }, 1)
+    === '1.2.3.4');
+
   const carpetaTope = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-tope-'));
   const conTope = crearServidor({
     datos: carpetaTope,

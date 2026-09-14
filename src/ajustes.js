@@ -59,6 +59,9 @@ function leerAjustes(directorio) {
     // Cuántos proxies de confianza hay delante. En Render, Fly o cualquier
     // plataforma con balanceador, es 1. En tu máquina, 0.
     proxies: numero('PIO_PROXIES', 'proxies') || 0,
+    // Cabecera de confianza con la IP del visitante, si la plataforma pone
+    // una. En Render: cf-connecting-ip.
+    ipCabecera: elegir('PIO_IP_CABECERA', 'ipCabecera'),
     altas: numero('PIO_ALTAS_POR_HORA', 'altas'),
     subidas: numero('PIO_SUBIDAS_POR_HORA', 'subidas'),
   };

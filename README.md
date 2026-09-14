@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 277 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 296 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -88,6 +88,7 @@ queda apagada y lo dice.
 | [`src/gifs.js`](src/gifs.js) | Búsqueda de GIF en Giphy |
 | [`src/enlaces.js`](src/enlaces.js) | Acortar direcciones, con proveedor de repuesto |
 | [`src/emojis.js`](src/emojis.js) | Los emojis propios del sitio |
+| [`src/medallas.js`](src/medallas.js) | Medallitas por cantidad de seguidores |
 | [`src/deposito.js`](src/deposito.js) | Dónde vive todo: archivo JSON o Supabase |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |
@@ -351,9 +352,6 @@ crezca sin control.
 - Paginación en el cliente: el servidor ya devuelve `hayMas` y acepta `antes`,
   pero la interfaz todavía no pide la página siguiente.
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.
-- Medallitas por seguidores en el perfil: 10, 25, 50, 100, 200, 500, 1000,
-  5000 y más de 10.000. Chiquitas, y sólo en el perfil — no en cada pío, que
-  es donde ensuciarían la lectura.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
 - Corrales: subtemas con su propio feed y una pestaña de chat.
 - Panel de administración.

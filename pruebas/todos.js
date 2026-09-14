@@ -1363,6 +1363,75 @@ async function main() {
 
   await new Promise((listo) => conEmo.close(listo));
   fs.rmSync(carpetaEmo, { recursive: true, force: true });
+  // --- medallitas ---------------------------------------------------------
+
+  grupo('Medallitas');
+  const MED = require('../src/medallas');
+
+  probar('sin seguidores no hay medalla', MED.medallaDe(0) === null);
+  probar('con nueve tampoco', MED.medallaDe(9) === null);
+  probar('con diez, la primera', MED.medallaDe(10).clave === 'huevo');
+  probar('justo antes del salto sigue la anterior', MED.medallaDe(24).clave === 'huevo');
+  probar('y justo en el salto cambia', MED.medallaDe(25).clave === 'cascaron');
+  // La más alta alcanzada, no una hilera que crece.
+  probar('se queda con la más alta', MED.medallaDe(9999).clave === 'aguila');
+  probar('la última no tiene techo', MED.medallaDe(999999).clave === 'pavoreal');
+
+  probar('un número imposible no da medalla', MED.medallaDe(-5) === null);
+  probar('ni una cosa que no es número', MED.medallaDe('muchos') === null);
+
+  probar('dice cuánto falta para la próxima', MED.faltanPara(9).faltan === 1);
+  probar('y cuál es', MED.faltanPara(9).clave === 'huevo');
+  probar('en la última ya no falta nada', MED.faltanPara(10000) === null);
+
+  probar('son los nueve escalones pedidos',
+    MED.ESCALONES.map((e) => e.desde).join() === '10,25,50,100,200,500,1000,5000,10000');
+  probar('y van siempre para arriba',
+    MED.ESCALONES.every((e, i) => i === 0 || e.desde > MED.ESCALONES[i - 1].desde));
+
+  // --- y por HTTP ---
+
+  const carpetaMed = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-med-'));
+  // Cupo alto: hacen falta once altas seguidas y el limite normal son cinco.
+  const conMed = crearServidor({ datos: carpetaMed, api: { altas: 100 } });
+  await new Promise((listo) => conMed.listen(0, '127.0.0.1', listo));
+  const baseMed = `http://127.0.0.1:${conMed.address().port}`;
+
+  const nacerMed = async (usuario) => (await fetch(`${baseMed}/api/registro`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario, nombre: usuario, clave: 'semillas' }),
+  }).then((r) => r.json())).token;
+
+  const conocido = await nacerMed('jilguero');
+
+  const verPerfil = (usuario, token) => fetch(`${baseMed}/api/usuarios/${usuario}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).then((r) => r.json());
+
+  probar('recién nacido no tiene medalla', (await verPerfil('jilguero')).perfil.medalla === null);
+
+  // Diez seguidores de verdad, no un número puesto a mano.
+  for (let i = 0; i < 10; i += 1) {
+    const suyo = await nacerMed(`seguidor${i}`);
+    await fetch(`${baseMed}/api/usuarios/jilguero/seguir`, {
+      method: 'POST', headers: { Authorization: `Bearer ${suyo}` },
+    });
+  }
+
+  const conDiez = await verPerfil('jilguero');
+  probar('con diez seguidores aparece la primera',
+    conDiez.perfil.medalla && conDiez.perfil.medalla.clave === 'huevo',
+    JSON.stringify(conDiez.perfil.medalla));
+  probar('y viene con su figura', conDiez.perfil.medalla.figura === '🥚');
+
+  // Cuánto falta es cosa de uno; al de al lado no le importa.
+  probar('lo que falta sólo se ve en el perfil propio',
+    (await verPerfil('jilguero', conocido)).perfil.proxima.clave === 'cascaron');
+  probar('y no en el de otro', (await verPerfil('jilguero')).perfil.proxima === undefined);
+
+  await new Promise((listo) => conMed.close(listo));
+  fs.rmSync(carpetaMed, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

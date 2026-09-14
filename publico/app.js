@@ -420,12 +420,16 @@ async function vistaPerfil(usuario, solapa) {
         ${avatar(perfil.usuario, 'grande')}
         ${botonRelacion}
       </div>
-      <h3 class="perfil-nombre">${escapar(perfil.nombre)}</h3>
+      <h3 class="perfil-nombre">${escapar(perfil.nombre)}${medallita(perfil.medalla)}</h3>
       <div class="perfil-usuario">@${escapar(perfil.usuario)}</div>
       ${perfil.bio ? `<p class="perfil-bio">${enriquecer(perfil.bio)}</p>` : ''}
       <div class="perfil-datos">
         <span><b>${perfil.siguiendo}</b> ${escapar(T('perfil.siguiendo'))}</span>
         <span><b>${perfil.seguidores}</b> ${escapar(T('perfil.seguidores'))}</span>
+        ${perfil.proxima ? `<span class="chico">${escapar(T('medalla.proxima', {
+          faltan: perfil.proxima.faltan,
+          nombre: T(`medalla.${perfil.proxima.clave}`),
+        }))}</span>` : ''}
         <span>${escapar(T('perfil.desde', {
           fecha: new Date(perfil.creado).toLocaleDateString(diccionario().fechas),
         }))}</span>
@@ -610,6 +614,15 @@ function tarjetaPio(pio, opciones = {}) {
         </div>
       </div>
     </article>`;
+}
+
+// Va sólo en el perfil. En cada pío sería el mismo adorno cien veces por
+// pantalla, y lo que se pidió fue un sitio que no canse de leer.
+function medallita(medalla) {
+  if (!medalla) return '';
+  const nombre = T(`medalla.${medalla.clave}`);
+  const detalle = T('medalla.detalle', { nombre, desde: medalla.desde });
+  return ` <span class="medalla" title="${escapar(detalle)}" aria-label="${escapar(detalle)}">${medalla.figura}</span>`;
 }
 
 function filaUsuario(perfil) {

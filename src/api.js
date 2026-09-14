@@ -6,6 +6,7 @@ const { Google } = require('./google');
 const { crearSubidor, ErrorImagen } = require('./imagenes');
 const { crearGifs, ErrorGif } = require('./gifs');
 const { crearAcortador, ErrorEnlace } = require('./enlaces');
+const { medallaDe, faltanPara } = require('./medallas');
 
 // De donde se acepta que venga un adjunto. El cliente manda una URL, y una URL
 // que manda el cliente es un dato, no una verdad: si no se comprobara, cualquiera
@@ -468,6 +469,7 @@ function serializarAviso(almacen, aviso, yo) {
 
 function perfil(almacen, cuenta, yo) {
   const propio = !!yo && yo.usuario === cuenta.usuario;
+  const seguidores = almacen.seguidores(cuenta.usuario).length;
   return {
     usuario: cuenta.usuario,
     // Sólo en el perfil propio: a los demás no les importa cuándo podés
@@ -479,7 +481,11 @@ function perfil(almacen, cuenta, yo) {
     bio: cuenta.bio,
     creado: cuenta.creado,
     siguiendo: cuenta.siguiendo.length,
-    seguidores: almacen.seguidores(cuenta.usuario).length,
+    seguidores,
+    medalla: medallaDe(seguidores),
+    // Cuánto falta para la próxima sólo en el perfil propio: a los demás no
+    // les interesa, y es información de más sobre otra persona.
+    proxima: propio ? faltanPara(seguidores) : undefined,
     pios: almacen.datos.pios.filter((p) => p.autor === cuenta.usuario).length,
     loSigo: !!yo && yo.siguiendo.includes(cuenta.usuario),
     soyYo: !!yo && yo.usuario === cuenta.usuario,

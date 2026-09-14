@@ -36,6 +36,15 @@ function T(clave, datos) {
 
 // Los errores del servidor viajan con clave y datos. Si no la reconocemos, se
 // muestra el texto en español que ya vino armado: peor es no decir nada.
+// Algunos mensajes de la tabla de errores hacen falta antes de que haya
+// ningún error del servidor, como cuando validamos acá mismo.
+function TErrorClave(clave) {
+  const propio = diccionario().errores[clave];
+  const valor = propio !== undefined ? propio : window.IDIOMAS[IDIOMA_BASE].errores[clave];
+  if (valor === undefined) return clave;
+  return typeof valor === 'function' ? valor({}) : valor;
+}
+
 function TError(fallo) {
   if (!fallo) return T('error.generico');
   const valor = fallo.clave ? diccionario().errores[fallo.clave] : undefined;
@@ -162,10 +171,17 @@ $('#forma-acceso').addEventListener('submit', async (ev) => {
   const error = $('#error-acceso');
   error.hidden = true;
 
+  const usuario = aUsuario(forma.get('usuario'));
+  if (usuario.length < 3) {
+    error.textContent = TErrorClave('usuario.corto');
+    error.hidden = false;
+    return;
+  }
+
   const cuerpo = {
-    usuario: forma.get('usuario'),
+    usuario,
     clave: forma.get('clave'),
-    nombre: forma.get('nombre') || forma.get('usuario'),
+    nombre: forma.get('nombre') || usuario,
   };
 
   try {
@@ -688,6 +704,36 @@ document.body.addEventListener('click', async (ev) => {
   }
 });
 
+// --- nombres de usuario ---------------------------------------------------
+
+// El servidor sólo acepta [a-z0-9_] de 3 a 15. En vez de rechazar lo que
+// escribe la gente, se arregla mientras escribe: "Sergio Pérez" se vuelve
+// "sergio_perez" sola. Antes esto era un pattern del HTML, y un valor que no
+// encajaba frenaba el formulario ENTERO con un globito del navegador fácil de
+// no ver: no se guardaba el usuario, ni el nombre, ni la bio.
+function aUsuario(crudo) {
+  return String(crudo == null ? '' : crudo)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // fuera los acentos
+    .toLowerCase()
+    .replace(/[\s.-]+/g, '_')                          // espacios y guiones
+    .replace(/[^a-z0-9_]/g, '')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_+/, '')
+    .slice(0, 15)
+    .replace(/_+$/, '');
+}
+
+for (const campo of document.querySelectorAll('[data-usuario]')) {
+  campo.addEventListener('input', () => {
+    const arreglado = aUsuario(campo.value);
+    if (arreglado === campo.value) return;
+    // Se conserva dónde estaba el cursor, contando lo que se cayó por el camino.
+    const donde = campo.selectionStart - (campo.value.length - arreglado.length);
+    campo.value = arreglado;
+    try { campo.setSelectionRange(donde, donde); } catch (err) { /* da igual */ }
+  });
+}
+
 // --- acortar direcciones --------------------------------------------------
 
 // Se deja fuera el < > " ' para no tragarse el HTML de alrededor si alguna vez
@@ -878,8 +924,17 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
   const cuerpo = { nombre: forma.nombre.value, bio: forma.bio.value };
   // El usuario sólo viaja si de verdad cambió: mandarlo igual gastaría el
   // cambio de los treinta días sin que nadie lo haya pedido.
-  if (!forma.usuario.disabled && forma.usuario.value.trim() !== estado.yo.usuario) {
-    cuerpo.usuario = forma.usuario.value.trim();
+  if (!forma.usuario.disabled) {
+    const pedido = aUsuario(forma.usuario.value);
+    if (pedido !== estado.yo.usuario) {
+      if (pedido.length < 3) {
+        error.textContent = TErrorClave('usuario.corto');
+        error.hidden = false;
+        enviar.disabled = false;
+        return;
+      }
+      cuerpo.usuario = pedido;
+    }
   }
 
   try {

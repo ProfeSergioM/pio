@@ -28,13 +28,13 @@
       <button class="pestana" data-modo="registro" role="tab" data-t="acceso.crear"></button>
     </div>
 
-    <form id="forma-acceso" autocomplete="on">
+    <form id="forma-acceso" autocomplete="on" novalidate>
       <label class="campo">
         <span data-t="campo.usuario"></span>
         <div class="con-arroba">
           <span>@</span>
           <input name="usuario" maxlength="15" required autocomplete="username"
-                 placeholder="pollito_01" pattern="[a-zA-Z0-9_]{3,15}">
+                 placeholder="pollito_01" data-usuario>
         </div>
       </label>
 
@@ -147,7 +147,7 @@
 </dialog>
 
 <dialog id="dialogo-perfil" class="dialogo">
-  <form method="dialog" class="dialogo-caja" id="forma-perfil">
+  <form method="dialog" class="dialogo-caja" id="forma-perfil" novalidate>
     <div class="dialogo-cabecera">
       <button type="button" class="icono" id="cerrar-perfil" data-t-titulo="dialogo.cerrar">✕</button>
       <span data-t="perfil.editar"></span>
@@ -157,7 +157,7 @@
       <span data-t="campo.usuario"></span>
       <div class="con-arroba">
         <span>@</span>
-        <input name="usuario" maxlength="15" pattern="[a-zA-Z0-9_]{3,15}" autocomplete="off">
+        <input name="usuario" maxlength="15" autocomplete="off" data-usuario>
       </div>
       <small class="chico" id="aviso-usuario"></small>
     </label>

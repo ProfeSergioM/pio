@@ -143,6 +143,7 @@ window.IDIOMAS = {
       'error.generico': 'Algo salió mal.',
     },
     errores: {
+      'usuario.corto': 'El usuario necesita al menos 3 caracteres.',
       'usuario.falta': 'Elige un nombre de usuario.',
       'usuario.forma': (d) => `El usuario va de ${d.min} a ${d.max} caracteres: minúsculas, números y _.`,
       'usuario.sinlugar': 'No quedan nombres libres parecidos a ese.',
@@ -310,6 +311,7 @@ window.IDIOMAS = {
       'error.generico': 'Something went wrong.',
     },
     errores: {
+      'usuario.corto': 'The username needs at least 3 characters.',
       'usuario.falta': 'Pick a username.',
       'usuario.forma': (d) => `Usernames run ${d.min} to ${d.max} characters: lowercase, digits and _.`,
       'usuario.sinlugar': 'No names like that one are left.',

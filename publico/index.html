@@ -118,7 +118,20 @@
     <div id="dialogo-contexto" class="respondiendo" hidden></div>
     <textarea id="texto-pio" maxlength="200" rows="3"
               data-t-ph="dialogo.ph" data-t-aria="dialogo.aria"></textarea>
+
+    <div id="adjunto-vista" class="adjunto" hidden></div>
+
+    <div id="tablero-gif" class="tablero-gif" hidden>
+      <input id="gif-consulta" class="buscador" data-t-ph="gif.ph" autocomplete="off">
+      <div id="gif-resultados" class="gif-rejilla"></div>
+    </div>
+
+    <input type="file" id="archivo-imagen" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
     <div class="dialogo-pie">
+      <div class="adjuntar" id="adjuntar">
+        <button type="button" class="icono" id="poner-imagen" data-t-titulo="adjunto.imagen">🖼️</button>
+        <button type="button" class="icono chico-gif" id="poner-gif" data-t-titulo="adjunto.gif">GIF</button>
+      </div>
       <div class="medidor" id="medidor">
         <svg viewBox="0 0 36 36" class="anillo" aria-hidden="true">
           <circle class="anillo-fondo" cx="18" cy="18" r="15.5"></circle>
@@ -129,6 +142,39 @@
       <button class="boton principal" id="enviar-pio" type="submit" data-t="boton.piar" disabled></button>
     </div>
     <p id="error-pio" class="error" role="alert" hidden></p>
+  </form>
+</dialog>
+
+<dialog id="dialogo-perfil" class="dialogo">
+  <form method="dialog" class="dialogo-caja" id="forma-perfil">
+    <div class="dialogo-cabecera">
+      <button type="button" class="icono" id="cerrar-perfil" data-t-titulo="dialogo.cerrar">✕</button>
+      <span data-t="perfil.editar"></span>
+    </div>
+
+    <label class="campo">
+      <span data-t="campo.usuario"></span>
+      <div class="con-arroba">
+        <span>@</span>
+        <input name="usuario" maxlength="15" pattern="[a-zA-Z0-9_]{3,15}" autocomplete="off">
+      </div>
+      <small class="chico" id="aviso-usuario"></small>
+    </label>
+
+    <label class="campo">
+      <span data-t="campo.nombre"></span>
+      <input name="nombre" maxlength="30">
+    </label>
+
+    <label class="campo">
+      <span data-t="campo.bio"></span>
+      <input name="bio" maxlength="100" data-t-ph="campo.bio.ph">
+    </label>
+
+    <p id="error-perfil" class="error" role="alert" hidden></p>
+    <div class="dialogo-pie">
+      <button class="boton principal" type="submit" data-t="perfil.guardar"></button>
+    </div>
   </form>
 </dialog>
 

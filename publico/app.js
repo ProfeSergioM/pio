@@ -375,7 +375,10 @@ async function vistaPerfil(usuario, solapa) {
   cabecera(perfil.nombre, T('perfil.pios', { n: perfil.pios }));
 
   const botonRelacion = perfil.soyYo
-    ? `<button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>`
+    ? `<div class="perfil-botones">
+         <button class="boton" data-editar>${escapar(T('perfil.editar'))}</button>
+         <button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>
+       </div>`
     : `<button class="boton ${perfil.loSigo ? 'fantasma' : 'principal'}" data-seguir="${escapar(perfil.usuario)}">
          ${escapar(T(perfil.loSigo ? 'perfil.siguiendoYa' : 'perfil.seguir'))}
        </button>`;
@@ -416,6 +419,8 @@ async function vistaPerfil(usuario, solapa) {
   });
   const salir = $('#contenido').querySelector('[data-salir]');
   if (salir) salir.addEventListener('click', () => cerrarSesion(false));
+  const editar = $('#contenido').querySelector('[data-editar]');
+  if (editar) editar.addEventListener('click', abrirPerfil);
 }
 
 // Qué ramas están plegadas, sólo mientras dura la vista. Guardarlo entre
@@ -563,7 +568,12 @@ function tarjetaPio(pio, opciones = {}) {
           <span class="pio-usuario">@${escapar(pio.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(pio.creado)}</span>
         </div>
-        <p class="texto">${enriquecer(pio.texto)}</p>
+        ${pio.texto ? `<p class="texto">${enriquecer(pio.texto)}</p>` : ''}
+        ${pio.adjunto ? `
+          <a class="pio-imagen" href="${escapar(pio.adjunto.url)}" target="_blank" rel="noopener noreferrer">
+            <img src="${escapar(pio.adjunto.miniatura || pio.adjunto.url)}"
+                 alt="${escapar(pio.adjunto.texto || '')}" loading="lazy">
+          </a>` : ''}
         <div class="acciones">
           <button class="accion" data-accion="responder" title="${escapar(T('accion.responder'))}">💬 <span>${pio.respuestas || ''}</span></button>
           <button class="accion repio ${pio.yoRepio ? 'activa' : ''}" data-accion="repio" title="${escapar(T('accion.repiar'))}">🔁 <span>${pio.repios || ''}</span></button>
@@ -588,6 +598,27 @@ function filaUsuario(perfil) {
 // --- interacción sobre los píos -------------------------------------------
 
 document.body.addEventListener('click', async (ev) => {
+  const elegido = ev.target.closest('[data-gif]');
+  if (elegido) {
+    ev.preventDefault();
+    const g = gifsEnPantalla[Number(elegido.dataset.gif)];
+    if (g) {
+      adjunto = { url: g.url, miniatura: g.miniatura, ancho: g.ancho, alto: g.alto, texto: g.titulo };
+      pintarAdjunto();
+      actualizarMedidor();
+    }
+    $('#tablero-gif').hidden = true;
+    return;
+  }
+
+  if (ev.target.closest('[data-quitar-adjunto]')) {
+    ev.preventDefault();
+    adjunto = null;
+    pintarAdjunto();
+    actualizarMedidor();
+    return;
+  }
+
   const pliegue = ev.target.closest('[data-plegar]');
   if (pliegue) {
     ev.preventDefault();
@@ -657,6 +688,149 @@ document.body.addEventListener('click', async (ev) => {
   }
 });
 
+// --- adjuntos -------------------------------------------------------------
+
+// Lo que va colgado del pío que se está escribiendo. Uno solo: un pío de cien
+// caracteres con una galería adentro deja de ser un pío.
+let adjunto = null;
+let gifsEnPantalla = [];
+
+function pintarAdjunto() {
+  const caja = $('#adjunto-vista');
+  if (!adjunto) {
+    caja.hidden = true;
+    caja.innerHTML = '';
+    return;
+  }
+  caja.hidden = false;
+  caja.innerHTML = `
+    <img src="${escapar(adjunto.miniatura || adjunto.url)}" alt="">
+    <button type="button" class="icono quitar" data-quitar-adjunto
+            title="${escapar(T('adjunto.quitar'))}">✕</button>
+    <input class="alt" id="alt-adjunto" maxlength="100"
+           placeholder="${escapar(T('adjunto.alt'))}" value="${escapar(adjunto.texto || '')}">`;
+}
+
+function leerComoBase64(archivo) {
+  return new Promise((listo, falla) => {
+    const lector = new FileReader();
+    lector.onload = () => listo(String(lector.result));
+    lector.onerror = () => falla(new Error(T('error.generico')));
+    lector.readAsDataURL(archivo);
+  });
+}
+
+$('#poner-imagen').addEventListener('click', () => $('#archivo-imagen').click());
+
+$('#archivo-imagen').addEventListener('change', async (ev) => {
+  const archivo = ev.target.files && ev.target.files[0];
+  // Se limpia enseguida: si no, elegir dos veces el mismo archivo no dispara
+  // nada la segunda vez.
+  ev.target.value = '';
+  if (!archivo) return;
+
+  const error = $('#error-pio');
+  error.hidden = true;
+  // Se corta acá antes de subir cinco megas para que el servidor los rechace.
+  if (archivo.size > 5 * 1024 * 1024) {
+    error.textContent = T('adjunto.pesada');
+    error.hidden = false;
+    return;
+  }
+
+  avisar(T('adjunto.subiendo'));
+  try {
+    const { imagen } = await api('/imagenes', {
+      metodo: 'POST',
+      cuerpo: { imagen: await leerComoBase64(archivo) },
+    });
+    adjunto = imagen;
+    pintarAdjunto();
+    actualizarMedidor();
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  }
+});
+
+let temporizadorGif = null;
+
+$('#poner-gif').addEventListener('click', async () => {
+  const tablero = $('#tablero-gif');
+  tablero.hidden = !tablero.hidden;
+  if (tablero.hidden) return;
+  $('#gif-consulta').focus();
+  await buscarGifs('');
+});
+
+$('#gif-consulta').addEventListener('input', () => {
+  clearTimeout(temporizadorGif);
+  temporizadorGif = setTimeout(() => buscarGifs($('#gif-consulta').value.trim()), 300);
+});
+
+async function buscarGifs(consulta) {
+  const caja = $('#gif-resultados');
+  caja.innerHTML = `<p class="chico">${escapar(T('cargando'))}</p>`;
+  try {
+    const { gifs } = await api(`/gifs?q=${encodeURIComponent(consulta)}`);
+    gifsEnPantalla = gifs;
+    caja.innerHTML = gifs.length
+      ? gifs.map((g, i) => `
+          <button type="button" class="gif" data-gif="${i}">
+            <img src="${escapar(g.miniatura)}" alt="${escapar(g.titulo)}">
+          </button>`).join('')
+      : `<p class="chico">${escapar(T('gif.vacio'))}</p>`;
+  } catch (err) {
+    caja.innerHTML = `<p class="chico">${escapar(err.message)}</p>`;
+  }
+}
+
+// --- editar el perfil -----------------------------------------------------
+
+function abrirPerfil() {
+  const forma = $('#forma-perfil');
+  forma.usuario.value = estado.yo.usuario;
+  forma.nombre.value = estado.yo.nombre;
+  forma.bio.value = estado.yo.bio || '';
+
+  // El servidor dice si se puede; acá sólo se obedece.
+  const puede = estado.yo.puedeCambiarUsuario !== false;
+  forma.usuario.disabled = !puede;
+  $('#aviso-usuario').textContent = T(puede ? 'perfil.usuarioEspera' : 'perfil.usuarioTrabado');
+
+  $('#error-perfil').hidden = true;
+  $('#dialogo-perfil').showModal();
+}
+
+$('#cerrar-perfil').addEventListener('click', () => $('#dialogo-perfil').close());
+
+$('#forma-perfil').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const forma = ev.target;
+  const error = $('#error-perfil');
+  error.hidden = true;
+
+  const cuerpo = { nombre: forma.nombre.value, bio: forma.bio.value };
+  // El usuario sólo viaja si de verdad cambió: mandarlo igual gastaría el
+  // cambio de los treinta días sin que nadie lo haya pedido.
+  if (!forma.usuario.disabled && forma.usuario.value.trim() !== estado.yo.usuario) {
+    cuerpo.usuario = forma.usuario.value.trim();
+  }
+
+  try {
+    const { yo } = await api('/yo', { metodo: 'PATCH', cuerpo });
+    estado.yo = yo;
+    $('#dialogo-perfil').close();
+    avisar(T('perfil.guardado'));
+    pintarYoLateral();
+    location.hash = `#/u/${yo.usuario}`;
+    await pintar();
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  }
+});
+
 // --- diálogo de piar ------------------------------------------------------
 
 const dialogo = $('#dialogo-piar');
@@ -668,6 +842,9 @@ function abrirDialogo(respuestaA = null) {
   $('#dialogo-contexto').hidden = !respuestaA;
   $('#dialogo-contexto').textContent = respuestaA ? T('dialogo.contexto') : '';
   areaTexto.value = '';
+  adjunto = null;
+  pintarAdjunto();
+  $('#tablero-gif').hidden = true;
   $('#error-pio').hidden = true;
   actualizarMedidor();
   dialogo.showModal();
@@ -686,7 +863,8 @@ function actualizarMedidor() {
 
   medidor.classList.toggle('aviso', restantes <= 20 && restantes >= 0);
   medidor.classList.toggle('pasado', restantes < 0);
-  $('#enviar-pio').disabled = usados === 0 || restantes < 0;
+  // Con una imagen colgada, un pío sin texto sigue siendo un pío.
+  $('#enviar-pio').disabled = (usados === 0 && !adjunto) || restantes < 0;
 }
 
 areaTexto.addEventListener('input', actualizarMedidor);
@@ -703,9 +881,14 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
   const error = $('#error-pio');
   error.hidden = true;
   try {
+    const alt = $('#alt-adjunto');
     await api('/pios', {
       metodo: 'POST',
-      cuerpo: { texto: areaTexto.value, respuestaA: estado.respondiendoA },
+      cuerpo: {
+        texto: areaTexto.value,
+        respuestaA: estado.respondiendoA,
+        adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
+      },
     });
     dialogo.close();
     avisar(T(estado.respondiendoA ? 'toast.respuesta' : 'toast.pio'));
@@ -822,9 +1005,7 @@ aplicarTema(localStorage.getItem('pio.tema')
 
 // --- arranque -------------------------------------------------------------
 
-function mostrarApp() {
-  $('#portada').hidden = true;
-  $('#app').hidden = false;
+function pintarYoLateral() {
   $('#yo-lateral').innerHTML = `
     <a class="fila-usuario" href="#/u/${escapar(estado.yo.usuario)}">
       ${avatar(estado.yo.usuario, 'chico')}
@@ -832,6 +1013,12 @@ function mostrarApp() {
         <b>${escapar(estado.yo.nombre)}</b><br><span class="chico">@${escapar(estado.yo.usuario)}</span>
       </div>
     </a>`;
+}
+
+function mostrarApp() {
+  $('#portada').hidden = true;
+  $('#app').hidden = false;
+  pintarYoLateral();
   if (!location.hash) location.hash = '#/nido';
   else pintar();
 }

@@ -4,7 +4,10 @@
     {
       "name": "pio",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["servidor.js"],
+      "runtimeArgs": [
+        "-e",
+        "process.env.PIO_DEPOSITO='archivo'; const {crearServidor}=require('./servidor'); crearServidor().listen(3100, () => console.log('Pio local (deposito: archivo) en http://localhost:3100'));"
+      ],
       "port": 3100
     }
   ]

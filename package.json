@@ -5,9 +5,12 @@
   "main": "servidor.js",
   "scripts": {
     "start": "node servidor.js",
-    "pruebas": "node pruebas/todos.js",
-    "semillas": "node pruebas/semillas.js"
+    "test": "node pruebas/todos.js",
+    "pruebas": "node pruebas/todos.js"
   },
   "license": "MIT",
-  "private": true
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
 }

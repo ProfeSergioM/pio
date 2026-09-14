@@ -1,0 +1,172 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+// Dos depositos con la misma boca: uno guarda en un archivo JSON —para trabajar
+// en tu maquina y para las pruebas— y el otro en Supabase por HTTP, para el
+// sitio desplegado, donde el disco se borra en cada reinicio.
+//
+// Los dos reciben lo mismo: el estado completo y la lista de lo que cambio. El
+// de archivo usa el estado y descarta la lista; el de Supabase hace al reves.
+// Asi ninguno obliga al otro a trabajar de mas, y cambiar de uno a otro no
+// toca ni una linea del codigo de dominio.
+
+const vacio = () => ({ usuarios: [], pios: [], sesiones: {}, notificaciones: [], secuencia: 0 });
+
+// Que columna es la llave y como se arma la fila. Lo que de verdad se consulta
+// va en columnas propias; el objeto entero viaja en `datos`, con la misma forma
+// que tenia en el JSON, para que el dominio no se entere del cambio.
+const TABLAS = {
+  pio_usuarios: {
+    llave: 'usuario',
+    fila: (u) => ({ usuario: u.usuario, creado: u.creado, google: u.google || null, datos: u }),
+  },
+  pio_pios: {
+    llave: 'id',
+    fila: (p) => ({ id: p.id, autor: p.autor, creado: p.creado, respuesta_a: p.respuestaA || null, datos: p }),
+  },
+  pio_sesiones: {
+    llave: 'token',
+    fila: (s) => ({ token: s.token, usuario: s.usuario, creada: s.creada }),
+  },
+  pio_avisos: {
+    llave: 'id',
+    fila: (a) => ({ id: a.id, para: a.para, creado: a.creado, datos: a }),
+  },
+  pio_meta: {
+    llave: 'clave',
+    fila: (m) => ({ clave: m.clave, valor: m.valor }),
+  },
+};
+
+class DepositoArchivo {
+  constructor(directorio) {
+    this.directorio = directorio;
+    this.archivo = path.join(directorio, 'pio.json');
+  }
+
+  get nombre() {
+    return 'archivo';
+  }
+
+  async cargar() {
+    try {
+      return Object.assign(vacio(), JSON.parse(fs.readFileSync(this.archivo, 'utf8')));
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+      return vacio();
+    }
+  }
+
+  // Temporal y rename: si el proceso muere a mitad de la escritura, el archivo
+  // bueno sigue entero. Nunca queda un JSON cortado por la mitad.
+  async guardar(datos) {
+    fs.mkdirSync(this.directorio, { recursive: true });
+    const temporal = `${this.archivo}.tmp`;
+    fs.writeFileSync(temporal, JSON.stringify(datos, null, 2), 'utf8');
+    fs.renameSync(temporal, this.archivo);
+  }
+}
+
+class DepositoSupabase {
+  constructor(ajustes, opciones = {}) {
+    this.base = `${String(ajustes.url || '').replace(/\/+$/, '')}/rest/v1`;
+    this.clave = ajustes.clave;
+    this.enviar = opciones.enviar || ((u, o) => fetch(u, o));
+  }
+
+  get nombre() {
+    return 'supabase';
+  }
+
+  async pedir(camino, opciones = {}) {
+    const respuesta = await this.enviar(`${this.base}/${camino}`, {
+      method: opciones.metodo || 'GET',
+      headers: Object.assign({
+        apikey: this.clave,
+        Authorization: `Bearer ${this.clave}`,
+        'Content-Type': 'application/json',
+      }, opciones.cabeceras),
+      body: opciones.cuerpo === undefined ? undefined : JSON.stringify(opciones.cuerpo),
+    });
+    if (!respuesta.ok) {
+      const detalle = await respuesta.text().catch(() => '');
+      throw new Error(`Supabase respondió ${respuesta.status}: ${String(detalle).slice(0, 300)}`);
+    }
+    if (respuesta.status === 204) return null;
+    return respuesta.json().catch(() => null);
+  }
+
+  async cargar() {
+    const [usuarios, pios, sesiones, avisos, meta] = await Promise.all([
+      this.pedir('pio_usuarios?select=datos'),
+      this.pedir('pio_pios?select=datos'),
+      this.pedir('pio_sesiones?select=token,usuario,creada'),
+      this.pedir('pio_avisos?select=datos'),
+      this.pedir('pio_meta?select=clave,valor&clave=eq.secuencia'),
+    ]);
+
+    const datos = vacio();
+    datos.usuarios = (usuarios || []).map((f) => f.datos).filter(Boolean);
+    datos.pios = (pios || []).map((f) => f.datos).filter(Boolean);
+    for (const s of sesiones || []) {
+      datos.sesiones[s.token] = { usuario: s.usuario, creada: Number(s.creada) };
+    }
+    datos.notificaciones = (avisos || []).map((f) => f.datos).filter(Boolean);
+    datos.secuencia = Number(((meta || [])[0] || {}).valor) || 0;
+    return datos;
+  }
+
+  // Solo se escribe lo que cambio. Reescribir todo en cada pio, que es lo que
+  // hace el deposito de archivo, sobre HTTP seria insostenible.
+  async guardar(datos, cambios) {
+    if (!cambios || !cambios.length) return;
+
+    // Un mismo registro puede cambiar dos veces en una sola operación —el
+    // contador de identificadores, por ejemplo—. Postgres rechaza un upsert
+    // que toca la misma fila dos veces en el mismo lote, así que se queda el
+    // último valor, que es el bueno.
+    const ultimo = new Map();
+    for (const c of cambios) ultimo.set(`${c.tabla}\u0000${c.clave}`, c);
+    cambios = [...ultimo.values()];
+
+    const altas = new Map();
+    const bajas = new Map();
+    for (const cambio of cambios) {
+      const tabla = TABLAS[cambio.tabla];
+      if (!tabla) throw new Error(`Tabla desconocida: ${cambio.tabla}`);
+      const donde = cambio.valor === null ? bajas : altas;
+      if (!donde.has(cambio.tabla)) donde.set(cambio.tabla, []);
+      donde.get(cambio.tabla).push(cambio);
+    }
+
+    for (const [nombre, lista] of altas) {
+      await this.pedir(nombre, {
+        metodo: 'POST',
+        // Un alta que ya existe es una actualizacion, no un choque de llaves.
+        cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+        cuerpo: lista.map((c) => TABLAS[nombre].fila(c.valor)),
+      });
+    }
+
+    for (const [nombre, lista] of bajas) {
+      const llave = TABLAS[nombre].llave;
+      const cuales = lista.map((c) => `"${String(c.clave).replace(/"/g, '')}"`).join(',');
+      await this.pedir(`${nombre}?${llave}=in.(${encodeURIComponent(cuales)})`, {
+        metodo: 'DELETE',
+        cabeceras: { Prefer: 'return=minimal' },
+      });
+    }
+  }
+}
+
+function crearDeposito(directorio, ajustes = {}, opciones = {}) {
+  // Un pedido explicito gana sobre las credenciales que haya configuradas.
+  if (ajustes.deposito === 'archivo') return new DepositoArchivo(directorio);
+  const sup = ajustes.supabase;
+  if (sup && sup.url && sup.clave) return new DepositoSupabase(sup, opciones);
+  return new DepositoArchivo(directorio);
+}
+
+module.exports = { DepositoArchivo, DepositoSupabase, crearDeposito, TABLAS, vacio };

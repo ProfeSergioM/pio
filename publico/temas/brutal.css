@@ -1,0 +1,740 @@
+/* Pío — Brutalismo suave.
+   Bloques rectangulares con borde de tinta de 3px, relleno plano y sombra dura
+   desplazada (nada de desenfoques). Titulares de palo seco muy pesados; el cuerpo
+   de texto queda en sans neutro a 1.65 de interlineado para leer sin cansarse. */
+
+/* ------------------------------------------------------------------ *
+ * 1. Paleta                                                           *
+ * ------------------------------------------------------------------ */
+
+:root {
+  /* Acentos planos y saturados. */
+  --amarillo: #ffc93c;
+  --amarillo-suave: #ffe9a8;
+  --pico: #b23c00;
+
+  /* Superficies: crema, papel blanco y un crema amarillo para lo activo. */
+  --fondo: #f5efe1;
+  --panel: #ffffff;
+  --panel-2: #fff6dc;
+  --borde: #121212;
+
+  --texto: #121212;
+  --tenue: #57503f;
+
+  --rojo: #c4102e;
+  --verde: #0a6b34;
+
+  /* Sombra dura: desplazamiento sólido, radio de desenfoque cero. */
+  --sombra: 4px 4px 0 var(--borde);
+  --radio: 0px;
+
+  /* Propias del tema. */
+  --grosor: 3px;
+  --sombra-alta: 7px 7px 0 var(--borde);
+  --sombra-baja: 3px 3px 0 var(--borde);
+  --sobre-acento: #14120c;
+  /* Pista del anillo del contador: tiene que verse contra el panel (>=3:1) y
+     seguir separada del trazo lleno, que es --texto. */
+  --pista: #9e9068;
+  --tipo-titulo: "Arial Black", "Segoe UI Black", "Helvetica Neue", Impact, system-ui, sans-serif;
+  --tipo-cuerpo: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+
+:root[data-tema="oscuro"] {
+  --amarillo: #ffd23f;
+  --amarillo-suave: #3b3115;
+  --pico: #ff9b4d;
+
+  --fondo: #17150f;
+  --panel: #201c14;
+  --panel-2: #2c2519;
+  /* En oscuro la tinta se invierte: el borde pasa a ser crema y sigue marcando
+     cada bloque con la misma dureza. */
+  --borde: #f2ecdd;
+
+  --texto: #f7f2e6;
+  --tenue: #b9b0a0;
+
+  --rojo: #ff6b85;
+  --verde: #45d888;
+
+  --sombra: 4px 4px 0 var(--borde);
+  --sombra-alta: 7px 7px 0 var(--borde);
+  --sombra-baja: 3px 3px 0 var(--borde);
+  --sobre-acento: #14120c;
+  --pista: #7f7050;
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------ *
+ * 2. Base tipográfica                                                 *
+ * ------------------------------------------------------------------ */
+
+body {
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: var(--tipo-cuerpo);
+  font-size: 15.5px;
+  line-height: 1.65;
+}
+
+h1, h2, h3 {
+  font-family: var(--tipo-titulo);
+  font-weight: 900;
+  letter-spacing: -.02em;
+  line-height: 1.15;
+}
+
+::placeholder { color: var(--tenue); opacity: 1; }
+
+:focus-visible {
+  outline: 3px solid var(--pico);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ *
+ * 3. Portada                                                          *
+ * ------------------------------------------------------------------ */
+
+.portada {
+  background: var(--fondo);
+  padding: 40px 28px;
+  gap: 48px;
+}
+
+.pollito { filter: none; }
+
+.globo {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  padding: 10px 22px;
+  font-family: var(--tipo-titulo);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  box-shadow: var(--sombra);
+}
+
+.portada-caja {
+  background: var(--panel);
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  padding: 26px;
+  box-shadow: var(--sombra-alta);
+}
+
+.marca {
+  font-family: var(--tipo-titulo);
+  font-size: 38px;
+  letter-spacing: -.03em;
+  text-transform: uppercase;
+  margin: 0 0 4px;
+}
+.marca.chica { font-size: 21px; }
+.marca-pollito { filter: none; }
+
+.lema {
+  color: var(--texto);
+  font-weight: 600;
+  margin: 0 0 22px;
+  border-left: 6px solid var(--amarillo);
+  padding-left: 12px;
+}
+
+.pestanas {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.pestana {
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--texto);
+  padding: 11px 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 13px;
+  letter-spacing: .05em;
+}
+.pestana.activa {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  box-shadow: var(--sombra-baja);
+}
+
+.campo { margin-bottom: 16px; }
+.campo > span {
+  color: var(--texto);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+}
+.campo input {
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  background: var(--fondo);
+  padding: 11px 12px;
+}
+.campo input:focus-visible,
+.con-arroba:focus-within {
+  outline: 3px solid var(--pico);
+  outline-offset: 2px;
+}
+.con-arroba {
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  background: var(--fondo);
+  padding-left: 0;
+  gap: 0;
+}
+.con-arroba span {
+  color: var(--sobre-acento);
+  background: var(--amarillo);
+  border-right: var(--grosor) solid var(--borde);
+  padding: 11px 12px;
+  font-weight: 900;
+  align-self: stretch;
+}
+/* Esta regla tiene la misma especificidad que `.campo input` de la hoja base,
+   pero el tema se carga después: sin repetir `border: 0` aquí, el borde de 3px
+   de `.campo input` se dibujaba DENTRO de la caja con arroba y quedaba un
+   rectángulo doble alrededor del nombre de usuario. */
+.con-arroba input {
+  border: 0;
+  background: transparent;
+  padding: 11px 12px;
+}
+
+.error {
+  color: var(--rojo);
+  font-size: 13.5px;
+  font-weight: 700;
+  border-left: 6px solid var(--rojo);
+  padding: 2px 0 2px 10px;
+}
+
+.chico { color: var(--tenue); font-size: 12.5px; }
+.chico code {
+  background: var(--panel-2);
+  border: 2px solid var(--borde);
+  border-radius: 0;
+  padding: 0 4px;
+}
+
+/* ------------------------------------------------------------------ *
+ * 4. Botones                                                          *
+ * ------------------------------------------------------------------ */
+
+.boton {
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--texto);
+  padding: 10px 18px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-size: 13.5px;
+  box-shadow: var(--sombra-baja);
+  transition: transform .08s ease, box-shadow .08s ease;
+}
+.boton:hover {
+  filter: none;
+  transform: translate(-1px, -1px);
+  box-shadow: var(--sombra);
+}
+.boton:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--borde);
+}
+.boton.principal {
+  background: var(--amarillo);
+  border-color: var(--borde);
+  color: var(--sobre-acento);
+}
+.boton.ancho { width: 100%; margin-top: 10px; padding: 13px; }
+.boton.fantasma { background: var(--panel); }
+
+/* Va después de `.boton.fantasma` a propósito: el botón "en uso" de la galería
+   de diseños es `.boton.fantasma[disabled]` y, con el orden anterior, el fondo
+   de fantasma ganaba y el botón no se leía como apagado.
+   Apagado sin opacidad: fondo panel-2 y texto tenue (7,42:1 en claro, 7,06:1
+   en oscuro). */
+.boton:disabled,
+.boton.principal:disabled,
+.boton.fantasma:disabled {
+  background: var(--panel-2);
+  color: var(--tenue);
+  opacity: 1;
+  box-shadow: none;
+  transform: none;
+}
+
+.icono {
+  border: var(--grosor) solid transparent;
+  border-radius: 0;
+  background: transparent;
+  width: 38px;
+  height: 38px;
+  font-size: 17px;
+}
+.icono:hover {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  border-color: var(--borde);
+}
+
+/* ------------------------------------------------------------------ *
+ * 5. Idiomas y separador                                              *
+ * ------------------------------------------------------------------ */
+
+.idiomas {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  gap: 6px;
+}
+.idioma {
+  border: 2px solid var(--borde);
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--texto);
+  padding: 4px 9px;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.idioma.activa {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  box-shadow: 2px 2px 0 var(--borde);
+}
+/* `.idioma:focus-visible` de la hoja base pesa más que el `:focus-visible`
+   genérico de este archivo, así que sin esta regla el foco del selector de
+   idioma seguía siendo amarillo sobre amarillo (1:1 en la pestaña activa). */
+.idioma:focus-visible {
+  outline: 3px solid var(--pico);
+  outline-offset: 2px;
+}
+
+.separador {
+  color: var(--texto);
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+.separador::before,
+.separador::after { height: var(--grosor); background: var(--borde); }
+
+/* ------------------------------------------------------------------ *
+ * 6. Estructura                                                       *
+ * ------------------------------------------------------------------ */
+
+.app {
+  grid-template-columns: 230px minmax(0, 620px) 320px;
+  gap: 22px;
+  padding: 0 18px;
+}
+
+.lateral { padding: 22px 0; gap: 8px; }
+.lateral .marca { margin-bottom: 18px; padding-left: 0; }
+
+.nav {
+  border: var(--grosor) solid transparent;
+  border-radius: 0;
+  padding: 10px 12px;
+  color: var(--texto);
+  font-weight: 700;
+  font-size: 15px;
+  gap: 12px;
+}
+.nav:hover {
+  background: var(--panel-2);
+  border-color: var(--borde);
+}
+.nav.activa {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  border-color: var(--borde);
+  box-shadow: var(--sombra-baja);
+}
+.nav span { font-size: 19px; }
+
+.yo-lateral { padding-top: 18px; }
+.yo-lateral .fila-usuario {
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  background: var(--panel);
+  padding: 10px;
+}
+.yo-lateral .fila-usuario:hover { background: var(--panel-2); }
+
+.columna {
+  background: var(--panel);
+  border-left: var(--grosor) solid var(--borde);
+  border-right: var(--grosor) solid var(--borde);
+}
+
+.derecha { padding: 22px 0; gap: 18px; }
+
+.tarjeta {
+  background: var(--panel);
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  padding: 0;
+  box-shadow: var(--sombra);
+}
+.tarjeta h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  border-bottom: var(--grosor) solid var(--borde);
+}
+.tendencias, .sugerencias { padding: 8px 10px; }
+
+.pie {
+  border-top: var(--grosor) solid var(--borde);
+  padding-top: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ *
+ * 7. Cabecera de vista                                                *
+ * ------------------------------------------------------------------ */
+
+.cabecera {
+  background: var(--panel);
+  backdrop-filter: none;
+  border-bottom: var(--grosor) solid var(--borde);
+  padding: 14px 18px;
+}
+.cabecera h2 {
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: -.01em;
+}
+.cabecera p { color: var(--tenue); font-size: 13px; }
+
+.buscador {
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  background: var(--fondo);
+  padding: 11px 13px;
+  font-weight: 600;
+}
+.buscador:focus-visible { outline: 3px solid var(--pico); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ *
+ * 8. Píos                                                             *
+ * ------------------------------------------------------------------ */
+
+.pio {
+  padding: 16px 18px;
+  border-bottom: var(--grosor) solid var(--borde);
+  gap: 14px;
+}
+.pio:hover { background: var(--panel-2); }
+.pio.destacado { background: var(--panel-2); }
+.pio.destacado .texto { font-size: 23px; line-height: 1.4; font-weight: 600; }
+
+.avatar {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  font-family: var(--tipo-titulo);
+  font-weight: 900;
+}
+.avatar.chico { border-width: 2px; }
+
+.pio-nombre { font-weight: 800; }
+.pio-usuario, .pio-fecha { color: var(--tenue); font-size: 13.5px; }
+.texto { line-height: 1.6; }
+.texto a {
+  color: var(--pico);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+.contexto {
+  color: var(--tenue);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.acciones { gap: 6px; margin-left: 0; margin-top: 10px; }
+.accion {
+  border: 2px solid transparent;
+  border-radius: 0;
+  color: var(--tenue);
+  padding: 4px 9px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.accion:hover {
+  background: var(--amarillo-suave);
+  color: var(--texto);
+  border-color: var(--borde);
+}
+.accion.activa { color: var(--rojo); border-color: var(--rojo); }
+.accion.repio.activa { color: var(--verde); border-color: var(--verde); }
+.accion.borrar:hover { color: var(--rojo); border-color: var(--rojo); background: var(--panel-2); }
+
+/* ------------------------------------------------------------------ *
+ * 9. Avisos                                                           *
+ * ------------------------------------------------------------------ */
+
+.insignia {
+  border-radius: 0;
+  border: 2px solid var(--borde);
+  background: var(--rojo);
+  color: var(--panel);
+  top: -6px;
+  left: 13px;
+  font-weight: 800;
+}
+
+.aviso-fila {
+  padding: 16px 18px;
+  border-bottom: var(--grosor) solid var(--borde);
+  gap: 14px;
+}
+.aviso-fila:hover { background: var(--panel-2); }
+.aviso-fila.sin-leer {
+  background: var(--amarillo-suave);
+  border-left: 8px solid var(--amarillo);
+  /* 18 - 8: la barra se come el padding en vez de sumarse, así los avisos sin
+     leer no quedan corridos 8px respecto de los leídos. */
+  padding-left: 10px;
+}
+.aviso-fila.sin-leer:hover { background: var(--amarillo-suave); border-left-color: var(--pico); }
+.aviso-que { color: var(--tenue); font-size: 13.5px; }
+.aviso-cita {
+  color: var(--texto);
+  border-left: var(--grosor) solid var(--borde);
+  padding-left: 10px;
+}
+.aviso-cita a { color: var(--pico); text-decoration: underline; }
+
+/* ------------------------------------------------------------------ *
+ * 10. Perfil                                                          *
+ * ------------------------------------------------------------------ */
+
+.perfil-caja {
+  padding: 20px 18px;
+  border-bottom: var(--grosor) solid var(--borde);
+  background: var(--panel-2);
+}
+.avatar.grande { border-width: var(--grosor); }
+.perfil-nombre {
+  font-family: var(--tipo-titulo);
+  font-size: 24px;
+  text-transform: uppercase;
+  letter-spacing: -.02em;
+}
+.perfil-usuario { color: var(--tenue); font-weight: 700; }
+.perfil-datos { color: var(--tenue); font-weight: 600; }
+.perfil-datos b { color: var(--texto); font-weight: 800; }
+
+.sub-pestanas { border-bottom: var(--grosor) solid var(--borde); }
+.sub-pestana {
+  color: var(--tenue);
+  font-weight: 800;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  padding: 13px 8px;
+  border-bottom: 5px solid transparent;
+}
+.sub-pestana:hover { background: var(--panel-2); color: var(--texto); }
+.sub-pestana.activa {
+  color: var(--texto);
+  background: var(--amarillo-suave);
+  border-bottom-color: var(--borde);
+}
+
+/* ------------------------------------------------------------------ *
+ * 11. Listas auxiliares y estados                                     *
+ * ------------------------------------------------------------------ */
+
+.tendencia {
+  border-radius: 0;
+  padding: 9px 10px;
+  border-bottom: 2px solid var(--borde);
+}
+.tendencia:last-child, .sugerencia:last-child { border-bottom: 0; }
+.tendencia:hover { background: var(--amarillo-suave); }
+.tendencia b { font-weight: 800; }
+.tendencia span { color: var(--tenue); font-size: 12px; }
+
+.sugerencia { padding: 9px 10px; border-bottom: 2px solid var(--borde); }
+.sugerencia .crece b { font-weight: 800; }
+.sugerencia .crece span { color: var(--tenue); }
+
+.vacio { color: var(--tenue); padding: 44px 24px; font-weight: 600; }
+.vacio .emoji { font-size: 46px; }
+
+.cargando {
+  color: var(--tenue);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ *
+ * 12. Diálogo de piar                                                 *
+ * ------------------------------------------------------------------ */
+
+.dialogo::backdrop { background: rgba(18, 18, 18, .62); backdrop-filter: none; }
+.dialogo-caja {
+  background: var(--panel);
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  padding: 16px;
+  box-shadow: var(--sombra-alta);
+}
+.dialogo-cabecera {
+  font-family: var(--tipo-titulo);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: 14px;
+  padding-bottom: 10px;
+  border-bottom: var(--grosor) solid var(--borde);
+}
+.respondiendo {
+  background: var(--panel-2);
+  border: 2px solid var(--borde);
+  border-radius: 0;
+  color: var(--tenue);
+  font-weight: 600;
+}
+
+#texto-pio {
+  border: var(--grosor) solid var(--borde);
+  background: var(--fondo);
+  font-size: 19px;
+  line-height: 1.55;
+  padding: 12px;
+  min-height: 110px;
+}
+#texto-pio:focus-visible { outline: 3px solid var(--pico); outline-offset: 2px; }
+
+.dialogo-pie { border-top: var(--grosor) solid var(--borde); padding-top: 14px; }
+
+.medidor span { color: var(--texto); font-weight: 800; font-size: 11.5px; }
+.medidor.aviso span { color: var(--pico); }
+.medidor.pasado span { color: var(--rojo); }
+.anillo circle { stroke-width: 4.5; }
+/* Antes la pista era --amarillo-suave: 1,20:1 contra el panel en claro y 1,46:1
+   en oscuro, o sea invisible hasta que el anillo empezaba a llenarse. --pista
+   llega a 3,16:1 (claro) y 3,50:1 (oscuro) contra el panel, y mantiene 5,93:1 y
+   4,34:1 contra el trazo lleno, que sigue siendo --texto. */
+.anillo-fondo { stroke: var(--pista); }
+.anillo-frente { stroke: var(--texto); stroke-linecap: butt; }
+.medidor.aviso .anillo-frente { stroke: var(--pico); }
+.medidor.pasado .anillo-frente { stroke: var(--rojo); }
+
+/* ------------------------------------------------------------------ *
+ * 13. Aviso flotante y botón redondo                                  *
+ * ------------------------------------------------------------------ */
+
+.aviso {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  border: var(--grosor) solid var(--borde);
+  border-radius: 0;
+  padding: 10px 18px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-size: 13px;
+  box-shadow: var(--sombra);
+}
+
+.flotante {
+  width: 60px;
+  height: 60px;
+  border-radius: 0;
+  border: var(--grosor) solid var(--borde);
+  background: var(--amarillo);
+  box-shadow: var(--sombra);
+  font-size: 26px;
+}
+.flotante:active { box-shadow: 0 0 0 var(--borde); transform: translate(3px, 3px); }
+
+/* ------------------------------------------------------------------ *
+ * 14. Adaptable                                                       *
+ * ------------------------------------------------------------------ */
+
+/* Estas dos consultas repiten los cortes de la hoja base porque este archivo
+   se carga después: sin repetirlos, las reglas de escritorio de arriba
+   ganarían por orden de aparición. */
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 88px minmax(0, 1fr); gap: 14px; padding: 0 14px; }
+  .derecha { display: none; }
+  .lateral .marca, .nav em, .solo-escritorio { display: none; }
+  .lateral { padding: 18px 8px; align-items: stretch; }
+  .nav { justify-content: center; padding: 11px 0; }
+  .nav.activa { box-shadow: 2px 2px 0 var(--borde); }
+  .columna { border-left: var(--grosor) solid var(--borde); border-right: var(--grosor) solid var(--borde); }
+}
+
+@media (max-width: 700px) {
+  .portada { grid-template-columns: 1fr; padding: 18px; }
+  .portada-arte { display: none; }
+  .portada-caja { padding: 20px; box-shadow: var(--sombra); }
+  .marca { font-size: 30px; }
+
+  .app { grid-template-columns: 1fr; gap: 0; padding: 0; }
+  .columna { border-left: 0; border-right: 0; }
+  .contenido { padding-bottom: 84px; }
+
+  .barra-superior {
+    background: var(--panel);
+    border-bottom: var(--grosor) solid var(--borde);
+    padding: 8px 12px;
+  }
+
+  .lateral {
+    background: var(--panel);
+    border-top: var(--grosor) solid var(--borde);
+    padding: 6px 4px;
+    gap: 0;
+  }
+  .nav { padding: 8px 14px; border-width: 2px; }
+  .nav.activa { box-shadow: none; }
+
+  .pio, .aviso-fila { padding: 14px 14px; }
+  /* 14 - 8, misma cuenta que arriba: `.aviso-fila.sin-leer` pesa más que
+     `.aviso-fila`, así que hay que recalcular el padding en este corte. */
+  .aviso-fila.sin-leer { padding-left: 6px; }
+  .pio.destacado .texto { font-size: 20px; }
+  .aviso { bottom: 96px; }
+  .flotante { bottom: 92px; right: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boton, .flotante { transition: none; }
+  .boton:hover, .boton:active, .flotante:active { transform: none; }
+}

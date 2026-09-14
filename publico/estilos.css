@@ -136,6 +136,28 @@ a { color: inherit; text-decoration: none; }
 }
 .icono:hover { background: var(--panel-2); }
 
+/* --- idiomas y acceso con Google ------------------------------------- */
+
+.portada-cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+
+.idiomas { display: flex; gap: 3px; background: var(--panel-2); padding: 3px; border-radius: 999px; flex: none; }
+.idioma {
+  border: 0; background: transparent; cursor: pointer;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--tenue);
+}
+.idioma.activa { background: var(--panel); color: var(--texto); box-shadow: var(--sombra); }
+.idioma:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 1px; }
+
+.barra-acciones { display: flex; gap: 2px; }
+
+.separador { display: flex; align-items: center; gap: 10px; margin: 16px 0 14px; color: var(--tenue); font-size: 12px; }
+.separador::before, .separador::after { content: ''; flex: 1; height: 1px; background: var(--borde); }
+
+/* El boton lo dibuja Google dentro de un iframe propio: aca solo se lo centra
+   y se le reserva el alto, para que la portada no pegue un salto al cargar. */
+.boton-google { display: flex; justify-content: center; min-height: 44px; }
+
 /* --- estructura ----------------------------------------------------- */
 
 .app {
@@ -234,6 +256,59 @@ a { color: inherit; text-decoration: none; }
 .accion.activa { color: var(--rojo); font-weight: 700; }
 .accion.repio.activa { color: var(--verde); }
 .accion.borrar:hover { color: var(--rojo); }
+
+/* --- avisos ---------------------------------------------------------- */
+
+/* La insignia cuelga del emoji, no del item: asi acompana al menu tanto
+   cuando esta ancho como colapsado o convertido en barra de abajo. */
+.con-insignia { position: relative; display: inline-block; }
+.insignia {
+  position: absolute; top: -4px; left: 12px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px; background: var(--rojo); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 1;
+  display: grid; place-items: center;
+}
+
+.aviso-fila {
+  display: grid; grid-template-columns: 34px 1fr; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--borde); cursor: pointer;
+}
+.aviso-fila:hover { background: var(--panel-2); }
+.aviso-fila.sin-leer { background: color-mix(in srgb, var(--amarillo) 9%, transparent); }
+.aviso-fila.sin-leer:hover { background: color-mix(in srgb, var(--amarillo) 15%, transparent); }
+.aviso-icono { font-size: 21px; text-align: center; }
+.aviso-linea { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.aviso-que { color: var(--tenue); font-size: 14px; }
+.aviso-cita { margin: 6px 0 0; color: var(--tenue); overflow-wrap: anywhere; }
+.aviso-cita a { color: var(--pico); font-weight: 600; }
+.aviso-cita a:hover { text-decoration: underline; }
+
+/* --- respuestas en cascada -------------------------------------------- */
+
+.rama-fila { display: grid; grid-template-columns: 24px 1fr; align-items: start; }
+.rama-pio { min-width: 0; }
+
+.plegar {
+  border: 0; background: transparent; cursor: pointer; color: var(--tenue);
+  width: 24px; padding: 15px 0 0; font-size: 14px; font-weight: 700; line-height: 1;
+}
+.plegar:hover { color: var(--texto); }
+.plegar-hueco { display: block; }
+
+/* La raya vertical es lo que vuelve seguible la cascada: dice de quién cuelga
+   cada respuesta sin obligar a contar sangrías. */
+.ramas { margin-left: 24px; border-left: 1px solid var(--borde); }
+
+.plegado { padding: 6px 18px 12px 48px; font-size: 13px; color: var(--tenue); }
+
+@media (max-width: 700px) {
+  /* Con ocho niveles de hondura, 24px por nivel se comen la pantalla. */
+  .ramas { margin-left: 12px; }
+  .rama-fila { grid-template-columns: 18px 1fr; }
+  .plegar { width: 18px; }
+  .plegado { padding-left: 30px; }
+}
 
 /* --- perfil ---------------------------------------------------------- */
 

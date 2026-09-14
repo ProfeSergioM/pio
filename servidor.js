@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { Almacen } = require('./src/almacen');
 const { crearApi } = require('./src/api');
+const { leerAjustes } = require('./src/ajustes');
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8',
@@ -19,8 +20,11 @@ const TIPOS = {
 function crearServidor(opciones = {}) {
   const raizDatos = opciones.datos || path.join(__dirname, 'datos');
   const publico = opciones.publico || path.join(__dirname, 'publico');
-  const almacen = new Almacen(raizDatos);
-  const api = crearApi(almacen);
+  // Lo que venga por opciones gana: es lo que usan las pruebas para no
+  // depender de la configuración real de la máquina.
+  const ajustes = Object.assign(leerAjustes(raizDatos), opciones.api);
+  const almacen = new Almacen(raizDatos, ajustes, opciones.almacen);
+  const api = crearApi(almacen, ajustes);
 
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

@@ -1,0 +1,51 @@
+# Despliegue de Pío en Render.
+#
+# Render lee este archivo al conectar el repositorio y arma el servicio solo.
+# No hay nada que compilar ni que instalar: el proyecto no tiene dependencias,
+# así que el build es un no-op y el arranque es un `node servidor.js`.
+#
+# Las claves NO van acá. `sync: false` significa "preguntámelo en el panel y
+# guardalo del lado de Render", que es lo que corresponde para un secreto: este
+# archivo vive en el repositorio.
+
+services:
+  - type: web
+    name: pio
+    runtime: node
+    plan: free
+    region: oregon
+
+    buildCommand: "echo 'sin dependencias que instalar'"
+    startCommand: "node servidor.js"
+
+    # Ruta liviana, pública y que no toca la base: sirve para saber si el
+    # proceso está vivo sin dar de alta nada ni pedir sesión.
+    healthCheckPath: /api/config
+
+    envVars:
+      # Render pone exactamente un balanceador delante. Sin esto, el límite de
+      # altas vería la IP del proxy y metería a todo el mundo en el mismo cubo.
+      - key: PIO_PROXIES
+        value: "1"
+
+      - key: NODE_VERSION
+        value: "20"
+
+      # Dónde vive todo. Sin esto, Pío escribiría en un disco que Render borra
+      # en cada despliegue.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+
+      # Opcionales: cada una enciende su función y sin ella queda apagada.
+      - key: PIO_CLOUDINARY_NUBE
+        sync: false
+      - key: PIO_CLOUDINARY_CLAVE
+        sync: false
+      - key: PIO_CLOUDINARY_SECRETO
+        sync: false
+      - key: PIO_GIPHY_KEY
+        sync: false
+      - key: PIO_GOOGLE_CLIENT_ID
+        sync: false

@@ -1,0 +1,609 @@
+/* Brote — tema vegetal para Pío.
+   Papel crema, verdes de hoja y savia ámbar. Cada superficie usa un
+   border-radius de cuatro valores distintos, como una hoja o un guijarro.
+   La estructura se sostiene con bordes firmes y un tallo de color en el
+   borde izquierdo de lo activo, para que lo curvo no se vuelva blando. */
+
+/* ------------------------------------------------------------------ *
+ * 1. Paleta                                                           *
+ * ------------------------------------------------------------------ */
+
+:root {
+  /* acentos */
+  --amarillo: #44712e;        /* hoja: acción principal, anillo, tallos */
+  --amarillo-suave: #c9e0a8;  /* brote: relleno de estados activos */
+  --pico: #7f4d14;            /* savia: enlaces y menciones (6.13:1 sobre --fondo) */
+
+  /* superficies */
+  --fondo: #f2efe2;           /* papel de fibra */
+  --panel: #fbf9f0;           /* columna de lectura */
+  --panel-2: #e6ecd8;         /* hoja pálida: hover y tarjetas */
+  --borde: #c4cda9;           /* 1.44:1 sobre --fondo: el 1px se ve de verdad */
+
+  /* texto */
+  --texto: #1f2a1b;           /* 12.97:1 sobre --fondo */
+  --tenue: #566049;           /* 5.76:1 sobre --fondo, 5.48:1 sobre --panel-2 */
+
+  /* Señales con margen: sobre los fondos teñidos (fila sin leer, chip de
+     acción) todavía quedan por encima de 4.5:1. */
+  --rojo: #992d3d;            /* 6.51:1 sobre --fondo */
+  --verde: #17623d;           /* 6.39:1 sobre --fondo */
+
+  --sombra:
+    0 1px 1px rgba(31, 42, 27, .05),
+    0 10px 28px -14px rgba(31, 42, 27, .28);
+
+  /* Radios: ningún rectángulo duro, ninguna simetría. */
+  --radio: 26px 10px 24px 12px;      /* guijarro genérico */
+  --hoja: 24px 6px 24px 6px;         /* hoja apuntada a izquierda y derecha */
+  --hoja-chica: 15px 4px 15px 4px;
+  --hoja-grande: 44px 14px 44px 14px;
+  --semilla: 62% 38% 55% 45% / 50% 58% 42% 50%;
+
+  /* piezas propias del tema */
+  --sobre-acento: #fffdf7;    /* texto sobre --amarillo (5.66:1) */
+  --insignia-texto: #ffffff;  /* sobre --rojo (7.51:1) */
+  --avatar-a: #d6e8bb;
+  --avatar-b: #a8ca85;
+  --avatar-texto: #1f2a1b;    /* 8.15:1 sobre el extremo más oscuro */
+  --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+           Cambria, "Times New Roman", serif;
+  --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --curva: cubic-bezier(.33, .68, .36, 1);
+
+  color-scheme: light;
+}
+
+:root[data-tema="oscuro"] {
+  --amarillo: #8fc46a;        /* 8.27:1 sobre --panel */
+  --amarillo-suave: #3d5c2c;
+  --pico: #e0a95c;            /* 8.05:1 sobre --panel */
+
+  --fondo: #101711;
+  --panel: #161f16;
+  --panel-2: #1e2a1d;
+  --borde: #384833;           /* 1.86:1 sobre --fondo */
+
+  --texto: #e8f0df;           /* 15.58:1 sobre --fondo */
+  --tenue: #a3b39a;           /* 8.22:1 sobre --fondo, 6.75:1 sobre --panel-2 */
+
+  --rojo: #f58a95;            /* 7.77:1 sobre --fondo, 5.28:1 sobre el chip */
+  --verde: #5fd39a;
+
+  --sombra:
+    0 1px 1px rgba(0, 0, 0, .5),
+    0 12px 30px -14px rgba(0, 0, 0, .7);
+
+  --sobre-acento: #12200e;    /* texto sobre --amarillo (8.29:1) */
+  --insignia-texto: #12200e;  /* sobre --rojo (7.23:1) */
+  --avatar-a: #4a6b36;
+  --avatar-b: #35502a;
+  --avatar-texto: #e8f0df;    /* 5.21:1 sobre el extremo más claro */
+
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------ *
+ * 2. Base                                                             *
+ * ------------------------------------------------------------------ */
+
+body {
+  background: var(--fondo);
+  color: var(--texto);
+  font: 15px/1.6 var(--sans);
+}
+
+/* El contenido se lee en serif; el mobiliario de la interfaz queda en
+   sans para que se distinga de un vistazo lo que es texto de la gente. */
+.marca,
+.lema,
+.cabecera h2,
+.tarjeta h2,
+.texto,
+.pio-nombre,
+.perfil-nombre,
+.perfil-bio,
+.aviso-cita,
+.tendencia b,
+.vacio,
+#texto-pio {
+  font-family: var(--serif);
+}
+
+::selection { background: var(--amarillo-suave); color: var(--texto); }
+
+:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ *
+ * 3. Portada                                                          *
+ * ------------------------------------------------------------------ */
+
+.portada {
+  gap: 48px;
+  padding: 40px;
+  background:
+    radial-gradient(1100px 680px at 6% -8%,
+      color-mix(in srgb, var(--amarillo-suave) 85%, transparent) 0%, transparent 62%),
+    radial-gradient(760px 560px at 98% 110%,
+      color-mix(in srgb, var(--amarillo) 20%, transparent) 0%, transparent 60%),
+    var(--fondo);
+}
+
+.pollito {
+  filter: drop-shadow(0 18px 34px rgba(31, 42, 27, .22));
+}
+
+.globo {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--hoja);
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 18px;
+  color: var(--texto);
+}
+
+.portada-caja {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--hoja-grande);
+  padding: 34px 32px;
+  box-shadow: var(--sombra);
+}
+
+.marca { font-size: 38px; font-weight: 400; letter-spacing: -.4px; }
+.marca.chica { font-size: 21px; font-weight: 400; }
+.marca-pollito { filter: none; }
+
+.lema {
+  color: var(--tenue);
+  font-size: 17px;
+  line-height: 1.55;
+  margin: 4px 0 24px;
+}
+
+/* Pestañas: dos hojas enfrentadas, sin riel de fondo. */
+.pestanas {
+  background: transparent;
+  padding: 0;
+  gap: 8px;
+  border-radius: 0;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 14px;
+}
+.pestana {
+  border-radius: var(--hoja);
+  padding: 10px 12px;
+  color: var(--tenue);
+  border: 1px solid var(--borde);
+  background: transparent;
+  transition: background-color .25s var(--curva), color .25s var(--curva),
+              border-radius .3s var(--curva);
+}
+.pestana:hover { background: var(--panel-2); }
+.pestana.activa {
+  background: var(--amarillo-suave);
+  border-color: transparent;
+  color: var(--texto);
+  box-shadow: none;
+  border-radius: 6px 24px 6px 24px;
+}
+
+.campo > span {
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--tenue);
+}
+.campo input,
+.con-arroba,
+.buscador {
+  border-radius: 18px 6px 18px 6px;
+  border: 1px solid var(--borde);
+  background: var(--fondo);
+  transition: border-color .25s var(--curva), background-color .25s var(--curva);
+}
+.campo input { padding: 12px 14px; }
+.con-arroba:focus-within,
+.campo input:focus-visible,
+.buscador:focus-visible {
+  outline: 2px solid var(--amarillo);
+  outline-offset: 2px;
+  border-color: var(--amarillo);
+}
+
+.error { color: var(--rojo); font-weight: 600; }
+.chico { color: var(--tenue); font-size: 12.5px; }
+.chico code {
+  background: var(--panel-2);
+  border-radius: 7px 3px 7px 3px;
+  padding: 1px 6px;
+}
+
+.separador { color: var(--tenue); }
+.separador::before, .separador::after { background: var(--borde); }
+
+/* ------------------------------------------------------------------ *
+ * 4. Botones, iconos, idiomas                                         *
+ * ------------------------------------------------------------------ */
+
+.boton {
+  border: 1px solid var(--borde);
+  background: var(--panel);
+  border-radius: 22px 8px 22px 8px;
+  padding: 10px 20px;
+  font-weight: 600;
+  transition: background-color .25s var(--curva), color .25s var(--curva),
+              border-radius .3s var(--curva), transform .1s var(--curva);
+}
+.boton:hover { filter: none; background: var(--panel-2); border-radius: 8px 22px 8px 22px; }
+.boton.principal {
+  background: var(--amarillo);
+  border-color: var(--amarillo);
+  color: var(--sobre-acento);
+}
+.boton.principal:hover {
+  background: color-mix(in srgb, var(--amarillo) 84%, var(--texto));
+  border-color: color-mix(in srgb, var(--amarillo) 84%, var(--texto));
+}
+.boton.principal:disabled { opacity: .4; }
+.boton.ancho { padding: 13px; border-radius: 26px 10px 26px 10px; }
+.boton.ancho:hover { border-radius: 10px 26px 10px 26px; }
+.boton.fantasma { background: transparent; border-color: var(--amarillo); color: var(--amarillo); }
+.boton.fantasma:hover { background: var(--panel-2); }
+
+.icono {
+  border-radius: 52% 44% 52% 44%;
+  color: var(--tenue);
+  transition: background-color .25s var(--curva), color .25s var(--curva);
+}
+.icono:hover { background: var(--panel-2); color: var(--texto); }
+
+.idiomas { background: transparent; padding: 0; gap: 4px; border-radius: 0; }
+.idioma {
+  border-radius: var(--hoja-chica);
+  border: 1px solid var(--borde);
+  color: var(--tenue);
+  font-weight: 600;
+  letter-spacing: .08em;
+  transition: background-color .25s var(--curva), color .25s var(--curva);
+}
+.idioma:hover { background: var(--panel-2); color: var(--texto); }
+.idioma.activa {
+  background: var(--amarillo-suave);
+  border-color: transparent;
+  color: var(--texto);
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * 5. Estructura                                                       *
+ * ------------------------------------------------------------------ */
+
+.app {
+  grid-template-columns: 250px minmax(0, 610px) 310px;
+  gap: 28px;
+  max-width: 1260px;
+  padding: 0 20px 40px;
+}
+
+.lateral { padding: 26px 0; gap: 6px; }
+.lateral .marca { margin-bottom: 22px; padding-left: 16px; }
+
+.nav {
+  border-radius: var(--hoja);
+  padding: 12px 16px;
+  color: var(--tenue);
+  font-weight: 600;
+  font-size: 15px;
+  transition: background-color .25s var(--curva), color .25s var(--curva),
+              border-radius .3s var(--curva);
+}
+.nav:hover { background: var(--panel-2); color: var(--texto); border-radius: 6px 24px 6px 24px; }
+.nav.activa {
+  background: var(--amarillo-suave);
+  color: var(--texto);
+  font-weight: 700;
+}
+.nav span { font-size: 20px; line-height: 1; }
+
+.yo-lateral .fila-usuario { border-radius: var(--radio); padding: 10px; }
+.yo-lateral .fila-usuario:hover { background: var(--panel-2); }
+
+/* La columna es la maceta: fondo propio, bordes firmes y esquinas
+   desparejas. Sin overflow:hidden, para no romper la cabecera pegajosa. */
+.columna {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 34px 12px 12px 34px;
+}
+
+.derecha { padding: 26px 0; gap: 20px; }
+
+.tarjeta {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 20px;
+}
+/* La segunda tarjeta espeja el radio: la asimetría se nota como ritmo. */
+.derecha .tarjeta:nth-of-type(even) { border-radius: 12px 26px 10px 24px; }
+.tarjeta h2 { font-size: 17px; font-weight: 400; margin-bottom: 12px; }
+
+.pie { color: var(--tenue); line-height: 1.6; }
+
+/* ------------------------------------------------------------------ *
+ * 6. Cabecera de vista                                                *
+ * ------------------------------------------------------------------ */
+
+.cabecera {
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--borde);
+  border-radius: 33px 11px 0 0;
+  padding: 18px 24px;
+}
+.cabecera h2 { font-size: 22px; font-weight: 400; letter-spacing: -.2px; }
+.cabecera p { color: var(--tenue); margin-top: 4px; }
+.buscador { padding: 12px 16px; }
+
+/* ------------------------------------------------------------------ *
+ * 7. Píos                                                             *
+ * ------------------------------------------------------------------ */
+
+.pio {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--borde);
+  transition: background-color .25s var(--curva), box-shadow .25s var(--curva);
+}
+.pio:hover {
+  background: var(--panel-2);
+  /* El tallo: la única línea recta del tema, y por eso ordena. */
+  box-shadow: inset 3px 0 0 var(--amarillo);
+}
+.pio.destacado { background: var(--panel); box-shadow: inset 3px 0 0 var(--amarillo); }
+.pio.destacado .texto { font-size: 25px; line-height: 1.45; }
+
+.avatar {
+  border-radius: var(--semilla);
+  background: linear-gradient(155deg, var(--avatar-a), var(--avatar-b));
+  color: var(--avatar-texto);
+  font-family: var(--serif);
+  font-weight: 400;
+}
+.avatar.grande { border-radius: 58% 42% 48% 52% / 45% 55% 45% 55%; }
+
+.pio-nombre { font-weight: 600; font-size: 16px; }
+.pio-usuario, .pio-fecha { color: var(--tenue); font-size: 13.5px; }
+.texto { font-size: 16.5px; line-height: 1.62; margin-top: 5px; }
+.texto a { color: var(--pico); font-weight: 400; text-decoration: underline; text-underline-offset: 3px; }
+.contexto { color: var(--tenue); }
+
+.acciones { margin-top: 12px; gap: 2px; }
+.accion {
+  color: var(--tenue);
+  border-radius: var(--hoja-chica);
+  padding: 7px 11px;
+  transition: background-color .25s var(--curva), color .25s var(--curva);
+}
+/* El chip es una superficie opaca y medida, no un lavado translúcido: así
+   el contraste no depende de lo que haya debajo y --rojo y --verde siguen
+   legibles cuando la acción está activa (5.78:1 y 5.67:1 en claro). */
+.accion:hover {
+  background: color-mix(in srgb, var(--amarillo-suave) 45%, var(--panel-2));
+  color: var(--texto);
+}
+.accion.activa { color: var(--rojo); font-weight: 700; }
+.accion.repio.activa { color: var(--verde); }
+.accion.borrar:hover { color: var(--rojo); background: color-mix(in srgb, var(--rojo) 12%, var(--panel-2)); }
+
+/* ------------------------------------------------------------------ *
+ * 8. Avisos                                                           *
+ * ------------------------------------------------------------------ */
+
+.insignia {
+  background: var(--rojo);
+  color: var(--insignia-texto);
+  border-radius: 999px;
+  border: 2px solid var(--panel);
+  top: -5px; left: 11px;
+}
+
+.aviso-fila {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--borde);
+  transition: background-color .25s var(--curva), box-shadow .25s var(--curva);
+}
+.aviso-fila:hover { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--amarillo); }
+.aviso-fila.sin-leer {
+  background: color-mix(in srgb, var(--amarillo) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--amarillo);
+}
+/* 15% y no más: sobre --fondo (columna en móvil) el enlace --pico todavía
+   queda a 5.04:1 y --tenue a 4.73:1. */
+.aviso-fila.sin-leer:hover { background: color-mix(in srgb, var(--amarillo) 15%, transparent); }
+.aviso-que { color: var(--tenue); font-size: 13.5px; }
+.aviso-cita { color: var(--tenue); font-size: 15.5px; line-height: 1.6; }
+.aviso-cita a { color: var(--pico); font-weight: 400; }
+
+/* ------------------------------------------------------------------ *
+ * 9. Perfil                                                           *
+ * ------------------------------------------------------------------ */
+
+.perfil-caja { padding: 24px; border-bottom: 1px solid var(--borde); }
+.perfil-nombre { font-size: 26px; font-weight: 400; letter-spacing: -.3px; }
+.perfil-usuario { color: var(--tenue); }
+.perfil-bio { font-size: 16.5px; line-height: 1.6; }
+.perfil-datos { color: var(--tenue); }
+.perfil-datos b { color: var(--texto); font-weight: 600; }
+
+.sub-pestanas { border-bottom: 1px solid var(--borde); }
+.sub-pestana {
+  color: var(--tenue);
+  padding: 14px;
+  border-bottom: 3px solid transparent;
+  border-radius: 18px 18px 0 0;
+  transition: background-color .25s var(--curva), color .25s var(--curva);
+}
+.sub-pestana:hover { background: var(--panel-2); color: var(--texto); }
+.sub-pestana.activa { color: var(--texto); border-bottom-color: var(--amarillo); }
+
+/* ------------------------------------------------------------------ *
+ * 10. Listas auxiliares y estados                                     *
+ * ------------------------------------------------------------------ */
+
+/* El gesto de crecimiento queda en los controles a los que se apunta
+   (.boton, .nav, .pestana). En la columna de lectura y en las listas no:
+   recorrer una lista larga no debería hacer que todo cambie de forma. */
+.tendencia {
+  border-radius: var(--hoja-chica);
+  padding: 9px 10px;
+  transition: background-color .25s var(--curva);
+}
+.tendencia:hover { background: var(--panel-2); }
+.tendencia b { font-weight: 400; font-size: 16px; }
+.tendencia span { color: var(--tenue); }
+
+.sugerencia { padding: 9px 6px; }
+.sugerencia .crece span { color: var(--tenue); }
+
+.vacio { padding: 64px 28px; color: var(--tenue); font-size: 17px; line-height: 1.6; }
+.vacio .emoji { font-size: 56px; margin-bottom: 14px; opacity: .9; }
+
+.cargando { color: var(--tenue); padding: 40px; animation: brote-respira 1.8s ease-in-out infinite; }
+
+@keyframes brote-respira { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* ------------------------------------------------------------------ *
+ * 11. Diálogo de piar                                                 *
+ * ------------------------------------------------------------------ */
+
+.dialogo::backdrop { background: rgba(16, 23, 17, .62); backdrop-filter: blur(3px); }
+.dialogo-caja {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 36px 12px 36px 12px;
+  padding: 22px;
+}
+.dialogo-cabecera { font-weight: 600; margin-bottom: 14px; }
+.respondiendo {
+  background: var(--panel-2);
+  color: var(--tenue);
+  border-radius: 16px 5px 16px 5px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+#texto-pio { font-size: 21px; line-height: 1.55; min-height: 104px; }
+#texto-pio::placeholder { color: var(--tenue); opacity: 1; }
+
+.dialogo-pie { border-top: 1px solid var(--borde); padding-top: 14px; gap: 16px; }
+
+.medidor span { color: var(--tenue); font-family: var(--sans); font-size: 11px; }
+.medidor.aviso span { color: var(--pico); }
+.medidor.pasado span { color: var(--rojo); }
+.anillo circle { stroke-width: 3; }
+.anillo-fondo { stroke: var(--borde); }
+.anillo-frente { stroke: var(--amarillo); transition: stroke-dashoffset .3s var(--curva), stroke .25s var(--curva); }
+.medidor.aviso .anillo-frente { stroke: var(--pico); }
+.medidor.pasado .anillo-frente { stroke: var(--rojo); }
+
+/* ------------------------------------------------------------------ *
+ * 12. Toast y botón flotante                                          *
+ * ------------------------------------------------------------------ */
+
+.aviso {
+  background: var(--texto);
+  color: var(--fondo);
+  border-radius: 24px 8px 24px 8px;
+  padding: 12px 22px;
+  font-weight: 600;
+}
+
+/* Hoja: apuntada arriba a la derecha y abajo a la izquierda.
+   Sin declarar display, para no pelear con .solo-movil ni con [hidden]. */
+.flotante {
+  background: var(--amarillo);
+  color: var(--sobre-acento);
+  border-radius: 62% 14% 62% 14%;
+  width: 60px; height: 60px;
+  transition: border-radius .35s var(--curva), background-color .25s var(--curva);
+}
+.flotante:hover { border-radius: 14% 62% 14% 62%; }
+
+/* ------------------------------------------------------------------ *
+ * 13. Tres anchos                                                     *
+ * Se repiten aquí las reglas que la hoja base define dentro de sus     *
+ * propias consultas: este archivo carga después y, a igual             *
+ * especificidad, gana el orden de aparición.                          *
+ * ------------------------------------------------------------------ */
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 92px minmax(0, 1fr); gap: 20px; padding: 0 16px 40px; }
+  .derecha { display: none; }
+
+  /* Lateral colapsado a iconos: la hoja se vuelve simétrica para que el
+     emoji quede centrado y el blanco alrededor sea parejo. */
+  .nav {
+    justify-content: center;
+    padding: 13px 0;
+    border-radius: 20px 8px 20px 8px;
+  }
+  .nav:hover { border-radius: 8px 20px 8px 20px; }
+  .lateral { align-items: stretch; padding: 22px 0; }
+  .columna { border-radius: 28px 10px 10px 28px; }
+  .cabecera { border-radius: 27px 9px 0 0; padding: 16px 20px; }
+  .pio, .aviso-fila { padding: 16px 20px; }
+}
+
+@media (max-width: 700px) {
+  .portada { padding: 22px 18px; gap: 0; }
+  .portada-caja { padding: 26px 22px; border-radius: 34px 12px 34px 12px; }
+  .marca { font-size: 32px; }
+
+  .app { grid-template-columns: 1fr; gap: 0; padding: 0; }
+
+  .barra-superior {
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--borde);
+  }
+
+  /* Barra inferior fija: se levanta del borde con esquinas desparejas,
+     como una hoja apoyada sobre el pie de la pantalla. */
+  .lateral {
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--borde);
+    border-radius: 26px 10px 0 0;
+    gap: 0;
+    box-shadow: 0 -10px 26px -18px rgba(31, 42, 27, .5);
+  }
+  .nav { padding: 9px 14px; border-radius: 16px 6px 16px 6px; }
+  .nav.activa { background: var(--amarillo-suave); }
+
+  .columna { border: 0; border-radius: 0; background: var(--fondo); }
+  .cabecera { border-radius: 0; padding: 15px 18px; background: color-mix(in srgb, var(--fondo) 90%, transparent); }
+  .pio, .aviso-fila { padding: 16px 18px; }
+  .pio.destacado .texto { font-size: 22px; }
+  .contenido { padding-bottom: 96px; }
+
+  .dialogo-caja { border-radius: 28px 10px 28px 10px; padding: 18px; }
+  .aviso { bottom: 92px; }
+}
+
+/* ------------------------------------------------------------------ *
+ * 14. Movimiento reducido                                             *
+ * ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .cargando { animation: none; opacity: .85; }
+  .boton, .nav, .pio, .accion, .avatar, .flotante, .pestana,
+  .tendencia, .sub-pestana, .icono, .idioma, .aviso-fila,
+  .campo input, .con-arroba, .buscador, .anillo-frente {
+    transition: none;
+  }
+}

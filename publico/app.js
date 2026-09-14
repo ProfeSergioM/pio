@@ -9,6 +9,76 @@ const estado = {
   respondiendoA: null,
 };
 
+// --- idiomas --------------------------------------------------------------
+
+const IDIOMA_BASE = 'es';
+
+function idiomaInicial() {
+  const guardado = localStorage.getItem('pio.idioma');
+  if (guardado && window.IDIOMAS[guardado]) return guardado;
+  return String(navigator.language || '').toLowerCase().startsWith('en') ? 'en' : IDIOMA_BASE;
+}
+
+let idioma = idiomaInicial();
+
+function diccionario() {
+  return window.IDIOMAS[idioma] || window.IDIOMAS[IDIOMA_BASE];
+}
+
+// Busca en el idioma elegido, cae al español y en último caso devuelve la
+// clave. Es fea, pero deja ver qué falta en vez de dibujar un hueco en blanco.
+function T(clave, datos) {
+  const propio = diccionario().textos[clave];
+  const valor = propio !== undefined ? propio : window.IDIOMAS[IDIOMA_BASE].textos[clave];
+  if (valor === undefined) return clave;
+  return typeof valor === 'function' ? valor(datos || {}) : valor;
+}
+
+// Los errores del servidor viajan con clave y datos. Si no la reconocemos, se
+// muestra el texto en español que ya vino armado: peor es no decir nada.
+function TError(fallo) {
+  if (!fallo) return T('error.generico');
+  const valor = fallo.clave ? diccionario().errores[fallo.clave] : undefined;
+  if (valor === undefined) return fallo.error || T('error.generico');
+  return typeof valor === 'function' ? valor(fallo.datos || {}) : valor;
+}
+
+function traducir() {
+  document.documentElement.lang = idioma;
+  document.title = T('titulo');
+  for (const el of document.querySelectorAll('[data-t]')) el.textContent = T(el.dataset.t);
+  for (const el of document.querySelectorAll('[data-t-html]')) el.innerHTML = T(el.dataset.tHtml);
+  for (const el of document.querySelectorAll('[data-t-ph]')) el.placeholder = T(el.dataset.tPh);
+  for (const el of document.querySelectorAll('[data-t-titulo]')) el.title = T(el.dataset.tTitulo);
+  for (const el of document.querySelectorAll('[data-t-aria]')) {
+    el.setAttribute('aria-label', T(el.dataset.tAria));
+  }
+  pintarIdiomas();
+}
+
+function pintarIdiomas() {
+  const caja = $('#idiomas-portada');
+  if (!caja) return;
+  caja.innerHTML = Object.keys(window.IDIOMAS).map((cual) => {
+    const activa = cual === idioma ? ' activa' : '';
+    return `<button type="button" class="idioma${activa}" data-idioma="${cual}"
+      title="${escapar(window.IDIOMAS[cual].nombre)}">${escapar(window.IDIOMAS[cual].etiqueta)}</button>`;
+  }).join('');
+}
+
+function cambiarIdioma(cual) {
+  idioma = window.IDIOMAS[cual] ? cual : IDIOMA_BASE;
+  localStorage.setItem('pio.idioma', idioma);
+  traducir();
+  if (estado.yo) pintar();
+  else prepararGoogle();
+}
+
+function alternarIdioma() {
+  const cuales = Object.keys(window.IDIOMAS);
+  cambiarIdioma(cuales[(cuales.indexOf(idioma) + 1) % cuales.length]);
+}
+
 // --- llamadas a la API ----------------------------------------------------
 
 async function api(ruta, opciones = {}) {
@@ -24,7 +94,7 @@ async function api(ruta, opciones = {}) {
   const datos = await respuesta.json().catch(() => ({}));
   if (!respuesta.ok) {
     if (respuesta.status === 401 && estado.yo) cerrarSesion(true);
-    throw new Error(datos.error || 'Algo salió mal.');
+    throw new Error(TError(datos));
   }
   return datos;
 }
@@ -52,7 +122,7 @@ function hace(ms) {
   if (s < 3600) return `${Math.floor(s / 60)}min`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   if (s < 604800) return `${Math.floor(s / 86400)}d`;
-  return new Date(ms).toLocaleDateString('es', { day: 'numeric', month: 'short' });
+  return new Date(ms).toLocaleDateString(diccionario().fechas, { day: 'numeric', month: 'short' });
 }
 
 function avatar(usuario, clase = '') {
@@ -80,7 +150,9 @@ $('.pestanas').addEventListener('click', (ev) => {
   document.querySelectorAll('.solo-registro').forEach((c) => { c.hidden = modoAcceso !== 'registro'; });
   $('#forma-acceso [name=nombre]').required = modoAcceso === 'registro';
   $('#forma-acceso [name=clave]').autocomplete = modoAcceso === 'registro' ? 'new-password' : 'current-password';
-  $('#forma-acceso button[type=submit]').textContent = modoAcceso === 'registro' ? 'Crear mi nido' : 'Entrar al nido';
+  const enviar = $('#forma-acceso button[type=submit]');
+  enviar.dataset.t = modoAcceso === 'registro' ? 'acceso.boton.crear' : 'acceso.boton.entrar';
+  enviar.textContent = T(enviar.dataset.t);
   $('#error-acceso').hidden = true;
 });
 
@@ -103,7 +175,7 @@ $('#forma-acceso').addEventListener('submit', async (ev) => {
     localStorage.setItem('pio.token', datos.token);
     ev.target.reset();
     mostrarApp();
-    avisar(modoAcceso === 'registro' ? '¡Nido creado! 🐣' : '¡Bienvenido de vuelta! 🐤');
+    avisar(T(modoAcceso === 'registro' ? 'toast.nidoCreado' : 'toast.bienvenida'));
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
@@ -117,7 +189,76 @@ function cerrarSesion(porExpiracion) {
   localStorage.removeItem('pio.token');
   $('#app').hidden = true;
   $('#portada').hidden = false;
-  if (porExpiracion) avisar('Tu sesión venció. Entrá de nuevo.');
+  prepararGoogle();
+  if (porExpiracion) avisar(T('toast.vencio'));
+}
+
+// --- entrar con Google ----------------------------------------------------
+
+function cargarScript(url) {
+  return new Promise((listo, falla) => {
+    const etiqueta = document.createElement('script');
+    etiqueta.src = url;
+    etiqueta.async = true;
+    etiqueta.defer = true;
+    etiqueta.onload = listo;
+    etiqueta.onerror = () => falla(new Error(`No se pudo cargar ${url}`));
+    document.head.appendChild(etiqueta);
+  });
+}
+
+let googleCargado = false;
+
+// El client id lo dice el servidor. Si no hay, ni siquiera se pide el script
+// de Google: sin configurar, Pío no habla con nadie de afuera.
+async function prepararGoogle() {
+  try {
+    const config = await api('/config');
+    if (!config.google) {
+      $('#con-google').hidden = true;
+      return;
+    }
+    if (!googleCargado) {
+      await cargarScript('https://accounts.google.com/gsi/client');
+      googleCargado = true;
+    }
+    window.google.accounts.id.initialize({
+      client_id: config.google,
+      callback: entrarConGoogle,
+    });
+    const caja = $('#boton-google');
+    caja.innerHTML = '';
+    window.google.accounts.id.renderButton(caja, {
+      theme: document.documentElement.dataset.tema === 'oscuro' ? 'filled_black' : 'outline',
+      size: 'large',
+      width: 300,
+      text: 'continue_with',
+      locale: idioma,
+    });
+    $('#con-google').hidden = false;
+  } catch (err) {
+    // Sin Google la portada anda igual; no vale romperla por esto.
+    $('#con-google').hidden = true;
+  }
+}
+
+async function entrarConGoogle(respuesta) {
+  const error = $('#error-acceso');
+  error.hidden = true;
+  try {
+    const datos = await api('/sesion/google', {
+      metodo: 'POST',
+      cuerpo: { credencial: respuesta.credential },
+    });
+    estado.token = datos.token;
+    estado.yo = datos.yo;
+    localStorage.setItem('pio.token', datos.token);
+    mostrarApp();
+    avisar(T('toast.bienvenida'));
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  }
 }
 
 // --- ruteo ----------------------------------------------------------------
@@ -141,22 +282,25 @@ async function pintar() {
   $('#atras').hidden = !['u', 'p', 'e'].includes(vista);
 
   const contenido = $('#contenido');
-  contenido.innerHTML = '<div class="cargando">Piando… 🐤</div>';
+  contenido.innerHTML = `<div class="cargando">${escapar(T('cargando'))}</div>`;
 
   try {
-    if (vista === 'plaza') await vistaLinea('plaza', 'La plaza', 'Todo lo que pía el gallinero');
+    if (vista === 'plaza') await vistaLinea('plaza');
     else if (vista === 'buscar') await vistaBuscar(params.get('q') || '');
     else if (vista === 'yo') { location.hash = `#/u/${estado.yo.usuario}`; return; }
     else if (vista === 'u') await vistaPerfil(argumento, params.get('ver') || 'pios');
     else if (vista === 'p') await vistaHilo(argumento);
     else if (vista === 'e') await vistaEtiqueta(argumento);
-    else await vistaLinea('nido', 'Tu nido', 'Vos y quienes seguís');
+    else if (vista === 'avisos') await vistaAvisos();
+    else if (vista === 'disenos') await vistaDisenos();
+    else await vistaLinea('nido');
   } catch (err) {
     contenido.innerHTML = `<div class="vacio"><span class="emoji">💥</span>${escapar(err.message)}</div>`;
   }
 
   cargarTendencias();
   cargarSugerencias();
+  cargarAvisos();
 }
 
 window.addEventListener('hashchange', pintar);
@@ -173,24 +317,24 @@ function cabecera(titulo, subtitulo, extra = '') {
     </div>`;
 }
 
-async function vistaLinea(tipo, titulo, subtitulo) {
-  cabecera(titulo, subtitulo);
+async function vistaLinea(tipo) {
+  cabecera(T(`${tipo}.titulo`), T(`${tipo}.sub`));
   const datos = await api(`/pios?tipo=${tipo}`);
   const vacio = tipo === 'nido'
-    ? { emoji: '🪹', texto: 'Tu nido está calladito. Seguí a alguien en la Plaza o piá vos.' }
-    : { emoji: '🌱', texto: 'Nadie pió todavía. Estrená la plaza.' };
+    ? { emoji: '🪹', texto: T('nido.vacio') }
+    : { emoji: '🌱', texto: T('plaza.vacio') };
   $('#contenido').innerHTML = listaPios(datos.pios, vacio);
 }
 
 async function vistaEtiqueta(etiqueta) {
-  cabecera(`#${etiqueta}`, 'Píos con esta etiqueta');
+  cabecera(`#${etiqueta}`, T('etiqueta.sub'));
   const datos = await api(`/pios?tipo=etiqueta&etiqueta=${encodeURIComponent(etiqueta)}`);
-  $('#contenido').innerHTML = listaPios(datos.pios, { emoji: '🔎', texto: 'Nada con esa etiqueta… todavía.' });
+  $('#contenido').innerHTML = listaPios(datos.pios, { emoji: '🔎', texto: T('etiqueta.vacio') });
 }
 
 async function vistaBuscar(consulta) {
-  cabecera('Buscar', '', `
-    <input class="buscador" id="entrada-buscar" placeholder="Buscá píos, etiquetas o pollitos"
+  cabecera(T('buscar.titulo'), '', `
+    <input class="buscador" id="entrada-buscar" placeholder="${escapar(T('buscar.ph'))}"
            value="${escapar(consulta)}" autocomplete="off">`);
 
   const entrada = $('#entrada-buscar');
@@ -213,27 +357,27 @@ async function vistaBuscar(consulta) {
 async function resultadosBusqueda(consulta) {
   const contenido = $('#contenido');
   if (!consulta) {
-    contenido.innerHTML = '<div class="vacio"><span class="emoji">🔍</span>Escribí algo y vemos qué aparece.</div>';
+    contenido.innerHTML = `<div class="vacio"><span class="emoji">🔍</span>${escapar(T('buscar.empezar'))}</div>`;
     return;
   }
   const datos = await api(`/buscar?q=${encodeURIComponent(consulta)}`);
   const personas = datos.usuarios.length
     ? `<div class="tarjeta" style="margin:12px 16px">
-         <h2>Pollitos</h2>
+         <h2>${escapar(T('buscar.pollitos'))}</h2>
          ${datos.usuarios.map(filaUsuario).join('')}
        </div>`
     : '';
-  contenido.innerHTML = personas + listaPios(datos.pios, { emoji: '🤷', texto: 'Ningún pío coincide.' });
+  contenido.innerHTML = personas + listaPios(datos.pios, { emoji: '🤷', texto: T('buscar.vacio') });
 }
 
 async function vistaPerfil(usuario, solapa) {
   const { perfil } = await api(`/usuarios/${encodeURIComponent(usuario)}`);
-  cabecera(perfil.nombre, `${perfil.pios} píos`);
+  cabecera(perfil.nombre, T('perfil.pios', { n: perfil.pios }));
 
   const botonRelacion = perfil.soyYo
-    ? `<button class="boton fantasma" data-salir>Cerrar sesión</button>`
+    ? `<button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>`
     : `<button class="boton ${perfil.loSigo ? 'fantasma' : 'principal'}" data-seguir="${escapar(perfil.usuario)}">
-         ${perfil.loSigo ? 'Siguiendo' : 'Seguir'}
+         ${escapar(T(perfil.loSigo ? 'perfil.siguiendoYa' : 'perfil.seguir'))}
        </button>`;
 
   const tipo = solapa === 'megusta' ? 'megusta' : 'usuario';
@@ -249,16 +393,21 @@ async function vistaPerfil(usuario, solapa) {
       <div class="perfil-usuario">@${escapar(perfil.usuario)}</div>
       ${perfil.bio ? `<p class="perfil-bio">${enriquecer(perfil.bio)}</p>` : ''}
       <div class="perfil-datos">
-        <span><b>${perfil.siguiendo}</b> siguiendo</span>
-        <span><b>${perfil.seguidores}</b> seguidores</span>
-        <span>en el gallinero desde ${new Date(perfil.creado).toLocaleDateString('es')}</span>
+        <span><b>${perfil.siguiendo}</b> ${escapar(T('perfil.siguiendo'))}</span>
+        <span><b>${perfil.seguidores}</b> ${escapar(T('perfil.seguidores'))}</span>
+        <span>${escapar(T('perfil.desde', {
+          fecha: new Date(perfil.creado).toLocaleDateString(diccionario().fechas),
+        }))}</span>
       </div>
     </div>
     <div class="sub-pestanas">
-      <button class="sub-pestana ${tipo === 'usuario' ? 'activa' : ''}" data-solapa="pios">Píos</button>
-      <button class="sub-pestana ${tipo === 'megusta' ? 'activa' : ''}" data-solapa="megusta">Me gusta</button>
+      <button class="sub-pestana ${tipo === 'usuario' ? 'activa' : ''}" data-solapa="pios">${escapar(T('perfil.solapa.pios'))}</button>
+      <button class="sub-pestana ${tipo === 'megusta' ? 'activa' : ''}" data-solapa="megusta">${escapar(T('perfil.solapa.megusta'))}</button>
     </div>
-    ${listaPios(datos.pios, { emoji: '🥚', texto: tipo === 'megusta' ? 'Todavía no le gustó nada.' : 'Ni un pío por acá.' })}`;
+    ${listaPios(datos.pios, {
+      emoji: '🥚',
+      texto: T(tipo === 'megusta' ? 'perfil.vacio.megusta' : 'perfil.vacio.pios'),
+    })}`;
 
   $('#contenido').querySelectorAll('[data-solapa]').forEach((boton) => {
     boton.addEventListener('click', () => {
@@ -269,15 +418,121 @@ async function vistaPerfil(usuario, solapa) {
   if (salir) salir.addEventListener('click', () => cerrarSesion(false));
 }
 
+// Qué ramas están plegadas, sólo mientras dura la vista. Guardarlo entre
+// sesiones sería hacerle recordar al usuario decisiones que ya olvidó.
+const plegadas = new Set();
+
+function cuantasCuelgan(nodo) {
+  return (nodo.ramas || []).reduce((suma, rama) => suma + 1 + cuantasCuelgan(rama), 0);
+}
+
+function rama(nodo) {
+  const tiene = !!(nodo.ramas && nodo.ramas.length);
+  const cerrada = plegadas.has(nodo.id);
+  const boton = tiene
+    ? `<button class="plegar" data-plegar="${escapar(nodo.id)}"
+         title="${escapar(T(cerrada ? 'hilo.desplegar' : 'hilo.plegar'))}">${cerrada ? '+' : '−'}</button>`
+    : '<span class="plegar-hueco"></span>';
+
+  // El botón va afuera del <article>, no adentro: si estuviera dentro, cada
+  // clic para plegar dispararía también la navegación al pío.
+  return `
+    <div class="rama">
+      <div class="rama-fila">${boton}<div class="rama-pio">${tarjetaPio(nodo, { enCascada: true })}</div></div>
+      ${tiene && !cerrada ? `<div class="ramas">${nodo.ramas.map(rama).join('')}</div>` : ''}
+      ${tiene && cerrada
+        ? `<div class="plegado">${escapar(T('hilo.ocultas', { n: cuantasCuelgan(nodo) }))}</div>`
+        : ''}
+    </div>`;
+}
+
+let hiloEnPantalla = null;
+
+function pintarCascada() {
+  if (!hiloEnPantalla) return;
+  const { despues, recortado } = hiloEnPantalla;
+  $('#cascada').innerHTML = despues.length
+    ? despues.map(rama).join('')
+      + (recortado ? `<div class="plegado">${escapar(T('hilo.recortado'))}</div>` : '')
+    : `<div class="vacio"><span class="emoji">💬</span>${escapar(T('hilo.vacio'))}</div>`;
+}
+
 async function vistaHilo(id) {
-  cabecera('Pío', 'El hilo completo');
+  cabecera(T('hilo.titulo'), T('hilo.sub'));
   const datos = await api(`/pios/${encodeURIComponent(id)}/hilo`);
+  hiloEnPantalla = datos;
+  plegadas.clear();
   $('#contenido').innerHTML =
-    datos.antes.map((p) => tarjetaPio(p)).join('') +
-    tarjetaPio(datos.pio, { destacado: true }) +
-    (datos.despues.length
-      ? datos.despues.map((p) => tarjetaPio(p)).join('')
-      : '<div class="vacio"><span class="emoji">💬</span>Sin respuestas. Contestá vos.</div>');
+    datos.antes.map((p) => tarjetaPio(p)).join('')
+    + tarjetaPio(datos.pio, { destacado: true })
+    + '<div id="cascada"></div>';
+  pintarCascada();
+}
+
+// --- avisos ---------------------------------------------------------------
+
+const TIPOS_DE_AVISO = ['mencion', 'respuesta', 'repio', 'megusta', 'seguir'];
+
+const EMOJI_AVISO = {
+  mencion: '📣',
+  respuesta: '💬',
+  repio: '🔁',
+  megusta: '❤️',
+  seguir: '🐣',
+};
+
+function queParece(tipo) {
+  return T(TIPOS_DE_AVISO.includes(tipo) ? `aviso.${tipo}` : 'aviso.otro');
+}
+
+async function vistaAvisos() {
+  cabecera(T('avisos.titulo'), T('avisos.sub'));
+  const { notificaciones } = await api('/notificaciones');
+
+  $('#contenido').innerHTML = notificaciones.length
+    ? notificaciones.map(filaAviso).join('')
+    : `<div class="vacio"><span class="emoji">🔕</span>${escapar(T('avisos.vacio'))}</div>`;
+
+  // Entrar a la vista es haberlos leído; no hace falta un botón para eso.
+  if (notificaciones.some((n) => !n.leida)) {
+    try {
+      await api('/notificaciones/leidas', { metodo: 'POST' });
+      pintarInsignia(0);
+    } catch { /* si falla, quedan sin leer y se reintenta la próxima */ }
+  }
+}
+
+function filaAviso(aviso) {
+  // Sin pío (o si lo borraron) el aviso lleva al perfil de quien lo provocó.
+  const destino = aviso.pio ? `#/p/${aviso.pio.id}` : `#/u/${aviso.de.usuario}`;
+  // Div y no <a>: el texto citado trae sus propios enlaces de #etiqueta y
+  // @mención, y una ancla adentro de otra hace que el navegador parta la fila.
+  return `
+    <div class="aviso-fila ${aviso.leida ? '' : 'sin-leer'}" data-ir="${escapar(destino)}">
+      <span class="aviso-icono">${EMOJI_AVISO[aviso.tipo] || '🐤'}</span>
+      <div>
+        <div class="aviso-linea">
+          <b>${escapar(aviso.de.nombre)}</b>
+          <span class="pio-usuario">@${escapar(aviso.de.usuario)}</span>
+          <span class="pio-fecha">· ${hace(aviso.creado)}</span>
+        </div>
+        <div class="aviso-que">${escapar(queParece(aviso.tipo))}</div>
+        ${aviso.pio ? `<p class="aviso-cita">${enriquecer(aviso.pio.texto)}</p>` : ''}
+      </div>
+    </div>`;
+}
+
+function pintarInsignia(cuantos) {
+  const insignia = $('#insignia');
+  insignia.textContent = cuantos > 99 ? '99+' : String(cuantos);
+  insignia.hidden = !cuantos;
+}
+
+async function cargarAvisos() {
+  try {
+    const { sinLeer } = await api('/notificaciones');
+    pintarInsignia(sinLeer);
+  } catch { /* la insignia no rompe la vista */ }
 }
 
 // --- piezas de interfaz ---------------------------------------------------
@@ -290,9 +545,13 @@ function listaPios(pios, vacio) {
 }
 
 function tarjetaPio(pio, opciones = {}) {
+  // Dentro de la cascada, la sangría ya dice que es una respuesta: repetirlo en
+  // cada rama es ruido, y lo que se pidió fue un sitio poco recargado.
   const contexto = pio.repiadoPor
-    ? `<div class="contexto">🔁 repiado por @${escapar(pio.repiadoPor)}</div>`
-    : (pio.respuestaA ? '<div class="contexto">💬 en respuesta a un pío</div>' : '');
+    ? `<div class="contexto">${T('pio.repiadoPor', { usuario: escapar(pio.repiadoPor) })}</div>`
+    : (pio.respuestaA && !opciones.enCascada
+      ? `<div class="contexto">${escapar(T('pio.respuestaA'))}</div>`
+      : '');
 
   return `
     <article class="pio ${opciones.destacado ? 'destacado' : ''}" data-id="${pio.id}">
@@ -306,10 +565,10 @@ function tarjetaPio(pio, opciones = {}) {
         </div>
         <p class="texto">${enriquecer(pio.texto)}</p>
         <div class="acciones">
-          <button class="accion" data-accion="responder" title="Responder">💬 <span>${pio.respuestas || ''}</span></button>
-          <button class="accion repio ${pio.yoRepio ? 'activa' : ''}" data-accion="repio" title="Repiar">🔁 <span>${pio.repios || ''}</span></button>
-          <button class="accion ${pio.yoMeGusta ? 'activa' : ''}" data-accion="megusta" title="Me gusta">${pio.yoMeGusta ? '❤️' : '🤍'} <span>${pio.meGusta || ''}</span></button>
-          ${pio.mio ? '<button class="accion borrar" data-accion="borrar" title="Borrar">🗑️</button>' : ''}
+          <button class="accion" data-accion="responder" title="${escapar(T('accion.responder'))}">💬 <span>${pio.respuestas || ''}</span></button>
+          <button class="accion repio ${pio.yoRepio ? 'activa' : ''}" data-accion="repio" title="${escapar(T('accion.repiar'))}">🔁 <span>${pio.repios || ''}</span></button>
+          <button class="accion ${pio.yoMeGusta ? 'activa' : ''}" data-accion="megusta" title="${escapar(T('accion.megusta'))}">${pio.yoMeGusta ? '❤️' : '🤍'} <span>${pio.meGusta || ''}</span></button>
+          ${pio.mio ? `<button class="accion borrar" data-accion="borrar" title="${escapar(T('accion.borrar'))}">🗑️</button>` : ''}
         </div>
       </div>
     </article>`;
@@ -322,20 +581,46 @@ function filaUsuario(perfil) {
       <a class="crece" href="#/u/${escapar(perfil.usuario)}">
         <b>${escapar(perfil.nombre)}</b><span>@${escapar(perfil.usuario)}</span>
       </a>
-      ${perfil.soyYo ? '' : `<button class="boton ${perfil.loSigo ? 'fantasma' : 'principal'}" data-seguir="${escapar(perfil.usuario)}">${perfil.loSigo ? 'Siguiendo' : 'Seguir'}</button>`}
+      ${perfil.soyYo ? '' : `<button class="boton ${perfil.loSigo ? 'fantasma' : 'principal'}" data-seguir="${escapar(perfil.usuario)}">${escapar(T(perfil.loSigo ? 'perfil.siguiendoYa' : 'perfil.seguir'))}</button>`}
     </div>`;
 }
 
 // --- interacción sobre los píos -------------------------------------------
 
 document.body.addEventListener('click', async (ev) => {
+  const pliegue = ev.target.closest('[data-plegar]');
+  if (pliegue) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const id = pliegue.dataset.plegar;
+    if (plegadas.has(id)) plegadas.delete(id);
+    else plegadas.add(id);
+    pintarCascada();
+    return;
+  }
+
+  const otroDiseno = ev.target.closest('[data-diseno]');
+  if (otroDiseno) {
+    ev.preventDefault();
+    aplicarDiseno(otroDiseno.dataset.diseno);
+    await pintar();
+    return;
+  }
+
+  const otroIdioma = ev.target.closest('[data-idioma]');
+  if (otroIdioma) {
+    ev.preventDefault();
+    cambiarIdioma(otroIdioma.dataset.idioma);
+    return;
+  }
+
   const seguir = ev.target.closest('[data-seguir]');
   if (seguir) {
     ev.preventDefault();
     ev.stopPropagation();
     try {
       const { perfil } = await api(`/usuarios/${encodeURIComponent(seguir.dataset.seguir)}/seguir`, { metodo: 'POST' });
-      avisar(perfil.loSigo ? `Ahora seguís a @${perfil.usuario}` : `Dejaste de seguir a @${perfil.usuario}`);
+      avisar(T(perfil.loSigo ? 'toast.sigue' : 'toast.noSigue', { usuario: perfil.usuario }));
       await pintar();
     } catch (err) { avisar(err.message); }
     return;
@@ -352,12 +637,18 @@ document.body.addEventListener('click', async (ev) => {
       else if (accion.dataset.accion === 'repio') await api(`/pios/${id}/repio`, { metodo: 'POST' });
       else if (accion.dataset.accion === 'responder') { abrirDialogo(id); return; }
       else if (accion.dataset.accion === 'borrar') {
-        if (!confirm('¿Borrar este pío para siempre?')) return;
+        if (!confirm(T('confirmar.borrar'))) return;
         await api(`/pios/${id}`, { metodo: 'DELETE' });
-        avisar('Pío borrado.');
+        avisar(T('toast.borrado'));
       }
       await pintar();
     } catch (err) { avisar(err.message); }
+    return;
+  }
+
+  const fila = ev.target.closest('[data-ir]');
+  if (fila && !ev.target.closest('a')) {
+    location.hash = fila.dataset.ir;
     return;
   }
 
@@ -373,9 +664,9 @@ const areaTexto = $('#texto-pio');
 
 function abrirDialogo(respuestaA = null) {
   estado.respondiendoA = respuestaA;
-  $('#dialogo-titulo').textContent = respuestaA ? 'Tu respuesta' : 'Nuevo pío';
+  $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta' : 'dialogo.nuevo');
   $('#dialogo-contexto').hidden = !respuestaA;
-  $('#dialogo-contexto').textContent = respuestaA ? 'Respondiendo a un pío del gallinero' : '';
+  $('#dialogo-contexto').textContent = respuestaA ? T('dialogo.contexto') : '';
   areaTexto.value = '';
   $('#error-pio').hidden = true;
   actualizarMedidor();
@@ -417,7 +708,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       cuerpo: { texto: areaTexto.value, respuestaA: estado.respondiendoA },
     });
     dialogo.close();
-    avisar(estado.respondiendoA ? 'Respuesta enviada 🐤' : '¡Pío! 🐤');
+    avisar(T(estado.respondiendoA ? 'toast.respuesta' : 'toast.pio'));
     await pintar();
   } catch (err) {
     error.textContent = err.message;
@@ -433,9 +724,9 @@ async function cargarTendencias() {
     $('#tendencias').innerHTML = tendencias.length
       ? tendencias.map((t) => `
           <a class="tendencia" href="#/e/${encodeURIComponent(t.etiqueta)}">
-            <b>#${escapar(t.etiqueta)}</b><span>${t.total} pío${t.total === 1 ? '' : 's'}</span>
+            <b>#${escapar(t.etiqueta)}</b><span>${escapar(T('tendencia.pios', { n: t.total }))}</span>
           </a>`).join('')
-      : '<p class="chico">Todavía nadie usó etiquetas. Probá con #pio.</p>';
+      : `<p class="chico">${escapar(T('tendencias.vacio'))}</p>`;
   } catch { /* la columna lateral no rompe la vista */ }
 }
 
@@ -450,14 +741,14 @@ async function cargarSugerencias() {
     }
     const lista = [...candidatos.values()].slice(0, 5);
     if (!lista.length) {
-      $('#sugerencias').innerHTML = '<p class="chico">Cuando haya más pollitos, aparecen acá.</p>';
+      $('#sugerencias').innerHTML = `<p class="chico">${escapar(T('sugerencias.vacio'))}</p>`;
       return;
     }
     const perfiles = await Promise.all(
       lista.map((a) => api(`/usuarios/${encodeURIComponent(a.usuario)}`).then((d) => d.perfil))
     );
     $('#sugerencias').innerHTML = perfiles.filter((p) => !p.loSigo && !p.soyYo).map(filaUsuario).join('')
-      || '<p class="chico">Ya seguís a todo el gallinero. 🐔</p>';
+      || `<p class="chico">${escapar(T('sugerencias.todos'))}</p>`;
     void usuarios;
   } catch { /* idem */ }
 }
@@ -469,13 +760,64 @@ function aplicarTema(tema) {
   localStorage.setItem('pio.tema', tema);
 }
 
+// --- diseños --------------------------------------------------------------
+
+// Cada diseño es una hoja que se cuelga DESPUÉS de estilos.css y la sobrescribe
+// por cascada. El DOM no cambia nunca: por eso las diez conviven y todas andan.
+const DISENOS = [
+  { slug: '', nombre: null, que: null },
+  { slug: 'brutal', nombre: 'Brutalismo suave', que: 'Bordes gruesos, color plano, sombra dura.' },
+  { slug: 'fichas', nombre: 'Fichas', que: 'Tarjetas flotando con mucho aire entre una y otra.' },
+  { slug: 'revista', nombre: 'Revista', que: 'Titulares grandes y maquetación asimétrica.' },
+  { slug: 'pixel', nombre: 'Pixel', que: 'Ocho bits: bordes escalonados y paleta corta.' },
+  { slug: 'brote', nombre: 'Brote', que: 'Curvas orgánicas, verdes de hoja, todo en calma.' },
+];
+
+function disenoActual() {
+  const guardado = localStorage.getItem('pio.diseno') || '';
+  return DISENOS.some((d) => d.slug === guardado) ? guardado : '';
+}
+
+function aplicarDiseno(slug) {
+  const hoja = $('#hoja-diseno');
+  const elegido = DISENOS.some((d) => d.slug === slug) ? slug : '';
+  hoja.href = elegido ? `temas/${elegido}.css` : '';
+  localStorage.setItem('pio.diseno', elegido);
+  // El botón de Google se dibuja con el tema de su propio iframe.
+  if (!$('#portada').hidden) prepararGoogle();
+}
+
+async function vistaDisenos() {
+  cabecera(T('disenos.titulo'), T('disenos.sub'));
+  const actual = disenoActual();
+  $('#contenido').innerHTML = `<div class="tarjeta" style="margin:12px 16px">${
+    DISENOS.map((d) => {
+      const nombre = d.nombre || T('disenos.base.nombre');
+      const que = d.que || T('disenos.base.que');
+      const puesto = d.slug === actual;
+      return `
+        <div class="sugerencia">
+          <div class="crece">
+            <b>${escapar(nombre)}</b><span>${escapar(que)}</span>
+          </div>
+          <button class="boton ${puesto ? 'fantasma' : 'principal'}" data-diseno="${escapar(d.slug)}"
+                  ${puesto ? 'disabled' : ''}>${escapar(T(puesto ? 'disenos.enUso' : 'disenos.usar'))}</button>
+        </div>`;
+    }).join('')
+  }</div>`;
+}
+
 function alternarTema() {
   aplicarTema(document.documentElement.dataset.tema === 'oscuro' ? 'claro' : 'oscuro');
+  // El botón de Google viene con su propio tema; hay que volver a dibujarlo.
+  if (!$('#portada').hidden) prepararGoogle();
 }
 
 // Uno vive en la barra de arriba (móvil) y el otro en el menú lateral.
 $('#tema').addEventListener('click', alternarTema);
 $('#tema-lateral').addEventListener('click', alternarTema);
+$('#idioma').addEventListener('click', alternarIdioma);
+$('#idioma-lateral').addEventListener('click', alternarIdioma);
 
 aplicarTema(localStorage.getItem('pio.tema')
   || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro'));
@@ -497,6 +839,8 @@ function mostrarApp() {
 }
 
 (async function arrancar() {
+  aplicarDiseno(disenoActual());
+  traducir();
   if (estado.token) {
     try {
       const { yo } = await api('/yo');
@@ -509,4 +853,5 @@ function mostrarApp() {
     }
   }
   $('#portada').hidden = false;
+  prepararGoogle();
 })();

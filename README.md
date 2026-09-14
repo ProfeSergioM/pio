@@ -413,6 +413,11 @@ hay cinco solapas: el resumen de cuántos hay de cada cosa, las cuentas, los
 últimos cincuenta píos —los de los corrales incluidos, porque lo que no se ve
 no se modera—, los corrales y el editor de emojis propios.
 
+En **Pollitos**, además de borrar, se puede **Ocultar** una cuenta para todo el
+mundo. Sus píos se siguen guardando y puede seguir piando, pero no aparecen en
+la plaza, el nido, las etiquetas, la búsqueda, los avisos ni las tendencias de
+nadie; sólo en su propio perfil y en el panel. Está pensado para el piobot.
+
 Tres cosas que conviene saber antes de apretar **Borrar**:
 
 - Borrar una cuenta se lleva sus píos, sus me gusta, sus repíos, sus avisos,

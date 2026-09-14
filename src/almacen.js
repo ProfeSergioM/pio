@@ -347,6 +347,26 @@ class Almacen {
     return i === -1;
   }
 
+  // Lo mismo que silenciar, pero para todo el sitio y decidido desde el panel.
+  // Pensado para el piobot: que siga piando —mantiene la base viva y sirve para
+  // probar— sin llenarle la plaza a nadie.
+  async alternarOculto(usuario) {
+    const cuenta = this.buscarUsuario(usuario);
+    if (!cuenta) throw new ErrorPio(404, 'No existe ese pollito.', 'pollito.noexiste');
+    if (!Array.isArray(this.datos.ocultos)) this.datos.ocultos = [];
+    const i = this.datos.ocultos.indexOf(cuenta.usuario);
+    if (i === -1) this.datos.ocultos.push(cuenta.usuario);
+    else this.datos.ocultos.splice(i, 1);
+    await this.guardarOcultos();
+    return i === -1;
+  }
+
+  guardarOcultos() {
+    return this.guardar([{
+      tabla: 'pio_meta', clave: 'ocultos', valor: { clave: 'ocultos', valor: this.datos.ocultos },
+    }]);
+  }
+
   // Silenciar es dejar de ver sin que el otro se entere: no hay aviso, y sus
   // pios siguen llegando a la base. Solo cambia lo que se le muestra a quien
   // silencio.
@@ -441,6 +461,13 @@ class Almacen {
         corral.dueno = nuevo;
         cambios.push(cambioCorral(corral));
       }
+    }
+
+    // Tampoco la forma de salir de lo que ocultó el panel.
+    const k = (this.datos.ocultos || []).indexOf(viejo);
+    if (k !== -1) {
+      this.datos.ocultos[k] = nuevo;
+      cambios.push({ tabla: 'pio_meta', clave: 'ocultos', valor: { clave: 'ocultos', valor: this.datos.ocultos } });
     }
 
     for (const otro of this.datos.usuarios) {
@@ -606,6 +633,11 @@ class Almacen {
       const j = (otro.silenciados || []).indexOf(quien);
       if (j !== -1) { otro.silenciados.splice(j, 1); tocado = true; }
       if (tocado) cambios.push(cambioUsuario(otro));
+    }
+    const k = (this.datos.ocultos || []).indexOf(quien);
+    if (k !== -1) {
+      this.datos.ocultos.splice(k, 1);
+      cambios.push({ tabla: 'pio_meta', clave: 'ocultos', valor: { clave: 'ocultos', valor: this.datos.ocultos } });
     }
     this.datos.usuarios = this.datos.usuarios.filter((u) => u.usuario !== quien);
 
@@ -819,7 +851,7 @@ class Almacen {
   sinLeer(cuenta) {
     // Lo de una cuenta silenciada no se muestra, así que tampoco se cuenta: una
     // insignia con un número que no lleva a nada es peor que ninguna.
-    const callados = new Set(cuenta.silenciados || []);
+    const callados = new Set([...(cuenta.silenciados || []), ...(this.datos.ocultos || [])]);
     return this.datos.notificaciones
       .filter((n) => n.para === cuenta.usuario && !n.leida && !callados.has(n.de)).length;
   }

@@ -16,6 +16,8 @@ const vacio = () => ({
   usuarios: [], pios: [], sesiones: {}, notificaciones: [], secuencia: 0,
   // Vacío significa "los de fábrica"; el panel de administración lo llena.
   emojis: [],
+  // Cuentas que el panel escondió para todo el mundo. Sus píos se guardan igual.
+  ocultos: [],
   corrales: [],
   // Solo los recientes. Un corral activo junta miles y no tiene sentido
   // tenerlos todos en memoria: el chat mira lo de ahora.
@@ -140,6 +142,8 @@ class DepositoSupabase {
     datos.secuencia = Number(enMeta('secuencia')) || 0;
     const guardados = enMeta('emojis');
     datos.emojis = Array.isArray(guardados) ? guardados : [];
+    const ocultos = enMeta('ocultos');
+    datos.ocultos = Array.isArray(ocultos) ? ocultos : [];
     datos.corrales = (corrales || []).map((f) => f.datos).filter(Boolean);
     datos.mensajes = (mensajes || []).map((f) => f.datos).filter(Boolean).reverse();
     return datos;

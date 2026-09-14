@@ -1527,6 +1527,7 @@ async function panelPollitos(donde) {
     usuarios.map((u) => {
       const sellos = [
         u.manda ? T('admin.manda') : '',
+        u.oculto ? T('admin.ocultoSello') : '',
         u.porGoogle ? T('admin.porGoogle') : '',
         !u.tieneClave && !u.porGoogle ? T('admin.sinClave') : '',
       ].filter(Boolean);
@@ -1538,10 +1539,25 @@ async function panelPollitos(donde) {
             <span>@${escapar(u.usuario)} · ${escapar(T('admin.cuentas', { pios: u.pios, seguidores: u.seguidores }))}</span>
           </a>
           ${sellos.map((s) => `<span class="sello">${escapar(s)}</span>`).join('')}
+          <button class="boton fantasma chico" data-ocultar="${escapar(u.usuario)}"
+                  title="${escapar(T('admin.ocultarQue'))}">${escapar(T(u.oculto ? 'admin.mostrar' : 'admin.ocultar'))}</button>
           ${u.manda ? '' : `<button class="boton peligro chico" data-borrar-pollito="${escapar(u.usuario)}">${escapar(T('admin.borrar'))}</button>`}
         </div>`;
     }).join('')
   }</div>`;
+
+  for (const boton of donde.querySelectorAll('[data-ocultar]')) {
+    const quien = boton.dataset.ocultar;
+    boton.addEventListener('click', async () => {
+      try {
+        const { oculto } = await api(`/admin/ocultos/${encodeURIComponent(quien)}`, { metodo: 'POST' });
+        avisar(T(oculto ? 'admin.ocultado' : 'admin.mostrado', { usuario: quien }));
+        await panelPollitos(donde);
+      } catch (err) {
+        avisar(err.message);
+      }
+    });
+  }
 
   for (const boton of donde.querySelectorAll('[data-borrar-pollito]')) {
     const quien = boton.dataset.borrarPollito;

@@ -392,6 +392,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
             pios: almacen.datos.pios.filter((p) => p.autor === u.usuario).length,
             seguidores: almacen.seguidores(u.usuario).length,
             manda: servicios.admins.has(u.usuario),
+            oculto: (almacen.datos.ocultos || []).includes(u.usuario),
           })).sort((a, b) => b.creado - a.creado),
         },
       };
@@ -415,6 +416,10 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
         .slice(0, PAGINA)
         .map((p) => serializar(almacen, p, yo));
       return { datos: { pios: lista } };
+    }
+
+    if (metodo === 'POST' && id === 'ocultos' && accion) {
+      return { datos: { oculto: await almacen.alternarOculto(accion) } };
     }
 
     if (metodo === 'DELETE' && id === 'pios' && accion) {
@@ -551,7 +556,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       return {
         datos: {
           notificaciones: almacen.avisosDe(yo)
-            .filter((n) => !silenciado(yo, n.de))
+            .filter((n) => !callado(almacen, yo, n.de))
             .map((n) => serializarAviso(almacen, n, yo)),
           sinLeer: almacen.sinLeer(yo),
         },
@@ -573,7 +578,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       .slice(0, 10)
       .map((u) => perfil(almacen, u, yo));
     const pios = almacen.datos.pios
-      .filter((p) => p.texto.toLowerCase().includes(q) && !silenciado(yo, p.autor))
+      .filter((p) => p.texto.toLowerCase().includes(q) && !callado(almacen, yo, p.autor))
       .sort((a, b) => b.creado - a.creado)
       .slice(0, PAGINA)
       .map((p) => serializar(almacen, p, yo));
@@ -584,7 +589,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     const cuenta = new Map();
     const corte = Date.now() - 7 * 24 * 60 * 60 * 1000;
     for (const p of almacen.datos.pios) {
-      if (p.creado < corte) continue;
+      if (p.creado < corte || (almacen.datos.ocultos || []).includes(p.autor)) continue;
       for (const e of p.etiquetas) cuenta.set(e, (cuenta.get(e) || 0) + 1);
     }
     const tendencias = [...cuenta.entries()]
@@ -666,7 +671,7 @@ function linea(almacen, params, yo) {
   if (tipo !== 'usuario') {
     for (let i = entradas.length - 1; i >= 0; i -= 1) {
       const e = entradas[i];
-      if (silenciado(yo, e.pio.autor) || silenciado(yo, e.repiadoPor)) entradas.splice(i, 1);
+      if (callado(almacen, yo, e.pio.autor) || callado(almacen, yo, e.repiadoPor)) entradas.splice(i, 1);
     }
   }
 
@@ -778,6 +783,13 @@ function perfil(almacen, cuenta, yo) {
 
 function silenciado(yo, usuario) {
   return !!(yo && usuario && Array.isArray(yo.silenciados) && yo.silenciados.includes(usuario));
+}
+
+// Lo que no se le muestra a quien mira: lo que silenció, más lo que el panel
+// escondió para todos.
+function callado(almacen, yo, usuario) {
+  if (!usuario) return false;
+  return (almacen.datos.ocultos || []).includes(usuario) || silenciado(yo, usuario);
 }
 
 // --- utilidades HTTP ------------------------------------------------------

@@ -2148,6 +2148,66 @@ async function main() {
 
   await new Promise((listo) => conSil.close(listo));
   fs.rmSync(carpetaSil, { recursive: true, force: true });
+  // --- ocultar para todos -------------------------------------------------
+
+  grupo('Ocultar para todos');
+
+  const carpetaOcu = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-ocu-'));
+  const conOcu = crearServidor({ datos: carpetaOcu, api: { altas: 100, admins: ['jefa'] } });
+  await new Promise((listo) => conOcu.listen(0, '127.0.0.1', listo));
+  const baseOcu = `http://127.0.0.1:${conOcu.address().port}`;
+  const pedirOcu = async (ruta, o = {}) => {
+    const r = await fetch(`${baseOcu}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceOcu = async (usuario) => (await pedirOcu('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+
+  const jefaOcuT = await naceOcu('jefa');
+  const botOcuT = await naceOcu('pajarito');
+  const genteT = await naceOcu('vecina');
+  await pedirOcu('/usuarios/pajarito/seguir', { metodo: 'POST', token: genteT });
+  await pedirOcu('/pios', { metodo: 'POST', token: botOcuT, cuerpo: { texto: 'pio automatico #robot' } });
+  await pedirOcu('/pios', { metodo: 'POST', token: genteT, cuerpo: { texto: 'pio de persona #humano' } });
+  const autoresOcu = async (ruta, token) => (await pedirOcu(ruta, { token })).datos.pios.map((p) => p.autor.usuario);
+
+  probar('ocultar es del corral de los que mandan',
+    (await pedirOcu('/admin/ocultos/pajarito', { metodo: 'POST', token: genteT })).estado === 403);
+
+  const ocu = await pedirOcu('/admin/ocultos/pajarito', { metodo: 'POST', token: jefaOcuT });
+  probar('el panel oculta una cuenta', ocu.estado === 200 && ocu.datos.oculto === true);
+  probar('no se muestra en la plaza de nadie', !(await autoresOcu('/pios?tipo=plaza', genteT)).includes('pajarito'));
+  probar('ni sin sesión', !(await autoresOcu('/pios?tipo=plaza')).includes('pajarito'));
+  probar('ni en el nido de quien la sigue', !(await autoresOcu('/pios?tipo=nido', genteT)).includes('pajarito'));
+  probar('ni en la búsqueda', !(await pedirOcu('/buscar?q=automatico')).datos.pios.length);
+  probar('ni empuja tendencias',
+    !(await pedirOcu('/tendencias')).datos.tendencias.some((x) => x.etiqueta === 'robot'));
+  probar('lo de los demás sí', (await autoresOcu('/pios?tipo=plaza')).includes('vecina'));
+
+  probar('pero puede seguir piando', (await pedirOcu('/pios', { metodo: 'POST', token: botOcuT, cuerpo: { texto: 'sigo' } })).estado === 201);
+  probar('y sus píos se guardan', conOcu.almacen.datos.pios.filter((p) => p.autor === 'pajarito').length === 2);
+  probar('en su perfil se ve', (await autoresOcu('/pios?tipo=usuario&usuario=pajarito')).includes('pajarito'));
+  probar('y el panel sí los ve', (await pedirOcu('/admin/pios', { token: jefaOcuT })).datos.pios.some((p) => p.autor.usuario === 'pajarito'));
+  probar('el panel la marca como oculta',
+    (await pedirOcu('/admin/usuarios', { token: jefaOcuT })).datos.usuarios.find((u) => u.usuario === 'pajarito').oculto === true);
+
+  // Persiste: otro servidor sobre la misma carpeta arranca con la cuenta oculta.
+  const conOcu2 = crearServidor({ datos: carpetaOcu, api: { altas: 100 } });
+  await conOcu2.almacen.listo;
+  probar('sobrevive a un reinicio', conOcu2.almacen.datos.ocultos.includes('pajarito'));
+
+  const mos = await pedirOcu('/admin/ocultos/pajarito', { metodo: 'POST', token: jefaOcuT });
+  probar('se vuelve a mostrar', mos.datos.oculto === false
+    && (await autoresOcu('/pios?tipo=plaza')).includes('pajarito'));
+
+  await new Promise((listo) => conOcu.close(listo));
+  fs.rmSync(carpetaOcu, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

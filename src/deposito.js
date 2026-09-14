@@ -140,12 +140,32 @@ class DepositoSupabase {
 
     const altas = new Map();
     const bajas = new Map();
+    const renombres = [];
     for (const cambio of cambios) {
       const tabla = TABLAS[cambio.tabla];
       if (!tabla) throw new Error(`Tabla desconocida: ${cambio.tabla}`);
+      // Un cambio con `desde` mueve una fila de una llave a otra. Va aparte
+      // porque NO se puede hacer con un alta y una baja: entre las dos habria
+      // dos filas vivas a la vez, y cualquier indice unico de la tabla —el de
+      // google, sin ir mas lejos— rechaza el lote entero.
+      if (cambio.desde && cambio.desde !== cambio.clave) {
+        renombres.push(cambio);
+        continue;
+      }
       const donde = cambio.valor === null ? bajas : altas;
       if (!donde.has(cambio.tabla)) donde.set(cambio.tabla, []);
       donde.get(cambio.tabla).push(cambio);
+    }
+
+    // Primero los renombres: es un UPDATE sobre la fila que ya existe, asi que
+    // en ningun momento hay dos.
+    for (const cambio of renombres) {
+      const tabla = TABLAS[cambio.tabla];
+      await this.pedir(`${cambio.tabla}?${tabla.llave}=eq.${encodeURIComponent(cambio.desde)}`, {
+        metodo: 'PATCH',
+        cabeceras: { Prefer: 'return=minimal' },
+        cuerpo: tabla.fila(cambio.valor),
+      });
     }
 
     for (const [nombre, lista] of altas) {

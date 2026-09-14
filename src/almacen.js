@@ -42,7 +42,15 @@ class Almacen {
   }
 
   async guardar(cambios) {
-    await this.deposito.guardar(this.datos, cambios || []);
+    try {
+      await this.deposito.guardar(this.datos, cambios || []);
+    } catch (err) {
+      // Lo de memoria ya se cambio, pero el deposito lo rechazo. Si se dejara
+      // asi, quien hizo el cambio lo veria aplicado y nadie mas: vuelve a
+      // leerse todo para que la memoria diga la verdad.
+      await this.cargar().catch(() => {});
+      throw err;
+    }
   }
 
   // Los del sitio, ya listos para dibujar. Sin nada guardado, los de fábrica:
@@ -340,13 +348,15 @@ class Almacen {
   // cubra el cambio de nombre junto con el resto del perfil.
   aplicarCambioDeUsuario(cuenta, nuevo) {
     const viejo = cuenta.usuario;
-    const cambios = [baja('pio_usuarios', viejo)];
+    // Un renombre, no una baja seguida de un alta: entre las dos habria dos
+    // filas con el mismo sub de Google, y el indice unico rechaza todo.
+    const cambios = [];
 
     cuenta.alias = cuenta.alias || [];
     if (!cuenta.alias.includes(viejo)) cuenta.alias.push(viejo);
     cuenta.usuario = nuevo;
     cuenta.usuarioCambiado = Date.now();
-    cambios.push(cambioUsuario(cuenta));
+    cambios.push(Object.assign(cambioUsuario(cuenta), { desde: viejo }));
 
     for (const pio of this.datos.pios) {
       let tocado = false;

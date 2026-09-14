@@ -1064,6 +1064,33 @@ async function main() {
   probar('un valor nulo se traduce en borrado', pedidos[0].metodo === 'DELETE');
   probar('y apunta a su llave', pedidos[0].url.includes('id=in.'));
 
+  // Mover una fila de una llave a otra NO puede ser un alta más una baja:
+  // entre las dos habría dos filas vivas con el mismo sub de Google, y el
+  // índice único rechaza el lote entero. Esto rompía el cambio de nombre de
+  // usuario en producción, y no se veía acá porque el depósito de archivo no
+  // tiene restricciones.
+  pedidos.length = 0;
+  await depNube.guardar(null, [{
+    tabla: 'pio_usuarios',
+    clave: 'nuevo',
+    desde: 'viejo',
+    valor: { usuario: 'nuevo', creado: 1, google: 'sub-1' },
+  }]);
+  probar('un renombre se manda en un solo pedido', pedidos.length === 1, String(pedidos.length));
+  probar('y es una modificación, no un alta', pedidos[0].metodo === 'PATCH', pedidos[0].metodo);
+  probar('sobre la fila que ya existía', pedidos[0].url.includes('usuario=eq.viejo'), pedidos[0].url);
+  probar('con los datos nuevos adentro', pedidos[0].cuerpo.usuario === 'nuevo');
+  probar('nunca hay dos filas con el mismo google',
+    !pedidos.some((p) => p.metodo === 'POST'));
+
+  // Un renombre que no renombra nada es un alta común.
+  pedidos.length = 0;
+  await depNube.guardar(null, [{
+    tabla: 'pio_usuarios', clave: 'igual', desde: 'igual',
+    valor: { usuario: 'igual', creado: 1 },
+  }]);
+  probar('pedir el mismo nombre no dispara un renombre', pedidos[0].metodo === 'POST');
+
   const roto = new DEP.DepositoSupabase(
     { url: 'https://x.supabase.co', clave: 'k' },
     { enviar: async () => ({ ok: false, status: 401, text: async () => 'clave inválida' }) });

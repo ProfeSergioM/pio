@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 327 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 333 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de

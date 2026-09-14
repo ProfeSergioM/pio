@@ -851,6 +851,12 @@ class Almacen {
       if (avisados.has(quien)) continue;
       anotar(quien, 'mencion');
     }
+    // A quien etiquetaron en la foto se le avisa, salvo que ya tenga aviso por
+    // este pío: dos avisos por lo mismo es ruido.
+    for (const e of (pio.adjunto && pio.adjunto.etiquetas) || []) {
+      if (avisados.has(e.usuario)) continue;
+      anotar(e.usuario, 'foto');
+    }
     return nuevos;
   }
 

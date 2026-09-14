@@ -2528,6 +2528,87 @@ async function main() {
   await new Promise((listo) => conSpo.close(listo));
   fs.rmSync(carpetaSpo, { recursive: true, force: true });
 
+  // --- etiquetas en fotos ---------------------------------------------------
+
+  grupo('Etiquetas en fotos');
+
+  const carpetaEti = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-eti-'));
+  const conEti = crearServidor({ datos: carpetaEti, api: { altas: 100 } });
+  await new Promise((listo) => conEti.listen(0, '127.0.0.1', listo));
+  const baseEti = `http://127.0.0.1:${conEti.address().port}`;
+  const pedirEti = async (ruta, o = {}) => {
+    const r = await fetch(`${baseEti}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceEti = async (usuario) => (await pedirEti('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+  const fotografaT = await naceEti('fotografa');
+  const amigaT = await naceEti('amiga');
+  await naceEti('primo');
+  const fotoEti = 'https://res.cloudinary.com/demo/image/upload/pio/asado.jpg';
+
+  const conGente = await pedirEti('/pios', {
+    metodo: 'POST', token: fotografaT,
+    cuerpo: {
+      texto: 'El asado del domingo',
+      adjunto: {
+        url: fotoEti,
+        etiquetas: [
+          { usuario: 'amiga', x: 0.3, y: 0.4 },
+          { usuario: '@Primo', x: 1.7, y: -2 },
+          { usuario: 'nadie_asi', x: 0.5, y: 0.5 },
+          { usuario: 'amiga', x: 0.9, y: 0.9 },
+          { usuario: 'fotografa', x: 'mucho', y: 0.1 },
+        ],
+      },
+    },
+  });
+  const etiq = conGente.datos.pio.adjunto.etiquetas;
+  probar('una foto lleva etiquetas', conGente.estado === 201 && etiq.length === 2, JSON.stringify(etiq));
+  probar('con su lugar sobre la foto', etiq[0].usuario === 'amiga' && etiq[0].x === 0.3 && etiq[0].y === 0.4);
+  probar('las coordenadas se quedan dentro de la foto', etiq[1].usuario === 'primo' && etiq[1].x === 1 && etiq[1].y === 0);
+  probar('una cuenta que no existe no se etiqueta', !etiq.some((e) => e.usuario === 'nadie_asi'));
+  probar('la misma persona, una sola vez', etiq.filter((e) => e.usuario === 'amiga').length === 1);
+  probar('sin coordenadas no hay etiqueta', !etiq.some((e) => e.usuario === 'fotografa'));
+
+  const avisoFoto = (await pedirEti('/notificaciones', { token: amigaT })).datos.notificaciones;
+  probar('a quien etiquetaron le llega el aviso', avisoFoto.length === 1 && avisoFoto[0].tipo === 'foto');
+
+  const mencionYFoto = await pedirEti('/pios', {
+    metodo: 'POST', token: fotografaT,
+    cuerpo: { texto: 'mira @amiga', adjunto: { url: fotoEti, etiquetas: [{ usuario: 'amiga', x: 0.5, y: 0.5 }] } },
+  });
+  probar('mencionada y etiquetada es un solo aviso',
+    (await pedirEti('/notificaciones', { token: amigaT })).datos.notificaciones
+      .filter((n) => n.pio && n.pio.id === mencionYFoto.datos.pio.id).length === 1);
+
+  const muchas = Array.from({ length: 15 }, (_, i) => ({ usuario: `relleno${i}`, x: 0.1, y: 0.1 }));
+  for (let i = 0; i < 15; i += 1) await naceEti(`relleno${i}`);
+  const llena = await pedirEti('/pios', {
+    metodo: 'POST', token: fotografaT, cuerpo: { texto: 'mucha gente', adjunto: { url: fotoEti, etiquetas: muchas } },
+  });
+  probar('diez etiquetas como mucho', llena.datos.pio.adjunto.etiquetas.length === 10);
+
+  const spotifyConEtiquetas = await pedirEti('/pios', {
+    metodo: 'POST', token: fotografaT,
+    cuerpo: { texto: 'x', adjunto: { tipo: 'spotify', recurso: 'track', id: '4cOdK2wGLETKBW3PvgPWqT', etiquetas: [{ usuario: 'amiga', x: 0, y: 0 }] } },
+  });
+  probar('una canción no lleva etiquetas', !spotifyConEtiquetas.datos.pio.adjunto.etiquetas);
+
+  // Se guardan con el nombre de entonces y se muestran con el de ahora.
+  await pedirEti('/yo', { metodo: 'PATCH', token: amigaT, cuerpo: { usuario: 'amiga_nueva' } });
+  const trasRenombre = (await pedirEti(`/pios/${conGente.datos.pio.id}/hilo`)).datos.pio.adjunto.etiquetas;
+  probar('si la etiquetada cambia de nombre, la etiqueta la sigue', trasRenombre.some((e) => e.usuario === 'amiga_nueva'));
+
+  await new Promise((listo) => conEti.close(listo));
+  fs.rmSync(carpetaEti, { recursive: true, force: true });
+
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

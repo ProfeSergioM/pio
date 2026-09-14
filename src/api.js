@@ -278,7 +278,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       // La fecha la pone el servidor: si la mandara el cliente, cualquiera
       // podría contestar la pregunta de otro día.
       const pio = await almacen.publicar(
-        yo, cuerpo.texto, cuerpo.respuestaA, limpiarAdjunto(cuerpo.adjunto),
+        yo, cuerpo.texto, cuerpo.respuestaA, adjuntoConEtiquetas(almacen, cuerpo.adjunto),
         dondeVa ? dondeVa.nombre : null,
         { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null },
       );
@@ -785,7 +785,7 @@ function serializar(almacen, pio, yo) {
     // puede estar corrido, el del servidor es uno solo.
     huevo: almacen.esHuevo(pio),
     naceEn: almacen.esHuevo(pio) ? pio.nace - Date.now() : 0,
-    adjunto: pio.adjunto || null,
+    adjunto: adjuntoPublico(almacen, pio.adjunto),
     corral: pio.corral || null,
     pregunta: pio.pregunta || null,
     mio: !!yo && pio.autor === yo.usuario,
@@ -924,6 +924,47 @@ function limpiarAdjunto(crudo) {
     // Texto alternativo: es lo que lee quien no ve la imagen.
     texto: M.recortar(M.normalizarTexto(crudo.texto || ''), 100) || null,
   };
+}
+
+// Quién sale en la foto y dónde. Las coordenadas van de 0 a 1 sobre la imagen
+// entera, así la etiqueta cae en el mismo lugar se vea la foto del tamaño que
+// se vea. Diez como mucho: una foto con más etiquetas que caras no es una foto.
+const ETIQUETAS_POR_FOTO = 10;
+
+function adjuntoConEtiquetas(almacen, crudo) {
+  const limpio = limpiarAdjunto(crudo);
+  if (!limpio || limpio.tipo === 'spotify') return limpio;
+  const vistos = new Set();
+  const etiquetas = [];
+  for (const e of (Array.isArray(crudo.etiquetas) ? crudo.etiquetas : []).slice(0, 50)) {
+    if (etiquetas.length >= ETIQUETAS_POR_FOTO) break;
+    const cuenta = e && almacen.buscarUsuario(e.usuario);
+    const x = Number(e && e.x);
+    const y = Number(e && e.y);
+    // Una cuenta que no existe no se etiqueta: sería un nombre flotando sobre
+    // la foto que no lleva a ningún lado.
+    if (!cuenta || vistos.has(cuenta.usuario) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+    vistos.add(cuenta.usuario);
+    const entre01 = (n) => Math.round(Math.min(1, Math.max(0, n)) * 1000) / 1000;
+    etiquetas.push({ usuario: cuenta.usuario, x: entre01(x), y: entre01(y) });
+  }
+  if (etiquetas.length) limpio.etiquetas = etiquetas;
+  return limpio;
+}
+
+// Las etiquetas se guardan con el nombre de ese momento y se muestran con el
+// de ahora: buscarUsuario también encuentra por los nombres viejos. Una cuenta
+// borrada simplemente deja de aparecer.
+function adjuntoPublico(almacen, adjunto) {
+  if (!adjunto) return null;
+  if (!Array.isArray(adjunto.etiquetas)) return adjunto;
+  const etiquetas = adjunto.etiquetas
+    .map((e) => {
+      const cuenta = almacen.buscarUsuario(e.usuario);
+      return cuenta ? { usuario: cuenta.usuario, nombre: cuenta.nombre, x: e.x, y: e.y } : null;
+    })
+    .filter(Boolean);
+  return Object.assign({}, adjunto, { etiquetas });
 }
 
 function exigir(yo) {

@@ -510,4 +510,3 @@ abierta.
 ## Lo que todavía no está
 
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.
-- Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.

@@ -608,6 +608,47 @@ img.emoji {
 .gif:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 2px; }
 
 .pio-imagen { display: block; margin-top: 8px; }
+
+/* --- la foto entera y sus etiquetas ------------------------------------ */
+
+/* El marco mide lo mismo que la foto: así una etiqueta en el 30 % cae en el
+   30 % de la imagen y no en el de un recuadro con bandas. Por eso la foto ya
+   no se recorta para llenar el ancho. */
+.marco { position: relative; display: inline-block; max-width: 100%; vertical-align: top; }
+.pio-imagen .marco img {
+  display: block; width: auto; height: auto; max-width: 100%; max-height: 420px;
+  border-radius: var(--radio); border: 1px solid var(--borde);
+}
+.adjunto .marco img {
+  width: auto; height: auto; max-width: 100%; max-height: 300px; object-fit: contain; cursor: crosshair;
+}
+
+.etiqueta-foto {
+  position: absolute; transform: translate(-50%, 7px); z-index: 1;
+  display: none; align-items: center; gap: 4px; white-space: nowrap;
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(20, 18, 12, .86); color: #fff; font-size: 12px; font-weight: 700;
+}
+.etiqueta-foto::before {
+  content: ''; position: absolute; left: 50%; top: -5px; transform: translateX(-50%);
+  border: 5px solid transparent; border-top: 0; border-bottom-color: rgba(20, 18, 12, .86);
+}
+.marco.con-etiquetas .etiqueta-foto { display: inline-flex; }
+.etiqueta-foto button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 0 0 2px; font-size: 11px; }
+
+.ver-etiquetas {
+  position: absolute; left: 8px; bottom: 8px; z-index: 2;
+  border: 0; border-radius: 999px; padding: 4px 10px; cursor: pointer;
+  background: rgba(20, 18, 12, .8); color: #fff; font-size: 12px; font-weight: 700;
+}
+
+.etiquetar { position: absolute; transform: translate(-50%, 7px); z-index: 3; }
+.etiquetar input {
+  width: 150px; padding: 6px 10px; border-radius: 999px; font: inherit; font-size: 13px;
+  border: 1px solid var(--borde); background: var(--panel); color: var(--texto);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+}
+.pista-etiquetar { margin: 6px 0 0; }
 .pio-spotify { margin-top: 8px; }
 iframe.spotify { display: block; width: 100%; border: 0; border-radius: 12px; }
 .adjunto iframe.spotify { margin-top: 4px; }

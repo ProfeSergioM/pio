@@ -666,7 +666,7 @@ async function vistaHilo(id) {
 
 // --- avisos ---------------------------------------------------------------
 
-const TIPOS_DE_AVISO = ['mencion', 'respuesta', 'repio', 'megusta', 'seguir'];
+const TIPOS_DE_AVISO = ['mencion', 'respuesta', 'repio', 'megusta', 'seguir', 'foto'];
 
 const EMOJI_AVISO = {
   mencion: '📣',
@@ -674,6 +674,7 @@ const EMOJI_AVISO = {
   repio: '🔁',
   megusta: '❤️',
   seguir: '🐣',
+  foto: '📸',
 };
 
 function queParece(tipo) {
@@ -976,10 +977,23 @@ function adjuntoDePio(pio) {
   const a = pio.adjunto;
   if (!a) return '';
   if (a.tipo === 'spotify') return `<div class="pio-spotify">${reproductorSpotify(a)}</div>`;
+  const etiquetas = a.etiquetas || [];
+  // Se muestran al tocar el botón, como en cualquier red: una foto tapada de
+  // nombres de entrada deja de ser una foto.
   return `
-    <a class="pio-imagen" href="${escapar(a.url)}" target="_blank" rel="noopener noreferrer">
-      <img src="${escapar(a.miniatura || a.url)}" alt="${escapar(a.texto || '')}" loading="lazy">
-    </a>`;
+    <div class="pio-imagen">
+      <span class="marco">
+        <a href="${escapar(a.url)}" target="_blank" rel="noopener noreferrer">
+          <img src="${escapar(a.miniatura || a.url)}" alt="${escapar(a.texto || '')}" loading="lazy">
+        </a>
+        ${etiquetas.map((e) => `
+          <a class="etiqueta-foto" href="#/u/${escapar(e.usuario)}"
+             style="left:${e.x * 100}%;top:${e.y * 100}%">@${escapar(e.usuario)}</a>`).join('')}
+        ${etiquetas.length ? `
+          <button type="button" class="ver-etiquetas" data-ver-etiquetas
+                  title="${escapar(T('foto.ver'))}">👤 ${etiquetas.length}</button>` : ''}
+      </span>
+    </div>`;
 }
 
 // Si el texto trae un enlace de Spotify y no hay otro adjunto, el enlace sale
@@ -1204,6 +1218,14 @@ document.body.addEventListener('click', async (ev) => {
   if (ev.target.closest('[data-responder-pregunta]') && preguntaDeHoy) {
     ev.preventDefault();
     abrirDialogo(null, preguntaDeHoy);
+    return;
+  }
+
+  const verEtiquetas = ev.target.closest('[data-ver-etiquetas]');
+  if (verEtiquetas) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    verEtiquetas.closest('.marco').classList.toggle('con-etiquetas');
     return;
   }
 
@@ -1466,13 +1488,82 @@ function pintarAdjunto() {
               title="${escapar(T('adjunto.quitar'))}">✕</button>`;
     return;
   }
+  const etiquetas = adjunto.etiquetas || [];
   caja.innerHTML = `
-    <img src="${escapar(adjunto.miniatura || adjunto.url)}" alt="">
-    <button type="button" class="icono quitar" data-quitar-adjunto
-            title="${escapar(T('adjunto.quitar'))}">✕</button>
+    <span class="marco con-etiquetas">
+      <img src="${escapar(adjunto.miniatura || adjunto.url)}" alt="" data-etiquetar-foto>
+      ${etiquetas.map((e, i) => `
+        <span class="etiqueta-foto" style="left:${e.x * 100}%;top:${e.y * 100}%">
+          @${escapar(e.usuario)}
+          <button type="button" data-quitar-etiqueta="${i}" title="${escapar(T('adjunto.quitar'))}">✕</button>
+        </span>`).join('')}
+      <button type="button" class="icono quitar" data-quitar-adjunto
+              title="${escapar(T('adjunto.quitar'))}">✕</button>
+    </span>
+    <p class="chico pista-etiquetar">${escapar(T(etiquetas.length >= ETIQUETAS_MAXIMAS ? 'foto.llena' : 'foto.pista'))}</p>
     <input class="alt" id="alt-adjunto" maxlength="100"
            placeholder="${escapar(T('adjunto.alt'))}" value="${escapar(adjunto.texto || '')}">`;
 }
+
+// --- etiquetar en la foto -----------------------------------------------------
+
+const ETIQUETAS_MAXIMAS = 10;
+
+// Antes de volver a dibujar se guarda lo escrito en el texto alternativo: si
+// no, poner una etiqueta borraría la descripción de la foto.
+function redibujarAdjunto() {
+  const alt = $('#alt-adjunto');
+  if (alt && adjunto) adjunto.texto = alt.value;
+  pintarAdjunto();
+}
+
+$('#adjunto-vista').addEventListener('click', (ev) => {
+  const quitar = ev.target.closest('[data-quitar-etiqueta]');
+  if (quitar) {
+    ev.preventDefault();
+    adjunto.etiquetas.splice(Number(quitar.dataset.quitarEtiqueta), 1);
+    redibujarAdjunto();
+    return;
+  }
+
+  const foto = ev.target.closest('[data-etiquetar-foto]');
+  if (!foto || !adjunto || adjunto.tipo === 'spotify') return;
+  if ((adjunto.etiquetas || []).length >= ETIQUETAS_MAXIMAS) return;
+
+  const r = foto.getBoundingClientRect();
+  const x = (ev.clientX - r.left) / r.width;
+  const y = (ev.clientY - r.top) / r.height;
+  const marco = foto.closest('.marco');
+  const viejo = marco.querySelector('.etiquetar');
+  if (viejo) viejo.remove();
+
+  marco.insertAdjacentHTML('beforeend', `
+    <span class="etiquetar" style="left:${x * 100}%;top:${y * 100}%">
+      <input type="text" autocomplete="off" maxlength="16" placeholder="${escapar(T('foto.quien'))}">
+    </span>`);
+  const campo = marco.querySelector('.etiquetar input');
+  campo.focus();
+
+  const cerrar = () => { const e = marco.querySelector('.etiquetar'); if (e) e.remove(); };
+  campo.addEventListener('keydown', async (tecla) => {
+    if (tecla.key === 'Escape') { tecla.preventDefault(); tecla.stopPropagation(); cerrar(); return; }
+    // Enter dentro del diálogo publicaría el pío.
+    if (tecla.key !== 'Enter') return;
+    tecla.preventDefault();
+    const usuario = aUsuario(campo.value.replace(/^@/, ''));
+    if (!usuario) { cerrar(); return; }
+    try {
+      const { perfil } = await api(`/usuarios/${encodeURIComponent(usuario)}`);
+      adjunto.etiquetas = (adjunto.etiquetas || []).filter((e) => e.usuario !== perfil.usuario);
+      adjunto.etiquetas.push({ usuario: perfil.usuario, x, y });
+      redibujarAdjunto();
+    } catch (err) {
+      campo.value = '';
+      campo.placeholder = T('foto.noexiste');
+    }
+  });
+  campo.addEventListener('blur', () => setTimeout(cerrar, 150));
+});
 
 function leerComoBase64(archivo) {
   return new Promise((listo, falla) => {

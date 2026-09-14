@@ -82,6 +82,7 @@ const EN_ESPANOL = {
   'usuario.falta': () => 'Elige un nombre de usuario.',
   'usuario.forma': (d) => `El usuario va de ${d.min} a ${d.max} caracteres: minúsculas, números y _.`,
   'usuario.reservado': () => 'Ese nombre está guardado para el sitio. Elige otro.',
+  'usuario.reciente': (d) => `Cambiaste tu nombre hace poco. Vas a poder de nuevo en ${d.dias} días.`,
   'nombre.falta': () => 'Pon un nombre para mostrar.',
   'nombre.largo': (d) => `El nombre no puede pasar de ${d.limite} caracteres.`,
   'clave.corta': (d) => `La clave necesita al menos ${d.minimo} caracteres.`,

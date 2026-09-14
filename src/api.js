@@ -154,6 +154,9 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
     if (metodo === 'PATCH') {
       exigir(yo);
+      // El nombre va aparte: no es un campo mas del perfil, porque arrastra
+      // todo lo que lo referencia.
+      if (cuerpo.usuario !== undefined) await almacen.cambiarUsuario(yo, cuerpo.usuario);
       await almacen.actualizarPerfil(yo, cuerpo);
       return { datos: { yo: perfil(almacen, yo, yo) } };
     }
@@ -427,8 +430,14 @@ function serializarAviso(almacen, aviso, yo) {
 }
 
 function perfil(almacen, cuenta, yo) {
+  const propio = !!yo && yo.usuario === cuenta.usuario;
   return {
     usuario: cuenta.usuario,
+    // Sólo en el perfil propio: a los demás no les importa cuándo podés
+    // cambiarlo, y es información de más sobre otra persona.
+    puedeCambiarUsuario: propio
+      ? !cuenta.usuarioCambiado || Date.now() - cuenta.usuarioCambiado >= 30 * 24 * 60 * 60 * 1000
+      : undefined,
     nombre: cuenta.nombre,
     bio: cuenta.bio,
     creado: cuenta.creado,

@@ -1078,6 +1078,99 @@ async function main() {
     DEP.crearDeposito('/tmp/x', { supabase: { url: 'u', clave: 'k' } }).nombre === 'supabase');
   probar('pedir archivo a mano le gana a las credenciales',
     DEP.crearDeposito('/tmp/x', { deposito: 'archivo', supabase: { url: 'u', clave: 'k' } }).nombre === 'archivo');
+  // --- cambiar de nombre --------------------------------------------------
+
+  grupo('Cambiar de nombre');
+
+  const carpetaRen = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-ren-'));
+  const conRen = crearServidor({ datos: carpetaRen });
+  await new Promise((listo) => conRen.listen(0, '127.0.0.1', listo));
+  const baseRen = `http://127.0.0.1:${conRen.address().port}`;
+
+  const pedirRen = async (ruta, o = {}) => {
+    const r = await fetch(`${baseRen}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const nace = async (usuario) => (await pedirRen('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'cascarita' },
+  })).datos.token;
+
+  const tokenViejo = await nace('pollitodorado');
+  const tokenOtro = await nace('calandria');
+
+  const mio = (await pedirRen('/pios', {
+    metodo: 'POST', token: tokenViejo, cuerpo: { texto: 'Un pío escrito con el nombre viejo' },
+  })).datos.pio.id;
+  await pedirRen(`/pios/${mio}/megusta`, { metodo: 'POST', token: tokenOtro });
+  await pedirRen(`/pios/${mio}/repio`, { metodo: 'POST', token: tokenOtro });
+  await pedirRen('/usuarios/pollitodorado/seguir', { metodo: 'POST', token: tokenOtro });
+
+  const cambio = await pedirRen('/yo', {
+    metodo: 'PATCH', token: tokenViejo, cuerpo: { usuario: 'jilguero' },
+  });
+  probar('cambiar el nombre funciona', cambio.estado === 200, `estado ${cambio.estado}`);
+  probar('y el perfil ya responde con el nuevo', cambio.datos.yo.usuario === 'jilguero');
+
+  probar('la sesión sigue viva con el nombre nuevo',
+    (await pedirRen('/yo', { token: tokenViejo })).datos.yo.usuario === 'jilguero');
+
+  const suyos = (await pedirRen(`/pios?tipo=usuario&usuario=jilguero`)).datos.pios;
+  probar('los píos viejos vienen con él', suyos.length === 1 && suyos[0].id === mio);
+  probar('el me gusta no se perdió', suyos[0].meGusta === 1);
+  probar('el repío tampoco', suyos[0].repios === 1);
+
+  const deQuienLoSigue = (await pedirRen('/usuarios/jilguero', { token: tokenOtro })).datos.perfil;
+  probar('quien lo seguía lo sigue siguiendo', deQuienLoSigue.loSigo === true);
+  probar('y le cuenta el seguidor', deQuienLoSigue.seguidores === 1);
+
+  // El nombre viejo: reservado, y además sigue llevando a la persona.
+  const porElViejo = await pedirRen('/usuarios/pollitodorado');
+  probar('el nombre viejo sigue llevando al perfil', porElViejo.estado === 200
+    && porElViejo.datos.perfil.usuario === 'jilguero');
+
+  const intruso = await pedirRen('/registro', {
+    metodo: 'POST', cuerpo: { usuario: 'pollitodorado', nombre: 'Intruso', clave: 'cascarita' },
+  });
+  probar('nadie puede quedarse con el nombre que dejó', intruso.estado === 409,
+    `estado ${intruso.estado}`);
+
+  // La espera entre cambios.
+  const muySeguido = await pedirRen('/yo', {
+    metodo: 'PATCH', token: tokenViejo, cuerpo: { usuario: 'zorzal' },
+  });
+  probar('cambiar dos veces seguidas se frena', muySeguido.estado === 429
+    && muySeguido.datos.clave === 'usuario.reciente', `estado ${muySeguido.estado}`);
+  probar('y dice en cuántos días se podrá', muySeguido.datos.datos.dias > 0);
+
+  const ocupado = await pedirRen('/yo', {
+    metodo: 'PATCH', token: tokenOtro, cuerpo: { usuario: 'jilguero' },
+  });
+  probar('no se puede tomar el nombre de otro', ocupado.estado === 409);
+
+  const reservado = await pedirRen('/yo', {
+    metodo: 'PATCH', token: tokenOtro, cuerpo: { usuario: 'admin' },
+  });
+  probar('ni uno de los reservados del sitio', reservado.estado === 400
+    && reservado.datos.clave === 'usuario.reservado');
+
+  const mismo = await pedirRen('/yo', {
+    metodo: 'PATCH', token: tokenOtro, cuerpo: { usuario: 'calandria', bio: 'sin cambiar el nombre' },
+  });
+  probar('pedir el mismo nombre no gasta el cambio', mismo.estado === 200
+    && mismo.datos.yo.bio === 'sin cambiar el nombre', `estado ${mismo.estado}`);
+
+  probar('el perfil propio dice si se puede cambiar',
+    (await pedirRen('/yo', { token: tokenOtro })).datos.yo.puedeCambiarUsuario === true);
+  probar('y el de quien acaba de cambiarlo dice que no',
+    (await pedirRen('/yo', { token: tokenViejo })).datos.yo.puedeCambiarUsuario === false);
+
+  await new Promise((listo) => conRen.close(listo));
+  fs.rmSync(carpetaRen, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

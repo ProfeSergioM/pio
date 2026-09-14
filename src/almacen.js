@@ -18,6 +18,10 @@ const cambioAviso = (a) => ({ tabla: 'pio_avisos', clave: a.id, valor: a });
 const cambioSecuencia = (n) => ({ tabla: 'pio_meta', clave: 'secuencia', valor: { clave: 'secuencia', valor: n } });
 const baja = (tabla, clave) => ({ tabla, clave, valor: null });
 
+// Entre un cambio de nombre y el siguiente. Reescribir todas las referencias
+// es caro, y sin espera alguien podria reservarse nombres a repeticion.
+const ESPERA_CAMBIO = 30 * 24 * 60 * 60 * 1000;
+
 // Persistencia en un unico JSON. Alcanza de sobra para el tamano de Pio y
 // deja el estado legible a ojo, que es comodo para depurar.
 class Almacen {
@@ -46,9 +50,15 @@ class Almacen {
 
   // --- usuarios -----------------------------------------------------------
 
+  // Busca por el nombre actual y tambien por los que tuvo antes. Eso hace dos
+  // cosas de una: los enlaces y las menciones viejas siguen llevando a la
+  // persona correcta, y nadie puede quedarse con un nombre que alguien dejo.
   buscarUsuario(usuario) {
     const u = M.normalizarUsuario(usuario);
-    return this.datos.usuarios.find((x) => x.usuario === u) || null;
+    if (!u) return null;
+    return this.datos.usuarios.find((x) => x.usuario === u)
+      || this.datos.usuarios.find((x) => (x.alias || []).includes(u))
+      || null;
   }
 
   async crearUsuario(usuario, nombre, clave) {
@@ -63,6 +73,8 @@ class Almacen {
       usuario: u,
       nombre: M.normalizarTexto(nombre),
       bio: '',
+      alias: [],
+      usuarioCambiado: null,
       sal,
       hash: hashear(clave, sal),
       google: null,
@@ -112,6 +124,8 @@ class Almacen {
       usuario,
       nombre: M.recortar(nombre, M.LIMITE_NOMBRE),
       bio: '',
+      alias: [],
+      usuarioCambiado: null,
       sal: null,
       hash: null,
       google: quien.sub,
@@ -188,6 +202,80 @@ class Almacen {
     }
     await this.guardar(cambios);
     return i === -1;
+  }
+
+  // Cambiar de nombre obliga a reescribir todo lo que apuntaba al viejo: los
+  // pios, los me gusta, los repios, las listas de seguidos de los demas, los
+  // avisos y las sesiones. Es caro, y por eso hay una espera entre cambios;
+  // tambien evita que alguien se reserve nombres cambiandose cien veces.
+  async cambiarUsuario(cuenta, pedido) {
+    const nuevo = M.normalizarUsuario(pedido);
+    if (nuevo === cuenta.usuario) return cuenta;
+
+    const error = M.validarUsuario(nuevo);
+    if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
+
+    const dueno = this.buscarUsuario(nuevo);
+    if (dueno && dueno !== cuenta) {
+      throw new ErrorPio(409, 'Ya hay un pollito con ese nombre.', 'usuario.ocupado');
+    }
+
+    const ultimo = cuenta.usuarioCambiado || 0;
+    const falta = ESPERA_CAMBIO - (Date.now() - ultimo);
+    if (ultimo && falta > 0) {
+      const dias = Math.ceil(falta / 86400000);
+      throw new ErrorPio(
+        429,
+        `Cambiaste tu nombre hace poco. Vas a poder de nuevo en ${dias} días.`,
+        'usuario.reciente',
+        { dias },
+      );
+    }
+
+    const viejo = cuenta.usuario;
+    const cambios = [baja('pio_usuarios', viejo)];
+
+    cuenta.alias = cuenta.alias || [];
+    if (!cuenta.alias.includes(viejo)) cuenta.alias.push(viejo);
+    cuenta.usuario = nuevo;
+    cuenta.usuarioCambiado = Date.now();
+    cambios.push(cambioUsuario(cuenta));
+
+    for (const pio of this.datos.pios) {
+      let tocado = false;
+      if (pio.autor === viejo) { pio.autor = nuevo; tocado = true; }
+      const i = pio.meGusta.indexOf(viejo);
+      if (i !== -1) { pio.meGusta[i] = nuevo; tocado = true; }
+      for (const r of pio.repios) {
+        if (r.usuario === viejo) { r.usuario = nuevo; tocado = true; }
+      }
+      if (tocado) cambios.push(cambioPio(pio));
+    }
+
+    for (const otro of this.datos.usuarios) {
+      const i = otro.siguiendo.indexOf(viejo);
+      if (i !== -1) {
+        otro.siguiendo[i] = nuevo;
+        if (otro !== cuenta) cambios.push(cambioUsuario(otro));
+      }
+    }
+
+    for (const aviso of this.datos.notificaciones) {
+      let tocado = false;
+      if (aviso.para === viejo) { aviso.para = nuevo; tocado = true; }
+      if (aviso.de === viejo) { aviso.de = nuevo; tocado = true; }
+      if (tocado) cambios.push(cambioAviso(aviso));
+    }
+
+    for (const [token, sesion] of Object.entries(this.datos.sesiones)) {
+      if (sesion.usuario === viejo) {
+        sesion.usuario = nuevo;
+        cambios.push(cambioSesion(token, sesion));
+      }
+    }
+
+    await this.guardar(cambios);
+    return cuenta;
   }
 
   seguidores(usuario) {

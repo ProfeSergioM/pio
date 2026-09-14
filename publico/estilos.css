@@ -398,6 +398,41 @@ a { color: inherit; text-decoration: none; }
   overflow-wrap: anywhere;
 }
 
+/* --- chat de los corrales ---------------------------------------------- */
+
+/* Alto fijo y desplazamiento propio: si creciera sin límite, el resto de la
+   página se iría bajando sola a medida que llegan mensajes. */
+.charla {
+  height: min(52vh, 460px); overflow-y: auto;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+}
+
+.burbuja {
+  align-self: flex-start; max-width: 78%;
+  padding: 8px 12px; border-radius: var(--radio);
+  background: var(--panel-2); border: 1px solid var(--borde);
+}
+/* Lo propio a la derecha y con el color de acento: es la señal más barata para
+   saber quién dijo qué sin leer el nombre. */
+.burbuja.mia {
+  align-self: flex-end;
+  background: var(--amarillo-suave); border-color: var(--amarillo);
+}
+.burbuja .quien { display: block; font-size: 12px; font-weight: 700; color: var(--pico); }
+.burbuja p { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.burbuja .cuando { display: block; margin-top: 2px; font-size: 11px; color: var(--tenue); }
+.burbuja.mia .cuando { color: #6b5b18; }
+
+.decir {
+  display: flex; gap: 8px; align-items: center;
+  padding: 12px 16px; border-top: 1px solid var(--borde);
+}
+.decir input {
+  flex: 1; min-width: 0; padding: 10px 14px;
+  border: 1px solid var(--borde); border-radius: 999px; background: var(--fondo);
+}
+.decir input:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 1px; }
+
 /* --- medallitas -------------------------------------------------------- */
 
 /* Chiquita y al lado del nombre, sin cambiar el alto del renglón. */

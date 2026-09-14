@@ -343,7 +343,11 @@ async function pintar() {
 
   // Al salir de un corral se vuelve a piar a la plaza; si no, uno se lleva el
   // corral puesto sin darse cuenta.
-  if (vista !== 'c') corralActual = null;
+  // Al irse del corral se apaga el latido del chat y se vuelve a piar a la plaza.
+  if (vista !== 'c') {
+    corralActual = null;
+    pararChat();
+  }
 
   const contenido = $('#contenido');
   contenido.innerHTML = `<div class="cargando">${escapar(T('cargando'))}</div>`;
@@ -358,7 +362,7 @@ async function pintar() {
     else if (vista === 'avisos') await vistaAvisos();
     else if (vista === 'disenos') await vistaDisenos();
     else if (vista === 'corrales') await vistaCorrales();
-    else if (vista === 'c') await vistaCorral(argumento);
+    else if (vista === 'c') await vistaCorral(argumento, params.get('ver'));
     else await vistaLinea('nido');
   } catch (err) {
     contenido.innerHTML = `<div class="vacio"><span class="emoji">💥</span>${escapar(err.message)}</div>`;
@@ -643,12 +647,101 @@ async function vistaCorrales() {
   $('#armar-corral').addEventListener('click', abrirCorral);
 }
 
-async function vistaCorral(nombre) {
+// --- el chat de un corral -------------------------------------------------
+
+// Mientras la pestaña está abierta se pregunta por lo nuevo cada pocos
+// segundos. No hay nada más liviano sin dependencias, y para un corral de
+// amigos alcanza de sobra.
+let latidoChat = null;
+let ultimoMensaje = 0;
+
+function pararChat() {
+  if (latidoChat) clearInterval(latidoChat);
+  latidoChat = null;
+}
+
+function burbuja(m, propia) {
+  return `
+    <div class="burbuja${propia ? ' mia' : ''}">
+      ${propia ? '' : `<a class="quien" href="#/u/${escapar(m.autor.usuario)}">${escapar(m.autor.nombre)}</a>`}
+      <p>${enriquecer(m.texto)}</p>
+      <span class="cuando">${hace(m.creado)}</span>
+    </div>`;
+}
+
+async function traerMensajes(corral, primeraVez) {
+  const caja = $('#charla');
+  // Si ya no está la caja es que se fue de la vista: el latido se apaga solo.
+  if (!caja) { pararChat(); return; }
+  try {
+    // Sólo lo posterior a lo último que se vio: traer la conversación entera
+    // cada cuatro segundos sería mandar lo mismo una y otra vez.
+    const { mensajes } = await api(`/corrales/${encodeURIComponent(corral)}/chat`
+      + (ultimoMensaje ? `?desde=${ultimoMensaje}` : ''));
+
+    if (primeraVez && !mensajes.length) {
+      caja.innerHTML = `<p class="chico centrado">${escapar(T('chat.vacio'))}</p>`;
+      return;
+    }
+    if (!mensajes.length) return;
+    if (primeraVez) caja.innerHTML = '';
+
+    for (const m of mensajes) {
+      ultimoMensaje = Math.max(ultimoMensaje, m.creado);
+      caja.insertAdjacentHTML('beforeend',
+        burbuja(m, !!estado.yo && m.autor.usuario === estado.yo.usuario));
+    }
+    // Una charla que no baja sola obliga a perseguirla.
+    caja.scrollTop = caja.scrollHeight;
+  } catch (err) {
+    /* un latido perdido no rompe nada: lo trae el siguiente */
+  }
+}
+
+function pintarChat(corral, donde) {
+  ultimoMensaje = 0;
+  donde.innerHTML = `
+    <div class="charla" id="charla"></div>
+    ${corral.estoy
+      ? `<form class="decir" id="forma-decir">
+           <input id="que-decir" maxlength="300" autocomplete="off"
+                  placeholder="${escapar(T('chat.ph'))}">
+           <button class="boton principal" type="submit">${escapar(T('chat.enviar'))}</button>
+         </form>`
+      : `<p class="chico centrado decir">${escapar(T('chat.afuera'))}</p>`}`;
+
+  traerMensajes(corral.nombre, true);
+  pararChat();
+  latidoChat = setInterval(() => traerMensajes(corral.nombre, false), 4000);
+
+  const forma = $('#forma-decir');
+  if (!forma) return;
+  forma.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const campo = $('#que-decir');
+    const texto = campo.value.trim();
+    if (!texto) return;
+    campo.value = '';
+    try {
+      await api(`/corrales/${encodeURIComponent(corral.nombre)}/chat`, {
+        metodo: 'POST', cuerpo: { texto },
+      });
+      await traerMensajes(corral.nombre, false);
+    } catch (err) {
+      // Se devuelve lo escrito: perder el mensaje es peor que el error.
+      campo.value = texto;
+      avisar(err.message);
+    }
+  });
+  $('#que-decir').focus();
+}
+
+async function vistaCorral(nombre, solapa) {
   const { corral } = await api(`/corrales/${encodeURIComponent(nombre)}`);
   corralActual = corral.nombre;
   cabecera(corral.titulo, corral.descripcion || T('corral.dueno', { usuario: corral.dueno }));
 
-  const datos = await api(`/pios?tipo=corral&corral=${encodeURIComponent(corral.nombre)}`);
+  const enChat = solapa === 'chat';
   $('#contenido').innerHTML = `
     <div class="perfil-caja">
       <div class="perfil-datos">
@@ -662,7 +755,28 @@ async function vistaCorral(nombre) {
         </button>
       </div>
     </div>
-    ${datos.pios.map((p) => tarjetaPio(p, { enCorral: true })).join('') || `<div class="vacio"><span class="emoji">🚜</span>${escapar(T('corral.vacio'))}</div>`}`;
+    <div class="sub-pestanas">
+      <button class="sub-pestana ${enChat ? '' : 'activa'}" data-solapa-corral="pios">${escapar(T('corral.solapa.pios'))}</button>
+      <button class="sub-pestana ${enChat ? 'activa' : ''}" data-solapa-corral="chat">${escapar(T('corral.solapa.chat'))}</button>
+    </div>
+    <div id="abajo-corral"></div>`;
+
+  const abajo = $('#abajo-corral');
+  if (enChat) {
+    pintarChat(corral, abajo);
+  } else {
+    pararChat();
+    const datos = await api(`/pios?tipo=corral&corral=${encodeURIComponent(corral.nombre)}`);
+    abajo.innerHTML = datos.pios.map((p) => tarjetaPio(p, { enCorral: true })).join('')
+      || `<div class="vacio"><span class="emoji">🚜</span>${escapar(T('corral.vacio'))}</div>`;
+  }
+
+  for (const boton of $('#contenido').querySelectorAll('[data-solapa-corral]')) {
+    boton.addEventListener('click', () => {
+      const cual = boton.dataset.solapaCorral;
+      location.hash = `#/c/${corral.nombre}${cual === 'chat' ? '?ver=chat' : ''}`;
+    });
+  }
 }
 
 function abrirCorral() {

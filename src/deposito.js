@@ -17,6 +17,9 @@ const vacio = () => ({
   // Vacío significa "los de fábrica"; el panel de administración lo llena.
   emojis: [],
   corrales: [],
+  // Solo los recientes. Un corral activo junta miles y no tiene sentido
+  // tenerlos todos en memoria: el chat mira lo de ahora.
+  mensajes: [],
 });
 
 // Que columna es la llave y como se arma la fila. Lo que de verdad se consulta
@@ -46,6 +49,10 @@ const TABLAS = {
   pio_corrales: {
     llave: 'nombre',
     fila: (c) => ({ nombre: c.nombre, creado: c.creado, dueno: c.dueno, datos: c }),
+  },
+  pio_mensajes: {
+    llave: 'id',
+    fila: (m) => ({ id: m.id, corral: m.corral, autor: m.autor, creado: m.creado, datos: m }),
   },
 };
 
@@ -108,7 +115,7 @@ class DepositoSupabase {
   }
 
   async cargar() {
-    const [usuarios, pios, sesiones, avisos, meta, corrales] = await Promise.all([
+    const [usuarios, pios, sesiones, avisos, meta, corrales, mensajes] = await Promise.all([
       this.pedir('pio_usuarios?select=datos'),
       this.pedir('pio_pios?select=datos'),
       this.pedir('pio_sesiones?select=token,usuario,creada'),
@@ -118,6 +125,8 @@ class DepositoSupabase {
       // correr la migracion, el sitio arranca igual y sin corrales, en vez de
       // no arrancar. Una funcion que falta es mejor que un sitio caido.
       this.pedir('pio_corrales?select=datos').catch(() => null),
+      // Los ultimos, no todos: se piden ordenados al reves y se dan vuelta.
+      this.pedir('pio_mensajes?select=datos&order=creado.desc&limit=500').catch(() => null),
     ]);
 
     const datos = vacio();
@@ -132,6 +141,7 @@ class DepositoSupabase {
     const guardados = enMeta('emojis');
     datos.emojis = Array.isArray(guardados) ? guardados : [];
     datos.corrales = (corrales || []).map((f) => f.datos).filter(Boolean);
+    datos.mensajes = (mensajes || []).map((f) => f.datos).filter(Boolean).reverse();
     return datos;
   }
 

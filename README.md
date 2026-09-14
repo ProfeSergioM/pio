@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 369 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 387 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -91,6 +91,7 @@ queda apagada y lo dice.
 | [`src/medallas.js`](src/medallas.js) | Medallitas por cantidad de seguidores |
 | [`src/recuperacion.js`](src/recuperacion.js) | Códigos para volver a entrar si se olvida la clave |
 | [`src/corrales.js`](src/corrales.js) | Reglas de los corrales, los subtemas |
+| [`src/mensajes.js`](src/mensajes.js) | Reglas del chat de cada corral |
 | [`src/deposito.js`](src/deposito.js) | Dónde vive todo: archivo JSON o Supabase |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`supabase-corrales.sql`](supabase-corrales.sql) | Las tablas de corrales y del chat |
@@ -390,5 +391,4 @@ crezca sin control.
   pero la interfaz todavía no pide la página siguiente.
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
-- Corrales: subtemas con su propio feed y una pestaña de chat.
 - Panel de administración.

@@ -8,6 +8,7 @@ const { crearGifs, ErrorGif } = require('./gifs');
 const { crearAcortador, ErrorEnlace } = require('./enlaces');
 const { medallaDe, faltanPara } = require('./medallas');
 const C = require('./corrales');
+const MSG = require('./mensajes');
 
 // De donde se acepta que venga un adjunto. El cliente manda una URL, y una URL
 // que manda el cliente es un dato, no una verdad: si no se comprobara, cualquiera
@@ -353,6 +354,24 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
         await almacen.alternarCorral(yo, corral.nombre);
         return { datos: { corral: serializarCorral(almacen, corral, yo) } };
       }
+
+      // El chat. Se lee sin sesión —el corral es público— pero para escribir
+      // hay que haber entrado: eso es lo que significa entrar.
+      if (metodo === 'GET' && accion === 'chat') {
+        const desde = url.searchParams.get('desde');
+        return {
+          datos: {
+            mensajes: almacen.mensajesDe(corral.nombre, desde)
+              .map((m) => serializarMensaje(almacen, m)),
+          },
+        };
+      }
+
+      if (metodo === 'POST' && accion === 'chat') {
+        exigir(yo);
+        const dicho = await almacen.decir(yo, corral, cuerpo.texto);
+        return { codigo: 201, datos: { mensaje: serializarMensaje(almacen, dicho) } };
+      }
     }
   }
 
@@ -574,6 +593,18 @@ function serializarAviso(almacen, aviso, yo) {
     leida: aviso.leida,
     de: de ? { usuario: de.usuario, nombre: de.nombre } : { usuario: aviso.de, nombre: aviso.de },
     pio: pio ? serializar(almacen, pio, yo) : null,
+  };
+}
+
+function serializarMensaje(almacen, m) {
+  const quien = almacen.buscarUsuario(m.autor);
+  return {
+    id: m.id,
+    texto: m.texto,
+    creado: m.creado,
+    autor: quien
+      ? { usuario: quien.usuario, nombre: quien.nombre }
+      : { usuario: m.autor, nombre: m.autor },
   };
 }
 

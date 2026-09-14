@@ -6,6 +6,7 @@ const { crearDeposito, vacio } = require('./deposito');
 const E = require('./emojis');
 const R = require('./recuperacion');
 const C = require('./corrales');
+const MSG = require('./mensajes');
 const { esReservado } = require('./reservados');
 
 // Cada cambio dice qué registro tocar. El depósito de archivo los ignora y
@@ -19,6 +20,11 @@ const cambioSesion = (token, s) => ({
 });
 const cambioAviso = (a) => ({ tabla: 'pio_avisos', clave: a.id, valor: a });
 const cambioCorral = (c) => ({ tabla: 'pio_corrales', clave: c.nombre, valor: c });
+const cambioMensaje = (m) => ({ tabla: 'pio_mensajes', clave: m.id, valor: m });
+
+// Cuantos mensajes se guardan en memoria. Los viejos siguen en la base; lo que
+// se pierde es poder mirar hacia atras, que todavia no existe como funcion.
+const MENSAJES_EN_MEMORIA = 500;
 const cambioSecuencia = (n) => ({ tabla: 'pio_meta', clave: 'secuencia', valor: { clave: 'secuencia', valor: n } });
 const baja = (tabla, clave) => ({ tabla, clave, valor: null });
 
@@ -406,6 +412,13 @@ class Almacen {
       if (tocado) cambios.push(cambioPio(pio));
     }
 
+    for (const m of this.datos.mensajes) {
+      if (m.autor === viejo) {
+        m.autor = nuevo;
+        cambios.push(cambioMensaje(m));
+      }
+    }
+
     for (const corral of this.datos.corrales) {
       if (corral.dueno === viejo) {
         corral.dueno = nuevo;
@@ -587,6 +600,38 @@ class Almacen {
     else cuenta.corrales.splice(i, 1);
     await this.guardar([cambioUsuario(cuenta)]);
     return i === -1;
+  }
+
+  // Los mensajes de un corral, del mas viejo al mas nuevo. Con `desde` se
+  // piden solo los posteriores, que es lo que hace el chat cada pocos
+  // segundos: traer todo de nuevo seria mandar la misma conversacion mil veces.
+  mensajesDe(corral, desde) {
+    const corte = Number(desde) || 0;
+    const suyos = this.datos.mensajes.filter((m) => m.corral === corral && m.creado > corte);
+    return suyos.slice(-MSG.POR_TANDA);
+  }
+
+  async decir(cuenta, corral, texto) {
+    if (!(cuenta.corrales || []).includes(corral.nombre)) {
+      throw new ErrorPio(403, MSG.mensaje({ clave: 'mensaje.afuera' }), 'mensaje.afuera');
+    }
+    const error = MSG.validar(texto);
+    if (error) throw new ErrorPio(400, MSG.mensaje(error), error.clave, error.datos);
+
+    const nuevo = {
+      id: this.proximoId('m'),
+      corral: corral.nombre,
+      autor: cuenta.usuario,
+      texto: M.normalizarTexto(texto),
+      creado: Date.now(),
+    };
+    this.datos.mensajes.push(nuevo);
+    // Se recorta la memoria, no la base: lo viejo sigue guardado.
+    if (this.datos.mensajes.length > MENSAJES_EN_MEMORIA) {
+      this.datos.mensajes = this.datos.mensajes.slice(-MENSAJES_EN_MEMORIA);
+    }
+    await this.guardar([cambioMensaje(nuevo), cambioSecuencia(this.datos.secuencia)]);
+    return nuevo;
   }
 
   suscritos(corral) {

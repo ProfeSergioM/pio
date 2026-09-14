@@ -1784,6 +1784,104 @@ async function main() {
 
   await new Promise((listo) => conCor.close(listo));
   fs.rmSync(carpetaCor, { recursive: true, force: true });
+  // --- chat de los corrales -----------------------------------------------
+
+  grupo('Chat');
+  const MSG = require('../src/mensajes');
+
+  // El chat no lleva el límite de cien: los cien son del pío, que es público
+  // y queda. Una conversación es otra cosa.
+  probar('el límite del chat es más ancho que el del pío', MSG.LIMITE === 300);
+  probar('un mensaje vacío no vale', (MSG.validar('   ') || {}).clave === 'mensaje.vacio');
+  probar('uno de cien pasa sin problema', MSG.validar('x'.repeat(100)) === null);
+  probar('uno de trescientos también', MSG.validar('x'.repeat(300)) === null);
+  probar('uno de trescientos uno no', (MSG.validar('x'.repeat(301)) || {}).clave === 'mensaje.largo');
+  probar('y dice por cuánto se pasó', MSG.validar('x'.repeat(305)).datos.sobra === 5);
+
+  // --- y por HTTP ---
+
+  const carpetaCha = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-chat-'));
+  const conCha = crearServidor({ datos: carpetaCha, api: { altas: 100 } });
+  await new Promise((listo) => conCha.listen(0, '127.0.0.1', listo));
+  const baseCha = `http://127.0.0.1:${conCha.address().port}`;
+
+  const pedirCha = async (ruta, o = {}) => {
+    const r = await fetch(`${baseCha}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceCha = async (usuario) => (await pedirCha('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+
+  const adentroT = await naceCha('jilguero');
+  const afueraT = await naceCha('calandria');
+  await pedirCha('/corrales', {
+    metodo: 'POST', token: adentroT, cuerpo: { nombre: 'cocina', titulo: 'Cocina' },
+  });
+
+  const dicho = await pedirCha('/corrales/cocina/chat', {
+    metodo: 'POST', token: adentroT, cuerpo: { texto: 'Hola, ¿alguien por acá?' },
+  });
+  probar('quien está adentro puede escribir', dicho.estado === 201, JSON.stringify(dicho.datos).slice(0, 70));
+  probar('y el mensaje vuelve con su autor', dicho.datos.mensaje.autor.usuario === 'jilguero');
+
+  // Entrar al corral tiene que significar algo.
+  const desdeAfuera = await pedirCha('/corrales/cocina/chat', {
+    metodo: 'POST', token: afueraT, cuerpo: { texto: 'me cuelo' },
+  });
+  probar('quien está afuera no puede escribir', desdeAfuera.estado === 403
+    && desdeAfuera.datos.clave === 'mensaje.afuera', String(desdeAfuera.estado));
+
+  probar('escribir sin sesión tampoco',
+    (await pedirCha('/corrales/cocina/chat', { metodo: 'POST', cuerpo: { texto: 'hola' } })).estado === 401);
+
+  // Pero el corral es público: leer lo puede cualquiera.
+  const leido = await pedirCha('/corrales/cocina/chat');
+  probar('leer no pide sesión', leido.estado === 200 && leido.datos.mensajes.length === 1);
+
+  await pedirCha('/corrales/cocina/seguir', { metodo: 'POST', token: afueraT });
+  const yaAdentro = await pedirCha('/corrales/cocina/chat', {
+    metodo: 'POST', token: afueraT, cuerpo: { texto: 'ahora sí' },
+  });
+  probar('entrando al corral ya puede', yaAdentro.estado === 201);
+
+  // El chat pregunta cada pocos segundos: traer todo de nuevo cada vez sería
+  // mandar la misma conversación una y otra vez.
+  const todos = await pedirCha('/corrales/cocina/chat');
+  probar('se leen los dos', todos.datos.mensajes.length === 2);
+  const primero = todos.datos.mensajes[0];
+  const nuevos = await pedirCha(`/corrales/cocina/chat?desde=${primero.creado}`);
+  probar('con desde, sólo llegan los posteriores', nuevos.datos.mensajes.length === 1
+    && nuevos.datos.mensajes[0].texto === 'ahora sí', String(nuevos.datos.mensajes.length));
+  probar('y del más viejo al más nuevo',
+    todos.datos.mensajes[0].creado <= todos.datos.mensajes[1].creado);
+
+  const largoCha = await pedirCha('/corrales/cocina/chat', {
+    metodo: 'POST', token: adentroT, cuerpo: { texto: 'x'.repeat(301) },
+  });
+  probar('un mensaje pasado de largo se rechaza', largoCha.estado === 400);
+
+  // Cada corral tiene su conversación.
+  await pedirCha('/corrales', {
+    metodo: 'POST', token: adentroT, cuerpo: { nombre: 'musica', titulo: 'Música' },
+  });
+  await pedirCha('/corrales/musica/chat', {
+    metodo: 'POST', token: adentroT, cuerpo: { texto: 'otro corral, otra charla' },
+  });
+  probar('los corrales no se mezclan',
+    (await pedirCha('/corrales/cocina/chat')).datos.mensajes.length === 2
+    && (await pedirCha('/corrales/musica/chat')).datos.mensajes.length === 1);
+
+  probar('el chat de un corral inexistente da 404',
+    (await pedirCha('/corrales/no_existe/chat')).estado === 404);
+
+  await new Promise((listo) => conCha.close(listo));
+  fs.rmSync(carpetaCha, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

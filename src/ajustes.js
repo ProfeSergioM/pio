@@ -53,6 +53,12 @@ function leerAjustes(directorio) {
     // de la aplicación, ni comprometiendo la base.
     admins: String(elegir('PIO_ADMINS', 'admins') || '')
       .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean),
+    // La clave que abre /api/latido, la puerta que golpea un servicio de cron
+    // gratuito para que el hospedaje no apague el sitio y para que el piobot
+    // tenga su oportunidad. Sin clave, esa puerta no existe.
+    latidoClave: elegir('PIO_LATIDO_CLAVE', 'latidoClave'),
+    // A nombre de quien pia el latido. Es una cuenta normal del sitio.
+    piobotUsuario: elegir('PIOBOT_USUARIO', 'piobotUsuario'),
     // Para trabajar sin ensuciar la base real: PIO_DEPOSITO=archivo
     deposito: elegir('PIO_DEPOSITO', 'deposito'),
     supabase: {

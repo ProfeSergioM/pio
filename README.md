@@ -71,6 +71,8 @@ descuido— y las variables son para el despliegue.
 | `PIO_DEPOSITO` | `deposito` | `archivo` fuerza el JSON local aunque haya credenciales. |
 | `PIO_PROXIES` | `proxies` | Cuántos proxies de confianza hay delante. En tu máquina 0, en Render 1. |
 | `PIO_ADMINS` | `admins` | Quiénes ven el panel de administración, separados por coma. |
+| `PIO_LATIDO_CLAVE` | `latidoClave` | Abre `/api/latido`. Sin ella esa puerta no existe. |
+| `PIOBOT_USUARIO` | `piobotUsuario` | A nombre de quién pía el latido. |
 
 Sin ninguna de estas, Pío arranca igual: cada función que necesita una clave
 queda apagada y lo dice.
@@ -94,6 +96,8 @@ queda apagada y lo dice.
 | [`src/corrales.js`](src/corrales.js) | Reglas de los corrales, los subtemas |
 | [`src/mensajes.js`](src/mensajes.js) | Reglas del chat de cada corral |
 | [`src/deposito.js`](src/deposito.js) | Dónde vive todo: archivo JSON o Supabase |
+| [`src/frases.js`](src/frases.js) | De qué habla el piobot |
+| [`src/latido.js`](src/latido.js) | La puerta que mantiene el sitio despierto y hace piar al bot |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`supabase-corrales.sql`](supabase-corrales.sql) | Las tablas de corrales y del chat |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |
@@ -424,6 +428,54 @@ fábrica. En el valor de cada uno va un emoji suelto o una dirección `https`
 de una imagen; lo que no tenga nombre válido —minúsculas, números y guión
 bajo— se descarta en silencio, porque un emoji roto rompe el texto de todos
 los píos.
+
+## El piobot y el latido
+
+La plaza vacía no se prueba bien, así que hay un bot que pía cada tanto: una
+cuenta normal del sitio que publica frases armadas por partes, con esperas al
+azar de tres a catorce minutos. Lo que dice vive en
+[`src/frases.js`](src/frases.js).
+
+Puede correr de dos maneras, y no se estorban.
+
+**Desde GitHub Actions** ([`.github/workflows/piobot.yml`](.github/workflows/piobot.yml)).
+Cada ejecución se queda su ronda dando vueltas y va piando; el cron sólo tiene
+que arrancarla. Necesita las variables `PIO_SITIO` y `PIOBOT_USUARIO`, y el
+secreto `PIOBOT_CLAVE`. Aviso por experiencia: el programador de GitHub es
+poco de fiar. Con `*/15` no disparó ni una vez en tres horas, y con minutos
+raros tampoco. Anda cuando anda.
+
+**Desde afuera, golpeando `/api/latido`.** Esta es la que conviene, porque
+resuelve dos problemas de un golpe: el hospedaje gratuito apaga el servicio
+cuando pasan quince minutos sin que nadie pida nada —y el primero que entra
+después espera casi un minuto a que vuelva—, y el bot deja de depender de un
+cron ajeno.
+
+```
+PIO_LATIDO_CLAVE=una_clave_larga_cualquiera
+PIOBOT_USUARIO=PioBot
+```
+
+Después, en cualquier servicio de cron gratuito (cron-job.org, por ejemplo),
+una tarea cada cinco minutos contra:
+
+```
+GET https://tu-sitio.onrender.com/api/latido
+Authorization: Bearer una_clave_larga_cualquiera
+```
+
+La clave va en la cabecera y no en la dirección a propósito: una dirección con
+la clave adentro queda escrita en todos los registros por los que pasa.
+
+El intervalo entre píos no es el del cron. Cada latido mira un momento
+sorteado de antemano, así que los píos siguen cayendo cada tres a catorce
+minutos aunque el cron venga cada cinco en punto, y el primero después de un
+reinicio también se sortea: si el bot piara en el latido siguiente a cada
+despliegue, el ritmo delataría cada uno.
+
+Sin `PIO_LATIDO_CLAVE` la puerta devuelve 404, que es el estado seguro: una
+puerta que despierta el servicio y publica es justo la que no conviene dejar
+abierta.
 
 ## Lo que todavía no está
 

@@ -15,6 +15,8 @@
 //   PIOBOT_CLAVE    su clave
 //   PIOBOT_MINUTOS  cuanto dura la ronda (por defecto 25)
 
+const { armarPio } = require('../src/frases');
+
 const SITIO = (process.env.PIO_SITIO || '').replace(/\/+$/, '');
 const USUARIO = process.env.PIOBOT_USUARIO;
 const CLAVE = process.env.PIOBOT_CLAVE;
@@ -23,51 +25,8 @@ const RONDA = (Number(process.env.PIOBOT_MINUTOS) || 25) * 60 * 1000;
 const ESPERA_MINIMA = 3 * 60 * 1000;
 const ESPERA_MAXIMA = 14 * 60 * 1000;
 
-// Se arman por partes: con treinta frases sueltas la repeticion se nota a los
-// dos dias, y combinando pedazos hay bastante mas variedad por el mismo texto.
-const OBSERVACIONES = [
-  'Cien caracteres alcanzan para casi todo',
-  'Lo que no entra en cien casi nunca era una sola idea',
-  'Escribir corto lleva mas tiempo que escribir largo',
-  'El limite no es un castigo, es un filtro',
-  'Nadie extraña los parrafos que no escribio',
-  'Un pio que necesita aclaracion no estaba listo',
-  'Se piensa distinto cuando hay que elegir las palabras',
-  'La brevedad obliga a saber que queria decir uno',
-  'Cien caracteres no dan para irse por las ramas',
-  'Lo bueno de un limite chico es que se nota enseguida si sobra algo',
-];
-
-const REMATES = [
-  'y eso esta bien',
-  'aunque cueste aceptarlo',
-  'o al menos eso creo',
-  'por suerte',
-  'con el tiempo se agradece',
-  'digo yo',
-  'sin vueltas',
-  '',
-];
-
-const ETIQUETAS = ['#pio', '#cien', '#breve', '#plaza', '', '', ''];
-
-const alAzar = (lista) => lista[Math.floor(Math.random() * lista.length)];
 const entre = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 const dormir = (ms) => new Promise((listo) => setTimeout(listo, ms));
-
-function armarPio() {
-  for (let intento = 0; intento < 20; intento += 1) {
-    const partes = [alAzar(OBSERVACIONES)];
-    const remate = alAzar(REMATES);
-    if (remate) partes.push(remate);
-    const texto = `${partes.join(', ')}.`;
-    const etiqueta = alAzar(ETIQUETAS);
-    const entero = etiqueta ? `${texto} ${etiqueta}` : texto;
-    // Se cuenta como cuenta Pio: puntos de codigo, no unidades UTF-16.
-    if ([...entero].length <= 100) return entero;
-  }
-  return alAzar(OBSERVACIONES).slice(0, 99) + '.';
-}
 
 async function pedir(ruta, opciones = {}) {
   const respuesta = await fetch(`${SITIO}/api${ruta}`, {

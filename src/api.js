@@ -10,6 +10,7 @@ const { medallaDe, faltanPara } = require('./medallas');
 const C = require('./corrales');
 const MSG = require('./mensajes');
 const E = require('./emojis');
+const { crearLatido } = require('./latido');
 
 // De donde se acepta que venga un adjunto. El cliente manda una URL, y una URL
 // que manda el cliente es un dato, no una verdad: si no se comprobara, cualquiera
@@ -54,6 +55,7 @@ function crearApi(almacen, opciones = {}) {
       ventana: opciones.ventanaSubidas || 60 * 60 * 1000,
     }),
     google: new Google(opciones.googleClienteId, opciones.google),
+    latido: crearLatido(almacen, opciones),
     // Se normalizan una vez acá: comparar a mano en cada petición es donde se
     // cuela el descuido que deja entrar a quien no debe.
     admins: new Set((opciones.admins || []).map((x) => String(x).toLowerCase())),
@@ -128,6 +130,18 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
         recuperacion: codigo,
       },
     };
+  }
+
+  // La puerta que golpea el cron de afuera. La clave va en la cabecera y no
+  // en la direccion: una direccion con la clave adentro queda escrita en todos
+  // los registros por los que pasa.
+  if (recurso === 'latido') {
+    const { latido } = servicios;
+    if (!latido.activo) throw new ErrorPio(404, 'Acá no hay nada.', 'ruta.noexiste');
+    if (!latido.autoriza(tokenDe(req))) {
+      throw new ErrorPio(401, 'Esa no es la clave del latido.', 'latido.clave');
+    }
+    return { datos: await latido.golpear() };
   }
 
   // Lo que el cliente necesita saber antes de dibujar la portada. El client

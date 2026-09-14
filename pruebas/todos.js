@@ -9,6 +9,8 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { crearServidor } = require('../servidor');
+const LAT = require('../src/latido');
+const FRASES = require('../src/frases');
 const M = require('../src/modelo');
 const L = require('../src/limite');
 
@@ -1999,6 +2001,82 @@ async function main() {
 
   await new Promise((listo) => conAdm.close(listo));
   fs.rmSync(carpetaAdm, { recursive: true, force: true });
+  // --- el latido -----------------------------------------------------------
+
+  grupo('Latido');
+
+  const carpetaLat = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-lat-'));
+  const conLat = crearServidor({
+    datos: carpetaLat,
+    api: { altas: 100, latidoClave: 'abrite_sesamo', piobotUsuario: 'Pajarito' },
+  });
+  await new Promise((listo) => conLat.listen(0, '127.0.0.1', listo));
+  const baseLat = `http://127.0.0.1:${conLat.address().port}`;
+
+  const golpear = async (clave) => {
+    const r = await fetch(`${baseLat}/api/latido`, {
+      headers: clave ? { Authorization: `Bearer ${clave}` } : {},
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+
+  // Una puerta que despierta el servicio y publica es justo la que no
+  // conviene dejar abierta.
+  probar('sin clave, la puerta no se abre', (await golpear()).estado === 401);
+  probar('con la clave equivocada, tampoco', (await golpear('otra')).estado === 401);
+
+  const golpe1 = await golpear('abrite_sesamo');
+  probar('con la clave, contesta', golpe1.estado === 200 && golpe1.datos.despierto === true,
+    JSON.stringify(golpe1.datos));
+  // El primer momento se sortea igual que los demás: si el bot piara en el
+  // latido siguiente a cada reinicio, el ritmo delataría cada despliegue.
+  probar('pero no pía apenas arranca', golpe1.datos.pio === null);
+  probar('y dice cuánto falta', golpe1.datos.faltan > 0);
+
+  // Cuando llega el momento y no hay cuenta del bot, el sitio sigue
+  // despierto: eso no es culpa del que golpea.
+  conLat.almacen.datos.usuarios = conLat.almacen.datos.usuarios.filter((u) => false);
+  const sinCuenta = await LAT.crearLatido(conLat.almacen, {
+    latidoClave: 'x', piobotUsuario: 'piobot',
+  }).golpear(Date.now() + 60 * 60 * 1000);
+  probar('sin la cuenta del bot no se cae nada',
+    sinCuenta.despierto === true && sinCuenta.falta === 'piobot');
+
+  // Y con la cuenta, pía.
+  const latido = LAT.crearLatido(conLat.almacen, {
+    latidoClave: 'x', piobotUsuario: 'Pajarito',
+  });
+  await fetch(`${baseLat}/api/registro`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario: 'pajarito', nombre: 'Pajarito', clave: 'semillas' }),
+  });
+  const piado = await latido.golpear(Date.now() + 60 * 60 * 1000);
+  probar('cuando llega el momento, pía', !!piado.pio, JSON.stringify(piado));
+  probar('y el pío es del bot',
+    conLat.almacen.buscarPio(piado.pio).autor === 'pajarito');
+  // El intervalo no es el del cron: golpear de nuevo enseguida no pía.
+  probar('dos golpes seguidos no son dos píos',
+    (await latido.golpear()).pio === null);
+
+  // El pío del bot es un pío como cualquier otro: entra en los cien.
+  probar('lo que arma el bot entra en los cien',
+    Array.from({ length: 200 }).every(() => [...FRASES.armarPio()].length <= 100));
+  probar('y no queda vacío',
+    Array.from({ length: 50 }).every(() => FRASES.armarPio().trim().length > 0));
+
+  await new Promise((listo) => conLat.close(listo));
+  fs.rmSync(carpetaLat, { recursive: true, force: true });
+
+  // Sin clave configurada, la puerta directamente no existe.
+  const carpetaSin = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-sinlat-'));
+  const conSin = crearServidor({ datos: carpetaSin, api: { altas: 100 } });
+  await new Promise((listo) => conSin.listen(0, '127.0.0.1', listo));
+  const sinPuerta = await fetch(`http://127.0.0.1:${conSin.address().port}/api/latido`, {
+    headers: { Authorization: 'Bearer loquesea' },
+  });
+  probar('sin clave configurada no hay puerta', sinPuerta.status === 404);
+  await new Promise((listo) => conSin.close(listo));
+  fs.rmSync(carpetaSin, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

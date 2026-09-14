@@ -768,9 +768,25 @@ document.body.addEventListener('click', async (ev) => {
 
 // Se muestra una sola vez, al crearse la cuenta o al recuperarla. De ahí en
 // más el servidor sólo tiene su hash y nadie lo puede volver a ver.
-function mostrarCodigo(codigo) {
+function mostrarCodigo(codigo, clave) {
   $('#codigo-texto').textContent = codigo;
+  const explica = $('#dialogo-codigo [data-t="codigo.explica"]');
+  if (explica) explica.textContent = T(clave || 'codigo.explica');
   $('#dialogo-codigo').showModal();
+}
+
+// Las cuentas creadas antes de que existieran los códigos no tienen ninguno.
+// Nadie hace lo que no sabe que tiene que hacer, así que se le da al entrar en
+// vez de esperar a que lo busque en el perfil.
+async function codigoSiFalta() {
+  if (!estado.yo || estado.yo.tieneClave !== true || estado.yo.tieneCodigo !== false) return;
+  try {
+    const { recuperacion } = await api('/yo/codigo', { metodo: 'POST' });
+    estado.yo.tieneCodigo = true;
+    mostrarCodigo(recuperacion, 'codigo.viejo');
+  } catch (err) {
+    /* si falla, queda el botón del perfil */
+  }
 }
 
 $('#cerrar-codigo').addEventListener('click', () => $('#dialogo-codigo').close());
@@ -811,6 +827,7 @@ $('#forma-clave').addEventListener('submit', async (ev) => {
     });
     $('#dialogo-clave').close();
     estado.yo.tieneClave = true;
+    estado.yo.tieneCodigo = true;
     avisar(T('clave.lista'));
     if (datos.recuperacion) mostrarCodigo(datos.recuperacion);
   } catch (err) {
@@ -1295,6 +1312,7 @@ function mostrarApp() {
   $('#app').hidden = false;
   cargarConfig();
   cargarEmojis();
+  codigoSiFalta();
   pintarYoLateral();
   if (!location.hash) location.hash = '#/nido';
   else pintar();

@@ -528,6 +528,7 @@ function perfil(almacen, cuenta, yo) {
     // Sólo en el perfil propio: a los demás no les importa cuándo podés
     // cambiarlo, y es información de más sobre otra persona.
     tieneClave: propio ? !!(cuenta.sal && cuenta.hash) : undefined,
+    tieneCodigo: propio ? !!cuenta.recuperacion : undefined,
     puedeCambiarUsuario: propio
       ? !cuenta.usuarioCambiado || Date.now() - cuenta.usuarioCambiado >= 30 * 24 * 60 * 60 * 1000
       : undefined,

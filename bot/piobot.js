@@ -3,17 +3,17 @@
 // Piobot: publica un pío cada tanto, al azar, para que la plaza no esté nunca
 // del todo callada mientras el sitio se prueba.
 //
-// Vive en GitHub Actions. El cron de Actions no baja de cinco minutos y encima
-// llega tarde seguido, asi que el intervalo NO se pide con el cron: cada
-// ejecucion se queda un rato dando vueltas y va piando con esperas al azar
-// entre tres y catorce minutos. El cron solo se encarga de que siempre haya
-// una ejecucion viva.
+// Vive en GitHub Actions, cuyo programador es poco de fiar: llega tarde, y las
+// tareas que caen en minutos redondos las descarta sin aviso. Por eso el
+// intervalo entre pios NO se le pide al cron: cada ejecucion se queda su ronda
+// dando vueltas y va piando con esperas al azar de tres a catorce minutos. El
+// cron solo tiene que lograr arrancar una ronda cada tanto.
 //
 // Variables que necesita:
 //   PIO_SITIO       https://tu-sitio.onrender.com
 //   PIOBOT_USUARIO  el usuario del bot
 //   PIOBOT_CLAVE    su clave
-//   PIOBOT_MINUTOS  cuanto dura la ronda (por defecto 13)
+//   PIOBOT_MINUTOS  cuanto dura la ronda (por defecto 25)
 
 const SITIO = (process.env.PIO_SITIO || '').replace(/\/+$/, '');
 const USUARIO = process.env.PIOBOT_USUARIO;

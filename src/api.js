@@ -5,6 +5,7 @@ const { Limite, deDonde, enEspera } = require('./limite');
 const { Google } = require('./google');
 const { crearSubidor, ErrorImagen } = require('./imagenes');
 const { crearGifs, ErrorGif } = require('./gifs');
+const { crearAcortador, ErrorEnlace } = require('./enlaces');
 
 // De donde se acepta que venga un adjunto. El cliente manda una URL, y una URL
 // que manda el cliente es un dato, no una verdad: si no se comprobara, cualquiera
@@ -44,6 +45,7 @@ function crearApi(almacen, opciones = {}) {
     google: new Google(opciones.googleClienteId, opciones.google),
     imagenes: crearSubidor(opciones, opciones.imagenes),
     gifs: crearGifs(opciones, opciones.gifs),
+    enlaces: crearAcortador(opciones, opciones.enlaces),
   };
 
   // Devuelve true si la peticion era de la API (y ya fue respondida).
@@ -76,7 +78,7 @@ function crearApi(almacen, opciones = {}) {
 }
 
 async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
-  const { altas, google, imagenes, gifs } = servicios;
+  const { altas, google, imagenes, gifs, enlaces } = servicios;
   const dedonde = () => deDonde(req, {
     proxies: servicios.proxies,
     cabecera: servicios.ipCabecera,
@@ -108,6 +110,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
         imagenes: imagenes.activo,
         proveedorImagenes: imagenes.nombre,
         gifs: gifs.activo,
+        acortador: enlaces.activo,
       },
     };
   }
@@ -251,6 +254,35 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       return { codigo: 201, datos: { imagen } };
     } catch (err) {
       if (err instanceof ErrorImagen) throw new ErrorPio(400, err.message, err.clave);
+      throw err;
+    }
+  }
+
+  // --- acortar direcciones ------------------------------------------------
+
+  // Pide sesión por lo mismo que los GIF: sin eso sería un acortador abierto,
+  // y un acortador abierto es una herramienta de phishing esperando que la usen.
+  if (recurso === 'acortar' && metodo === 'POST') {
+    exigir(yo);
+    if (!enlaces.activo) {
+      throw new ErrorPio(501, 'Este Pío tiene apagado el acortador.', 'enlace.apagado');
+    }
+    const desde = dedonde();
+    const espera = servicios.subidas.esperaDe(desde);
+    if (espera) {
+      throw new ErrorPio(
+        429,
+        `Demasiadas direcciones desde aquí. Intenta ${enEspera(espera)}.`,
+        'subidas.muchas',
+        { minutos: Math.ceil(espera / 60000) },
+      );
+    }
+    try {
+      const corto = await enlaces.acortar(cuerpo.url);
+      servicios.subidas.anotar(desde);
+      return { datos: corto };
+    } catch (err) {
+      if (err instanceof ErrorEnlace) throw new ErrorPio(400, err.message, err.clave);
       throw err;
     }
   }

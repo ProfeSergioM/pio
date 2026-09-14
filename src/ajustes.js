@@ -62,6 +62,9 @@ function leerAjustes(directorio) {
     // Cabecera de confianza con la IP del visitante, si la plataforma pone
     // una. En Render: cf-connecting-ip.
     ipCabecera: elegir('PIO_IP_CABECERA', 'ipCabecera'),
+    // 'no' apaga el acortador; cualquier otra cosa lo deja encendido, porque
+    // is.gd no pide credenciales.
+    acortador: elegir('PIO_ACORTADOR', 'acortador'),
     altas: numero('PIO_ALTAS_POR_HORA', 'altas'),
     subidas: numero('PIO_SUBIDAS_POR_HORA', 'subidas'),
   };

@@ -1201,6 +1201,117 @@ async function main() {
 
   await new Promise((listo) => conRen.close(listo));
   fs.rmSync(carpetaRen, { recursive: true, force: true });
+  // --- acortar direcciones ------------------------------------------------
+
+  grupo('Acortador');
+  const ENL = require('../src/enlaces');
+
+  probar('una dirección normal se puede acortar',
+    ENL.urlAcortable('https://ejemplo.com/una/ruta') === 'https://ejemplo.com/una/ruta');
+  probar('http también', !!ENL.urlAcortable('http://ejemplo.com'));
+  // Un acortador que acepte javascript: es una máquina de disfrazar trampas.
+  probar('javascript: no', ENL.urlAcortable('javascript:alert(1)') === null);
+  probar('data: tampoco', ENL.urlAcortable('data:text/html,<b>x') === null);
+  probar('un dominio sin punto no es dominio', ENL.urlAcortable('http://localhost/x') === null);
+  probar('cualquier texto suelto tampoco', ENL.urlAcortable('mira esto') === null);
+
+  const ISGD = /(^|\.)is\.gd$/;
+  probar('la respuesta debe venir del proveedor al que se preguntó',
+    !!ENL.urlDelProveedor('https://is.gd/abc123', ISGD));
+  probar('otro dominio en la respuesta se rechaza',
+    ENL.urlDelProveedor('https://malo.example/x', ISGD) === null);
+  probar('http en la respuesta se rechaza',
+    ENL.urlDelProveedor('http://is.gd/abc', ISGD) === null);
+
+  // El acortador lee el cuerpo crudo: is.gd promete JSON y a veces manda
+  // texto suelto, así que no se confía en el tipo de contenido.
+  const diceCrudo = (texto, ok = true) => async () => ({
+    ok, status: ok ? 200 : 500, text: async () => texto,
+  });
+
+  const cortador = ENL.crearAcortador({}, {
+    traer: diceCrudo(JSON.stringify({ shorturl: 'https://is.gd/abc123' })),
+  });
+  probar('sin credenciales igual está encendido', cortador.activo === true);
+  probar('prueba is.gd primero y tinyurl después',
+    cortador.proveedores.join() === 'is.gd,tinyurl');
+
+  const corto = await cortador.acortar('https://ejemplo.com/una/ruta/larguisima');
+  probar('acorta y devuelve las dos', corto.corta === 'https://is.gd/abc123'
+    && corto.larga === 'https://ejemplo.com/una/ruta/larguisima');
+  probar('y dice quién la acortó', corto.proveedor === 'is.gd');
+
+  const falla = async (quien, que) => {
+    try { await quien.acortar(que); return null; } catch (err) { return err.clave; }
+  };
+  probar('una dirección imposible se rechaza antes de salir',
+    (await falla(cortador, 'javascript:alert(1)')) === 'enlace.malo');
+
+  // Lo que de verdad pasó el día que se escribió esto: is.gd contestando 200
+  // con texto plano de error en vez del JSON que promete.
+  let cuantosPedidos = 0;
+  const isgdCaido = ENL.crearAcortador({}, {
+    traer: async (url) => {
+      cuantosPedidos += 1;
+      if (url.includes('is.gd')) return { ok: true, status: 200, text: async () => 'Error, database insert failed' };
+      return { ok: true, status: 200, text: async () => 'https://tinyurl.com/249k9k58' };
+    },
+  });
+  const rescatado = await isgdCaido.acortar('https://ejemplo.com/x');
+  probar('si el primero se cae, lo salva el segundo',
+    rescatado.corta === 'https://tinyurl.com/249k9k58' && rescatado.proveedor === 'tinyurl');
+  probar('y se probaron los dos, en orden', cuantosPedidos === 2);
+
+  const todosCaidos = ENL.crearAcortador({}, { traer: diceCrudo('vaya lío', false) });
+  probar('si se caen los dos, se dice', (await falla(todosCaidos, 'https://ejemplo.com')) === 'enlace.rechazado');
+
+  const mentiroso = ENL.crearAcortador({}, {
+    traer: diceCrudo(JSON.stringify({ shorturl: 'https://malo.example/x' })),
+  });
+  probar('una respuesta con otro dominio no se usa',
+    (await falla(mentiroso, 'https://ejemplo.com')) !== null);
+
+  const sinAcortador = ENL.crearAcortador({ acortador: 'no' });
+  probar('se puede apagar a mano', sinAcortador.activo === false);
+
+  const soloUno = ENL.crearAcortador({ acortadorProveedor: 'tinyurl' });
+  probar('y se puede pedir uno solo', soloUno.proveedores.join() === 'tinyurl');
+
+  // --- y por HTTP ---
+
+  const carpetaEnl = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-enl-'));
+  const conEnl = crearServidor({
+    datos: carpetaEnl,
+    api: { enlaces: { traer: diceCrudo(JSON.stringify({ shorturl: 'https://is.gd/abc123' })) } },
+  });
+  await new Promise((listo) => conEnl.listen(0, '127.0.0.1', listo));
+  const baseEnl = `http://127.0.0.1:${conEnl.address().port}`;
+
+  const pedirCorto = (url, token) => fetch(`${baseEnl}/api/acortar`, {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' },
+      token ? { Authorization: `Bearer ${token}` } : {}),
+    body: JSON.stringify({ url }),
+  });
+
+  probar('acortar sin sesión devuelve 401',
+    (await pedirCorto('https://ejemplo.com')).status === 401);
+
+  const altaEnl = await fetch(`${baseEnl}/api/registro`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario: 'jilguero', nombre: 'Jilguero', clave: 'semillas' }),
+  }).then((r) => r.json());
+
+  const conSesionEnl = await pedirCorto('https://ejemplo.com/larga', altaEnl.token);
+  probar('con sesión, acorta', conSesionEnl.status === 200);
+  probar('y devuelve la corta', (await conSesionEnl.json()).corta === 'https://is.gd/abc123');
+
+  const configEnl = await fetch(`${baseEnl}/api/config`).then((r) => r.json());
+  probar('la config avisa que está encendido', configEnl.acortador === true);
+
+  await new Promise((listo) => conEnl.close(listo));
+  fs.rmSync(carpetaEnl, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

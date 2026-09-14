@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 243 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 267 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -65,6 +65,7 @@ descuido— y las variables son para el despliegue.
 | `PIO_CLOUDINARY_SECRETO` | `cloudinary.secreto` | Su API secret. Nunca sale del servidor. |
 | `PIO_IMAGENES_PROVEEDOR` | `proveedor` | Cuál gana si están los dos: `imgbb` o `cloudinary`. |
 | `PIO_GIPHY_KEY` | `giphyClave` | Enciende el buscador de GIF. |
+| `PIO_ACORTADOR` | `acortador` | `no` apaga el acortador de direcciones. |
 | `SUPABASE_URL` | `supabase.url` | Guarda en Supabase en vez de en un archivo. |
 | `SUPABASE_SERVICE_KEY` | `supabase.clave` | La `service_role`, nunca la `anon`. |
 | `PIO_DEPOSITO` | `deposito` | `archivo` fuerza el JSON local aunque haya credenciales. |
@@ -85,6 +86,7 @@ queda apagada y lo dice.
 | [`src/ajustes.js`](src/ajustes.js) | Claves y opciones, de entorno o de archivo |
 | [`src/imagenes.js`](src/imagenes.js) | Subida de imágenes: ImgBB o Cloudinary |
 | [`src/gifs.js`](src/gifs.js) | Búsqueda de GIF en Giphy |
+| [`src/enlaces.js`](src/enlaces.js) | Acortar direcciones, con proveedor de repuesto |
 | [`src/deposito.js`](src/deposito.js) | Dónde vive todo: archivo JSON o Supabase |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |
@@ -257,6 +259,23 @@ Dos cosas del plan gratuito que conviene saber de antemano, porque van a pasar:
 - **Los proyectos de Supabase se pausan tras una semana sin actividad** y hay
   que reactivarlos a mano desde su panel.
 
+## Acortar direcciones
+
+Encendido por defecto: ni is.gd ni TinyURL piden credenciales. En el diálogo de
+piar hay un botón 🔗 que busca las direcciones del texto y las reemplaza por su
+versión corta, lo cual importa bastante cuando el pío entero son cien
+caracteres.
+
+**Son dos proveedores a propósito.** El día que se escribió esto, is.gd
+respondía `Error, database insert failed` con código 200 y tipo `text/html` —
+ni siquiera el JSON de error que promete su documentación. Se prueba is.gd y,
+si no contesta algo usable, TinyURL. Hay prueba de ese caso exacto.
+
+Y lo mismo que con todo lo demás: **sólo se acortan direcciones `http` y
+`https`**. Un `javascript:` acortado sería una trampa con aspecto inofensivo,
+que es justamente para lo que sirve un acortador. La dirección que vuelve se
+comprueba contra el dominio del proveedor al que se le preguntó.
+
 ## Vocabulario
 
 | En Pío | En el resto del mundo |
@@ -336,7 +355,6 @@ crezca sin control.
   es donde ensuciarían la lectura.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
 - Emojis propios del sitio, escritos como `:pollito:`.
-- Acortar direcciones al escribir un pío.
 - Corrales: subtemas con su propio feed y una pestaña de chat.
 - Panel de administración.
 - Nadie puede cambiar ni recuperar su clave. Si un pollito la olvida, queda

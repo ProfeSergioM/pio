@@ -688,6 +688,68 @@ document.body.addEventListener('click', async (ev) => {
   }
 });
 
+// --- acortar direcciones --------------------------------------------------
+
+// Se deja fuera el < > " ' para no tragarse el HTML de alrededor si alguna vez
+// esto corre sobre texto ya marcado.
+const RE_ENLACE = /https?:\/\/[^\s<>"']+/g;
+
+function enlacesDe(texto) {
+  const hallados = (String(texto).match(RE_ENLACE) || [])
+    // La puntuación del final de la frase no es parte de la dirección.
+    .map((u) => u.replace(/[.,;:!?)\]]+$/, ''))
+    .filter((u) => {
+      try {
+        // Acortar lo que ya está corto sería alargar la cadena de saltos.
+        return !/(^|\.)is\.gd$/.test(new URL(u).hostname);
+      } catch (err) {
+        return false;
+      }
+    });
+  return [...new Set(hallados)];
+}
+
+async function acortarEnlaces() {
+  const boton = $('#acortar-enlaces');
+  if (boton.disabled) return;
+
+  const largas = enlacesDe(areaTexto.value);
+  if (!largas.length) {
+    avisar(T('enlace.ninguna'));
+    return;
+  }
+
+  const error = $('#error-pio');
+  error.hidden = true;
+  boton.disabled = true;
+  avisar(T('enlace.acortando'));
+
+  let texto = areaTexto.value;
+  let hechas = 0;
+  try {
+    for (const larga of largas) {
+      const { corta } = await api('/acortar', { metodo: 'POST', cuerpo: { url: larga } });
+      texto = texto.split(larga).join(corta);
+      hechas += 1;
+    }
+    areaTexto.value = texto;
+    actualizarMedidor();
+    avisar(T('enlace.listo', { n: hechas }));
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+    // Lo que ya se acortó no se pierde porque una de las siguientes falle.
+    if (hechas) {
+      areaTexto.value = texto;
+      actualizarMedidor();
+    }
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+$('#acortar-enlaces').addEventListener('click', acortarEnlaces);
+
 // --- adjuntos -------------------------------------------------------------
 
 // Lo que va colgado del pío que se está escribiendo. Uno solo: un pío de cien
@@ -1020,9 +1082,23 @@ function pintarYoLateral() {
     </a>`;
 }
 
+// Qué hay encendido en este Pío. Se pregunta una vez y decide qué botones
+// tienen sentido: mostrar uno que va a fallar seguro es peor que no mostrarlo.
+async function cargarConfig() {
+  try {
+    const config = await api('/config');
+    $('#acortar-enlaces').hidden = !config.acortador;
+    $('#poner-imagen').hidden = !config.imagenes;
+    $('#poner-gif').hidden = !config.gifs;
+  } catch (err) {
+    /* si no se puede preguntar, quedan como estaban */
+  }
+}
+
 function mostrarApp() {
   $('#portada').hidden = true;
   $('#app').hidden = false;
+  cargarConfig();
   pintarYoLateral();
   if (!location.hash) location.hash = '#/nido';
   else pintar();

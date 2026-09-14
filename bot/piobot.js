@@ -18,7 +18,7 @@
 const SITIO = (process.env.PIO_SITIO || '').replace(/\/+$/, '');
 const USUARIO = process.env.PIOBOT_USUARIO;
 const CLAVE = process.env.PIOBOT_CLAVE;
-const RONDA = (Number(process.env.PIOBOT_MINUTOS) || 13) * 60 * 1000;
+const RONDA = (Number(process.env.PIOBOT_MINUTOS) || 25) * 60 * 1000;
 
 const ESPERA_MINIMA = 3 * 60 * 1000;
 const ESPERA_MAXIMA = 14 * 60 * 1000;

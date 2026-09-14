@@ -1,19 +1,23 @@
 name: piobot
 
-# El cron de Actions no baja de cinco minutos y además llega tarde seguido, así
-# que el intervalo entre píos no se le pide a él: cada ejecución dura una ronda
-# y va piando con esperas al azar de entre 3 y 14 minutos. El cron sólo se
-# encarga de que siempre haya una ronda viva.
+# El programador de GitHub es poco de fiar: con `*/15` no disparó ni una vez en
+# tres horas. Esos minutos —:00, :15, :30, :45— son justo cuando todo el mundo
+# programa sus tareas, y las que no llega a atender las descarta sin aviso; su
+# propia documentación recomienda evitarlos.
+#
+# Por eso dos cosas: minutos raros, y rondas largas. El intervalo entre píos no
+# se le pide al cron —cada ejecución dura su ronda y va piando con esperas al
+# azar de 3 a 14 minutos—, así que una ronda larga cubre bien aunque GitHub se
+# saltee la siguiente.
 on:
   schedule:
-    - cron: '*/15 * * * *'
-  # Para probarlo a mano desde la pestaña Actions.
+    - cron: '7,37 * * * *'
   workflow_dispatch:
     inputs:
       minutos:
         description: 'Cuánto dura la ronda'
         required: false
-        default: '13'
+        default: '25'
 
 # Si una ronda se pasó de largo, la siguiente espera en vez de pisarla: dos
 # bots piando a la vez duplicarían el ritmo.
@@ -24,8 +28,8 @@ concurrency:
 jobs:
   piar:
     runs-on: ubuntu-latest
-    # La ronda son 13 minutos; el margen es por si una espera queda justa.
-    timeout-minutes: 20
+    # La ronda son 25 minutos; el margen es por si una espera queda justa.
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
@@ -40,5 +44,5 @@ jobs:
           PIO_SITIO: ${{ vars.PIO_SITIO }}
           PIOBOT_USUARIO: ${{ vars.PIOBOT_USUARIO }}
           PIOBOT_CLAVE: ${{ secrets.PIOBOT_CLAVE }}
-          PIOBOT_MINUTOS: ${{ github.event.inputs.minutos || '13' }}
+          PIOBOT_MINUTOS: ${{ github.event.inputs.minutos || '25' }}
         run: node bot/piobot.js

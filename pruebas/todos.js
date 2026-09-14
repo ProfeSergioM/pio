@@ -2150,6 +2150,10 @@ async function main() {
   probar('y sus avisos tampoco se muestran',
     !(await pedirSil('/notificaciones', { token: lectoraT })).datos.notificaciones.some((n) => n.de && n.de.usuario === 'ruidoso'));
 
+  probar('la cuenta liviana dice lo mismo que la lista',
+    (await pedirSil('/notificaciones/cuenta', { token: lectoraT })).datos.sinLeer
+      === (await pedirSil('/notificaciones', { token: lectoraT })).datos.sinLeer);
+  probar('y pide sesión', (await pedirSil('/notificaciones/cuenta')).estado === 401);
   probar('ni se cuentan en la insignia',
     (await pedirSil('/notificaciones', { token: lectoraT })).datos.sinLeer === 0);
   probar('no se puede silenciar a sí mismo',
@@ -2249,6 +2253,18 @@ async function main() {
   probar('el texto va escapado', !htmlCom.includes('<script>alert') && htmlCom.includes('&lt;script&gt;'));
   probar('y lleva a la persona a la vista de verdad', htmlCom.includes(`/#/p/${pioCom.id}`));
 
+  // Sin imagen propia, la de Pío, con dirección completa: las redes no aceptan otra.
+  probar('sin imagen propia lleva la de Pío', htmlCom.includes(`<meta property="og:image" content="${baseCom}/compartir.png">`));
+  probar('y es de las grandes', htmlCom.includes('summary_large_image'));
+  const detras = await (await fetch(`${baseCom}/p/${pioCom.id}`, { headers: { 'x-forwarded-proto': 'https' } })).text();
+  probar('detrás del balanceador la dirección es https', detras.includes('content="https://127.0.0.1:'));
+
+  const png = await fetch(`${baseCom}/compartir.png`);
+  const bytes = Buffer.from(await png.arrayBuffer());
+  probar('la imagen de Pío se sirve', png.status === 200 && png.headers.get('content-type') === 'image/png');
+  probar('es un PNG de verdad', bytes.subarray(1, 4).toString('ascii') === 'PNG');
+  probar('de 1200 por 630, lo que piden las redes', bytes.readUInt32BE(16) === 1200 && bytes.readUInt32BE(20) === 630);
+  probar('y liviana', bytes.length < 60 * 1024, `${bytes.length} bytes`);
   const perdido = await fetch(`${baseCom}/p/pnoexiste`, { redirect: 'manual' });
   probar('un pío que no está lleva a la portada', perdido.status === 302 && perdido.headers.get('location') === '/');
   probar('una dirección rara no es un pío',

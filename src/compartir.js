@@ -14,7 +14,9 @@ const escapar = (texto) => String(texto == null ? '' : texto).replace(/[&<>"']/g
 
 const ID = /^[a-z0-9]{1,40}$/;
 
-function paginaParaCompartir(almacen, id) {
+// `origen` es https://el-sitio: las redes exigen la imagen con dirección
+// completa, y la única forma de saberla sin configurar nada es el pedido.
+function paginaParaCompartir(almacen, id, origen = null) {
   if (!ID.test(String(id || ''))) return null;
   const pio = almacen.buscarPio(id);
   if (!pio) return null;
@@ -24,9 +26,11 @@ function paginaParaCompartir(almacen, id) {
   const nombre = autor ? autor.nombre : pio.autor;
   const titulo = `${nombre} (@${usuario}) en Pío`;
   const texto = pio.texto || '';
-  // Solo https: la direccion la leen servicios de afuera, y una imagen por
-  // http la descartan o la marcan como insegura.
-  const imagen = pio.adjunto && /^https:\/\//.test(pio.adjunto.url || '') ? pio.adjunto.url : null;
+  // La del pío si trae una; si no, la de Pío. Una vista previa sin imagen se
+  // pierde entre las demás. Solo https: la direccion la leen servicios de
+  // afuera, y una imagen por http la descartan o la marcan como insegura.
+  const propia = pio.adjunto && /^https:\/\//.test(pio.adjunto.url || '') ? pio.adjunto.url : null;
+  const imagen = propia || (origen ? `${origen}/compartir.png` : null);
   const destino = `/#/p/${pio.id}`;
 
   return [
@@ -42,6 +46,8 @@ function paginaParaCompartir(almacen, id) {
     `<meta property="og:title" content="${escapar(titulo)}">`,
     `<meta property="og:description" content="${escapar(texto)}">`,
     imagen ? `<meta property="og:image" content="${escapar(imagen)}">` : '',
+    imagen && !propia ? '<meta property="og:image:width" content="1200">' : '',
+    imagen && !propia ? '<meta property="og:image:height" content="630">' : '',
     `<meta name="twitter:card" content="${imagen ? 'summary_large_image' : 'summary'}">`,
     `<meta name="twitter:title" content="${escapar(titulo)}">`,
     `<meta name="twitter:description" content="${escapar(texto)}">`,

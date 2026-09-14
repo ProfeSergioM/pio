@@ -584,6 +584,12 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
         },
       };
     }
+    // Sólo el número. Se pregunta cada medio minuto con la pestaña abierta, y
+    // armar la lista entera con sus píos cada vez sería mandar lo mismo para
+    // pintar un circulito.
+    if (metodo === 'GET' && id === 'cuenta') {
+      return { datos: { sinLeer: almacen.sinLeer(yo) } };
+    }
     if (metodo === 'POST' && id === 'leidas') {
       await almacen.marcarLeidos(yo);
       return { datos: { ok: true, sinLeer: 0 } };

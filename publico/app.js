@@ -717,18 +717,34 @@ function filaAviso(aviso) {
     </div>`;
 }
 
+const TITULO_BASE = document.title;
+
 function pintarInsignia(cuantos) {
   const insignia = $('#insignia');
   insignia.textContent = cuantos > 99 ? '99+' : String(cuantos);
   insignia.hidden = !cuantos;
+  // También en la pestaña: con el sitio en segundo plano es lo único que se ve.
+  document.title = cuantos ? `(${cuantos > 99 ? '99+' : cuantos}) ${TITULO_BASE}` : TITULO_BASE;
 }
 
 async function cargarAvisos() {
+  if (!estado.yo) return;
   try {
-    const { sinLeer } = await api('/notificaciones');
+    const { sinLeer } = await api('/notificaciones/cuenta');
     pintarInsignia(sinLeer);
   } catch { /* la insignia no rompe la vista */ }
 }
+
+// Los avisos llegan solos. Cada treinta segundos, y sólo con la pestaña a la
+// vista: preguntar por una pestaña que nadie mira es gastar batería ajena.
+// Al volver a ella se pregunta enseguida, que es cuando más importa.
+const CADA_CUANTO_AVISOS = 30 * 1000;
+setInterval(() => {
+  if (document.visibilityState === 'visible') cargarAvisos();
+}, CADA_CUANTO_AVISOS);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') cargarAvisos();
+});
 
 // --- corrales -------------------------------------------------------------
 

@@ -7,6 +7,18 @@ const { Almacen } = require('./src/almacen');
 const { crearApi } = require('./src/api');
 const { leerAjustes } = require('./src/ajustes');
 const { paginaParaCompartir } = require('./src/compartir');
+const { imagenParaCompartir } = require('./src/portada');
+
+// De dónde vino el pedido, para armar direcciones completas. Detrás del
+// balanceador de Render el pedido llega por http; la cabecera dice cómo
+// entró de verdad. Un host con cosas raras no se usa: termina dentro de una
+// página.
+function origenDe(req) {
+  const host = String(req.headers.host || '');
+  if (!/^[a-z0-9.-]+(:\d{1,5})?$/i.test(host)) return null;
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' ? 'https' : 'http';
+  return `${proto}://${host}`;
+}
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8',
@@ -31,11 +43,17 @@ function crearServidor(opciones = {}) {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (await api(req, res, url)) return;
 
+    if (req.method === 'GET' && url.pathname === '/compartir.png') {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+      res.end(imagenParaCompartir());
+      return;
+    }
+
     // La dirección que se comparte: ver src/compartir.js.
     const compartido = req.method === 'GET' && url.pathname.match(/^\/p\/([a-z0-9]{1,40})\/?$/);
     if (compartido) {
       await almacen.listo;
-      const html = paginaParaCompartir(almacen, compartido[1]);
+      const html = paginaParaCompartir(almacen, compartido[1], origenDe(req));
       if (html) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
         res.end(html);

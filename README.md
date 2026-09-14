@@ -99,6 +99,7 @@ queda apagada y lo dice.
 | [`src/frases.js`](src/frases.js) | De qué habla el piobot |
 | [`src/latido.js`](src/latido.js) | La puerta que mantiene el sitio despierto y hace piar al bot |
 | [`src/compartir.js`](src/compartir.js) | La página de `/p/<id>`, con la vista previa para las redes |
+| [`src/portada.js`](src/portada.js) | La imagen de Pío para las vistas previas, dibujada a mano en PNG |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`supabase-corrales.sql`](supabase-corrales.sql) | Las tablas de corrales y del chat |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |
@@ -508,9 +509,6 @@ abierta.
 
 ## Lo que todavía no está
 
-- Avisos en vivo: hoy el contador se refresca al cambiar de vista, no solo.
-- Paginación en el cliente: el servidor ya devuelve `hayMas` y acepta `antes`,
-  pero la interfaz todavía no pide la página siguiente.
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
 - Un panel que muestre más de los últimos 50 píos, con búsqueda propia.

@@ -1169,6 +1169,36 @@ async function main() {
   probar('y el de quien acaba de cambiarlo dice que no',
     (await pedirRen('/yo', { token: tokenViejo })).datos.yo.puedeCambiarUsuario === false);
 
+  // Si algo del perfil no pasa la validación, NADA se aplica. Antes se
+  // guardaba campo por campo y el usuario quedaba cambiado junto al error.
+  const tokenAtomo = await nace('ruisenor');
+
+  const conNombreVacio = await pedirRen('/yo', {
+    metodo: 'PATCH', token: tokenAtomo, cuerpo: { usuario: 'petirrojo', nombre: '', bio: 'algo' },
+  });
+  const trasFallar = (await pedirRen('/yo', { token: tokenAtomo })).datos.yo;
+  probar('un campo malo tumba el cambio entero', conNombreVacio.estado === 400);
+  probar('y el usuario no se movió', trasFallar.usuario === 'ruisenor', trasFallar.usuario);
+  probar('ni la bio', trasFallar.bio === '', JSON.stringify(trasFallar.bio));
+
+  const conBioLarga = await pedirRen('/yo', {
+    metodo: 'PATCH', token: tokenAtomo, cuerpo: { usuario: 'petirrojo', bio: 'x'.repeat(200) },
+  });
+  probar('una bio pasada tampoco deja el usuario cambiado',
+    conBioLarga.estado === 400
+    && (await pedirRen('/yo', { token: tokenAtomo })).datos.yo.usuario === 'ruisenor');
+
+  const todoJunto = await pedirRen('/yo', {
+    metodo: 'PATCH',
+    token: tokenAtomo,
+    cuerpo: { usuario: 'petirrojo', nombre: 'Petirrojo', bio: 'todo de una' },
+  });
+  probar('y con todo bien, cambia todo de una sola vez',
+    todoJunto.estado === 200
+    && todoJunto.datos.yo.usuario === 'petirrojo'
+    && todoJunto.datos.yo.nombre === 'Petirrojo'
+    && todoJunto.datos.yo.bio === 'todo de una');
+
   await new Promise((listo) => conRen.close(listo));
   fs.rmSync(carpetaRen, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------

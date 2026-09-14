@@ -154,9 +154,6 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
     if (metodo === 'PATCH') {
       exigir(yo);
-      // El nombre va aparte: no es un campo mas del perfil, porque arrastra
-      // todo lo que lo referencia.
-      if (cuerpo.usuario !== undefined) await almacen.cambiarUsuario(yo, cuerpo.usuario);
       await almacen.actualizarPerfil(yo, cuerpo);
       return { datos: { yo: perfil(almacen, yo, yo) } };
     }

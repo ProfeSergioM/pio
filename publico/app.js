@@ -808,6 +808,9 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const forma = ev.target;
   const error = $('#error-perfil');
+  const enviar = forma.querySelector('button[type=submit]');
+  if (enviar.disabled) return;
+  enviar.disabled = true;
   error.hidden = true;
 
   const cuerpo = { nombre: forma.nombre.value, bio: forma.bio.value };
@@ -828,6 +831,8 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
+  } finally {
+    enviar.disabled = false;
   }
 });
 

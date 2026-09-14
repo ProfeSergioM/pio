@@ -169,18 +169,32 @@ class Almacen {
     return sesion ? this.buscarUsuario(sesion.usuario) : null;
   }
 
+  // Valida TODO antes de tocar nada. Antes se aplicaba campo por campo, y si
+  // el segundo fallaba quedaba el primero escrito y un error en pantalla: el
+  // perfil a medias y el usuario sin entender que pasó.
   async actualizarPerfil(cuenta, cambios) {
-    if (cambios.nombre !== undefined) {
-      const error = M.validarNombre(cambios.nombre);
+    const revisar = (valor, validar) => {
+      if (valor === undefined) return;
+      const error = validar(valor);
       if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
-      cuenta.nombre = M.normalizarTexto(cambios.nombre);
-    }
-    if (cambios.bio !== undefined) {
-      const error = M.validarBio(cambios.bio);
-      if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
-      cuenta.bio = M.normalizarTexto(cambios.bio);
-    }
-    await this.guardar([cambioUsuario(cuenta)]);
+    };
+
+    revisar(cambios.nombre, M.validarNombre);
+    revisar(cambios.bio, M.validarBio);
+
+    const nuevoUsuario = cambios.usuario === undefined
+      ? null
+      : this.revisarCambioDeUsuario(cuenta, cambios.usuario);
+
+    // Recién ahora, con todo aprobado, se escribe.
+    if (cambios.nombre !== undefined) cuenta.nombre = M.normalizarTexto(cambios.nombre);
+    if (cambios.bio !== undefined) cuenta.bio = M.normalizarTexto(cambios.bio);
+
+    const lista = nuevoUsuario
+      ? this.aplicarCambioDeUsuario(cuenta, nuevoUsuario)
+      : [cambioUsuario(cuenta)];
+
+    await this.guardar(lista);
     return cuenta;
   }
 
@@ -208,9 +222,11 @@ class Almacen {
   // pios, los me gusta, los repios, las listas de seguidos de los demas, los
   // avisos y las sesiones. Es caro, y por eso hay una espera entre cambios;
   // tambien evita que alguien se reserve nombres cambiandose cien veces.
-  async cambiarUsuario(cuenta, pedido) {
+  // Devuelve el nombre nuevo si el cambio se puede hacer, null si no hay
+  // cambio, y tira si no se puede. No toca nada.
+  revisarCambioDeUsuario(cuenta, pedido) {
     const nuevo = M.normalizarUsuario(pedido);
-    if (nuevo === cuenta.usuario) return cuenta;
+    if (nuevo === cuenta.usuario) return null;
 
     const error = M.validarUsuario(nuevo);
     if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
@@ -231,7 +247,20 @@ class Almacen {
         { dias },
       );
     }
+    return nuevo;
+  }
 
+  async cambiarUsuario(cuenta, pedido) {
+    const nuevo = this.revisarCambioDeUsuario(cuenta, pedido);
+    if (!nuevo) return cuenta;
+    await this.guardar(this.aplicarCambioDeUsuario(cuenta, nuevo));
+    return cuenta;
+  }
+
+  // Mueve todo lo que apuntaba al nombre viejo y devuelve la lista de cambios.
+  // No guarda: de eso se encarga quien llama, para que una sola escritura
+  // cubra el cambio de nombre junto con el resto del perfil.
+  aplicarCambioDeUsuario(cuenta, nuevo) {
     const viejo = cuenta.usuario;
     const cambios = [baja('pio_usuarios', viejo)];
 
@@ -274,8 +303,7 @@ class Almacen {
       }
     }
 
-    await this.guardar(cambios);
-    return cuenta;
+    return cambios;
   }
 
   seguidores(usuario) {

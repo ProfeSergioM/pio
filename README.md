@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 238 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 243 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -325,8 +325,20 @@ crezca sin control.
 
 ## Lo que todavía no está
 
-- Imágenes y avatares de verdad (hoy es la inicial sobre un degradé).
-- Avisos en vivo: hoy el contador se refresca cuando cambiás de vista, no solo.
+- Avatares de verdad: hoy el del perfil sigue siendo la inicial sobre un
+  degradé, aunque los píos ya aceptan imágenes.
+- Avisos en vivo: hoy el contador se refresca al cambiar de vista, no solo.
 - Paginación en el cliente: el servidor ya devuelve `hayMas` y acepta `antes`,
   pero la interfaz todavía no pide la página siguiente.
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.
+- Medallitas por seguidores en el perfil: 10, 25, 50, 100, 200, 500, 1000,
+  5000 y más de 10.000. Chiquitas, y sólo en el perfil — no en cada pío, que
+  es donde ensuciarían la lectura.
+- Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
+- Emojis propios del sitio, escritos como `:pollito:`.
+- Acortar direcciones al escribir un pío.
+- Corrales: subtemas con su propio feed y una pestaña de chat.
+- Panel de administración.
+- Nadie puede cambiar ni recuperar su clave. Si un pollito la olvida, queda
+  afuera para siempre.
+- Las sesiones no vencen nunca.

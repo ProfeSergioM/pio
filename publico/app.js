@@ -840,7 +840,7 @@ function tarjetaPio(pio, opciones = {}) {
   const contexto = pio.repiadoPor
     ? `<div class="contexto">${T('pio.repiadoPor', { usuario: escapar(pio.repiadoPor) })}</div>`
     : (pio.respuestaA && !opciones.enCascada
-      ? `<div class="contexto">${escapar(T('pio.respuestaA'))}</div>`
+      ? `<div class="contexto"><a href="#/p/${escapar(pio.respuestaA)}">${escapar(T('pio.respuestaA', { usuario: pio.respuestaAUsuario }))}</a></div>`
       // Dentro del corral no hace falta decir en qué corral se está.
       : (pio.corral && !opciones.enCorral
         ? `<div class="contexto"><a href="#/c/${escapar(pio.corral)}">${escapar(T('pio.enCorral', { corral: pio.corral }))}</a></div>`
@@ -866,10 +866,90 @@ function tarjetaPio(pio, opciones = {}) {
           <button class="accion" data-accion="responder" title="${escapar(T('accion.responder'))}">💬 <span>${pio.respuestas || ''}</span></button>
           <button class="accion repio ${pio.yoRepio ? 'activa' : ''}" data-accion="repio" title="${escapar(T('accion.repiar'))}">🔁 <span>${pio.repios || ''}</span></button>
           <button class="accion ${pio.yoMeGusta ? 'activa' : ''}" data-accion="megusta" title="${escapar(T('accion.megusta'))}">${pio.yoMeGusta ? '❤️' : '🤍'} <span>${pio.meGusta || ''}</span></button>
+          <button class="accion" data-accion="compartir" title="${escapar(T('accion.compartir'))}"
+                  data-autor="${escapar(pio.autor.usuario)}" data-texto="${escapar(pio.texto || '')}">📤</button>
           ${pio.mio ? `<button class="accion borrar" data-accion="borrar" title="${escapar(T('accion.borrar'))}">🗑️</button>` : ''}
         </div>
       </div>
     </article>`;
+}
+
+// --- compartir ------------------------------------------------------------
+
+// Se comparte /p/<id> y no #/p/<id>: las redes arman la vista previa sin
+// ejecutar nada y no ven lo que hay detrás del #. Ver src/compartir.js.
+const enlaceDePio = (id) => `${location.origin}/p/${encodeURIComponent(id)}`;
+
+let menuCompartir = null;
+
+function cerrarCompartir() {
+  if (menuCompartir) menuCompartir.remove();
+  menuCompartir = null;
+}
+
+document.addEventListener('click', (ev) => {
+  if (menuCompartir && !menuCompartir.contains(ev.target)) cerrarCompartir();
+});
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') cerrarCompartir();
+});
+window.addEventListener('hashchange', cerrarCompartir);
+
+async function abrirCompartir(boton, id) {
+  const url = enlaceDePio(id);
+  const frase = T('compartir.frase', { texto: boton.dataset.texto || '', usuario: boton.dataset.autor });
+
+  // En el teléfono, el menú del sistema ya sabe qué aplicaciones hay
+  // instaladas: ofrecer una lista propia sería peor. En la computadora ese
+  // menú suele ser pobre, así que ahí va la lista.
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    try {
+      await navigator.share({ title: 'Pío', text: frase, url });
+    } catch (err) {
+      /* cerrar el menú del sistema no es un error */
+    }
+    return;
+  }
+
+  cerrarCompartir();
+  const q = encodeURIComponent;
+  const destinos = [
+    ['X', `https://x.com/intent/post?text=${q(frase)}&url=${q(url)}`],
+    ['WhatsApp', `https://wa.me/?text=${q(`${frase} ${url}`)}`],
+    ['Telegram', `https://t.me/share/url?url=${q(url)}&text=${q(frase)}`],
+    ['Facebook', `https://www.facebook.com/sharer/sharer.php?u=${q(url)}`],
+    ['Bluesky', `https://bsky.app/intent/compose?text=${q(`${frase} ${url}`)}`],
+  ];
+
+  menuCompartir = document.createElement('div');
+  menuCompartir.className = 'menu-compartir';
+  menuCompartir.setAttribute('role', 'menu');
+  menuCompartir.innerHTML = destinos.map(([nombre, destino]) =>
+    `<a role="menuitem" href="${escapar(destino)}" target="_blank" rel="noopener noreferrer">${escapar(nombre)}</a>`
+  ).join('') + `<button role="menuitem" type="button" data-copiar>${escapar(T('compartir.copiar'))}</button>`;
+  document.body.appendChild(menuCompartir);
+
+  // Debajo del botón, pero sin salirse de la pantalla por la derecha.
+  const r = boton.getBoundingClientRect();
+  const ancho = menuCompartir.offsetWidth;
+  const maximo = window.scrollX + document.documentElement.clientWidth - ancho - 8;
+  menuCompartir.style.top = `${window.scrollY + r.bottom + 4}px`;
+  menuCompartir.style.left = `${Math.max(8, Math.min(window.scrollX + r.left, maximo))}px`;
+
+  menuCompartir.addEventListener('click', async (ev) => {
+    if (ev.target.closest('[data-copiar]')) {
+      try {
+        await navigator.clipboard.writeText(url);
+        avisar(T('compartir.copiado'));
+      } catch (err) {
+        // Sin permiso para el portapapeles, al menos se muestra el enlace.
+        avisar(url);
+      }
+    }
+    // Se cierra después: sacar el enlace en medio de su propio clic puede
+    // dejar la pestaña nueva sin abrir.
+    setTimeout(cerrarCompartir, 0);
+  });
 }
 
 // Va sólo en el perfil. En cada pío sería el mismo adorno cien veces por
@@ -984,6 +1064,7 @@ document.body.addEventListener('click', async (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
     const id = articulo.dataset.id;
+    if (accion.dataset.accion === 'compartir') { abrirCompartir(accion, id); return; }
     try {
       if (accion.dataset.accion === 'megusta') await api(`/pios/${id}/megusta`, { metodo: 'POST' });
       else if (accion.dataset.accion === 'repio') await api(`/pios/${id}/repio`, { metodo: 'POST' });

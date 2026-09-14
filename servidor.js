@@ -6,6 +6,7 @@ const path = require('path');
 const { Almacen } = require('./src/almacen');
 const { crearApi } = require('./src/api');
 const { leerAjustes } = require('./src/ajustes');
+const { paginaParaCompartir } = require('./src/compartir');
 
 const TIPOS = {
   '.html': 'text/html; charset=utf-8',
@@ -29,6 +30,22 @@ function crearServidor(opciones = {}) {
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (await api(req, res, url)) return;
+
+    // La dirección que se comparte: ver src/compartir.js.
+    const compartido = req.method === 'GET' && url.pathname.match(/^\/p\/([a-z0-9]{1,40})\/?$/);
+    if (compartido) {
+      await almacen.listo;
+      const html = paginaParaCompartir(almacen, compartido[1]);
+      if (html) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        res.end(html);
+      } else {
+        // Un pío que ya no está lleva a la portada: mejor que una página de error.
+        res.writeHead(302, { Location: '/' }).end();
+      }
+      return;
+    }
+
     servirEstatico(req, res, url, publico);
   });
 

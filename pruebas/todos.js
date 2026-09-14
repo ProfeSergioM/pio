@@ -197,8 +197,12 @@ async function main() {
     (await pedir(`/pios/${respuesta.datos.pio.id}/hilo`)).datos.antes.length === 1);
 
   const plazaConRespuesta = await pedir('/pios?tipo=plaza');
-  probar('las respuestas no ensucian la plaza', plazaConRespuesta.datos.pios.length === 2,
+  // Una conversación escondida en el hilo es una conversación que nadie encuentra.
+  probar('las respuestas también se ven en la plaza', plazaConRespuesta.datos.pios.length === 3,
     `vio ${plazaConRespuesta.datos.pios.length}`);
+  const laRespuesta = plazaConRespuesta.datos.pios.find((p) => p.respuestaA === pioA);
+  probar('y dicen a quién le contestan', !!laRespuesta && !!laRespuesta.respuestaAUsuario,
+    JSON.stringify(laRespuesta && laRespuesta.respuestaAUsuario));
 
   const respuestaFantasma = await pedir('/pios', {
     metodo: 'POST',
@@ -1770,7 +1774,9 @@ async function main() {
   probar('y se cuentan los suscritos', entrada.datos.corral.suscritos === 2);
 
   const nidoDespues = await pedirCor('/pios?tipo=nido', { token: visitaT });
-  probar('ahora sí llega al nido', nidoDespues.datos.pios.length === 1);
+  // El pío y su respuesta: las respuestas también llegan a las líneas.
+  probar('ahora sí llega al nido', nidoDespues.datos.pios.length === 2,
+    String(nidoDespues.datos.pios.length));
 
   const salida = await pedirCor('/corrales/cosas_de_cocina/seguir', { metodo: 'POST', token: visitaT });
   probar('y se puede salir', salida.datos.corral.estoy === false);
@@ -2208,6 +2214,39 @@ async function main() {
 
   await new Promise((listo) => conOcu.close(listo));
   fs.rmSync(carpetaOcu, { recursive: true, force: true });
+  // --- compartir -----------------------------------------------------------
+
+  grupo('Compartir');
+
+  const carpetaCom = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-com-'));
+  const conCom = crearServidor({ datos: carpetaCom, api: { altas: 100 } });
+  await new Promise((listo) => conCom.listen(0, '127.0.0.1', listo));
+  const baseCom = `http://127.0.0.1:${conCom.address().port}`;
+  const regCom = await (await fetch(`${baseCom}/api/registro`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario: 'cantora', nombre: 'La Cantora', clave: 'semillas' }),
+  })).json();
+  const pioCom = (await (await fetch(`${baseCom}/api/pios`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${regCom.token}` },
+    body: JSON.stringify({ texto: 'Hola <script>alert(1)</script> & "comillas"' }),
+  })).json()).pio;
+
+  const paginaCom = await fetch(`${baseCom}/p/${pioCom.id}`, { redirect: 'manual' });
+  const htmlCom = await paginaCom.text();
+  probar('cada pío tiene su dirección para compartir', paginaCom.status === 200);
+  probar('con el título para la vista previa', htmlCom.includes('<meta property="og:title" content="La Cantora (@cantora) en Pío">'));
+  probar('y el texto del pío', htmlCom.includes('og:description'));
+  // El texto lo escribe cualquiera y termina adentro de una página nuestra.
+  probar('el texto va escapado', !htmlCom.includes('<script>alert') && htmlCom.includes('&lt;script&gt;'));
+  probar('y lleva a la persona a la vista de verdad', htmlCom.includes(`/#/p/${pioCom.id}`));
+
+  const perdido = await fetch(`${baseCom}/p/pnoexiste`, { redirect: 'manual' });
+  probar('un pío que no está lleva a la portada', perdido.status === 302 && perdido.headers.get('location') === '/');
+  probar('una dirección rara no es un pío',
+    (await fetch(`${baseCom}/p/..%2Fdatos`, { redirect: 'manual' })).status !== 302);
+
+  await new Promise((listo) => conCom.close(listo));
+  fs.rmSync(carpetaCom, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

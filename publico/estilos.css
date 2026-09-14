@@ -398,6 +398,22 @@ a { color: inherit; text-decoration: none; }
   overflow-wrap: anywhere;
 }
 
+/* --- compartir --------------------------------------------------------- */
+
+.menu-compartir {
+  position: absolute; z-index: 50; min-width: 170px;
+  display: flex; flex-direction: column; padding: 6px;
+  background: var(--panel); border: 1px solid var(--borde); border-radius: var(--radio);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+}
+.menu-compartir a, .menu-compartir button {
+  display: block; padding: 8px 12px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--texto); font: inherit; text-align: left; cursor: pointer;
+}
+.menu-compartir a:hover, .menu-compartir button:hover,
+.menu-compartir a:focus-visible, .menu-compartir button:focus-visible { background: var(--panel-2); }
+.menu-compartir button { border-top: 1px solid var(--borde); border-radius: 0 0 8px 8px; margin-top: 4px; }
+
 /* --- panel de administración ------------------------------------------- */
 
 /* Con cinco solapas el reparto en partes iguales las deja ilegibles en un

@@ -98,6 +98,7 @@ queda apagada y lo dice.
 | [`src/deposito.js`](src/deposito.js) | Dónde vive todo: archivo JSON o Supabase |
 | [`src/frases.js`](src/frases.js) | De qué habla el piobot |
 | [`src/latido.js`](src/latido.js) | La puerta que mantiene el sitio despierto y hace piar al bot |
+| [`src/compartir.js`](src/compartir.js) | La página de `/p/<id>`, con la vista previa para las redes |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`supabase-corrales.sql`](supabase-corrales.sql) | Las tablas de corrales y del chat |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |

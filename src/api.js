@@ -637,7 +637,7 @@ function linea(almacen, params, yo) {
       // estoy en su corral, ese corral no es asunto mío.
       const deQuienSigo = !p.corral && seguidos.has(p.autor);
       const deMisCorrales = !!p.corral && mios.has(p.corral);
-      if ((deQuienSigo || deMisCorrales) && !p.respuestaA) agregar(p, p.creado, null);
+      if (deQuienSigo || deMisCorrales) agregar(p, p.creado, null);
       for (const r of p.repios) {
         if (seguidos.has(r.usuario) && r.usuario !== p.autor) agregar(p, r.fecha, r.usuario);
       }
@@ -645,7 +645,7 @@ function linea(almacen, params, yo) {
   } else if (tipo === 'corral') {
     const cual = C.aNombre(params.get('corral'));
     for (const p of almacen.datos.pios) {
-      if (p.corral === cual && !p.respuestaA) agregar(p, p.creado, null);
+      if (p.corral === cual) agregar(p, p.creado, null);
     }
   } else if (tipo === 'usuario') {
     const quien = M.normalizarUsuario(params.get('usuario'));
@@ -661,8 +661,9 @@ function linea(almacen, params, yo) {
     for (const p of almacen.datos.pios) if (p.meGusta.includes(quien)) agregar(p, p.creado, null);
   } else {
     // La plaza es el tema general, sin necesidad de llamarlo así: todo lo que
-    // no vive dentro de un corral.
-    for (const p of almacen.datos.pios) if (!p.respuestaA && !p.corral) agregar(p, p.creado, null);
+    // no vive dentro de un corral. Las respuestas también: una conversación
+    // escondida en el hilo es una conversación que nadie encuentra.
+    for (const p of almacen.datos.pios) if (!p.corral) agregar(p, p.creado, null);
   }
 
   // Lo silenciado no se muestra en ninguna línea, salvo en el perfil de esa
@@ -698,6 +699,7 @@ function serializar(almacen, pio, yo) {
     texto: pio.texto,
     creado: pio.creado,
     respuestaA: pio.respuestaA,
+    respuestaAUsuario: pio.respuestaA ? ((almacen.buscarPio(pio.respuestaA) || {}).autor || null) : null,
     autor: autor
       ? { usuario: autor.usuario, nombre: autor.nombre }
       : { usuario: pio.autor, nombre: pio.autor },

@@ -199,11 +199,15 @@ window.IDIOMAS = {
       'perfil.vacio.megusta': 'Todavía no le gustó nada.',
 
       'pio.repiadoPor': (d) => `🔁 repiado por @${d.usuario}`,
-      'pio.respuestaA': '💬 en respuesta a un pío',
+      'pio.respuestaA': (d) => (d.usuario ? `💬 en respuesta a @${d.usuario}` : '💬 en respuesta a un pío'),
       'accion.responder': 'Responder',
       'accion.repiar': 'Repiar',
       'accion.megusta': 'Me gusta',
       'accion.borrar': 'Borrar',
+      'accion.compartir': 'Compartir',
+      'compartir.frase': (d) => `“${d.texto}” — @${d.usuario} en Pío`,
+      'compartir.copiar': 'Copiar enlace',
+      'compartir.copiado': 'Enlace copiado.',
 
       'dialogo.nuevo': 'Nuevo pío',
       'dialogo.respuesta': 'Tu respuesta',
@@ -502,11 +506,15 @@ window.IDIOMAS = {
       'perfil.vacio.megusta': 'Has not liked anything yet.',
 
       'pio.repiadoPor': (d) => `🔁 repiado by @${d.usuario}`,
-      'pio.respuestaA': '💬 replying to a pío',
+      'pio.respuestaA': (d) => (d.usuario ? `💬 replying to @${d.usuario}` : '💬 replying to a pío'),
       'accion.responder': 'Reply',
       'accion.repiar': 'Repiar',
       'accion.megusta': 'Like',
       'accion.borrar': 'Delete',
+      'accion.compartir': 'Share',
+      'compartir.frase': (d) => `“${d.texto}” — @${d.usuario} on Pío`,
+      'compartir.copiar': 'Copy link',
+      'compartir.copiado': 'Link copied.',
 
       'dialogo.nuevo': 'New pío',
       'dialogo.respuesta': 'Your reply',

@@ -38,6 +38,8 @@ const INFRAESTRUCTURA = [
   'mail', 'correo', 'email', 'www', 'ftp', 'smtp', 'dns',
   'api', 'apis', 'cdn', 'static', 'assets', 'bot', 'bots',
   'null', 'undefined', 'nan', 'true', 'false',
+  // La cuenta del bot del sitio, ya creada: se reserva para que nadie la suplante.
+  'piobot', 'pio_bot', 'botpio',
 ];
 
 // 4. Rutas del sitio. Hoy el perfil vive en #/u/<usuario>, pero si manana

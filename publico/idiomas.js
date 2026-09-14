@@ -243,6 +243,8 @@ window.IDIOMAS = {
       'perfil.editar': 'Editar perfil',
       'perfil.guardar': 'Guardar',
       'perfil.guardado': 'Perfil guardado 🐤',
+      'perfil.cambiarFoto': 'Cambiar foto',
+      'perfil.quitarFoto': 'Quitar foto',
       'perfil.usuarioEspera': 'El nombre de usuario se puede cambiar una vez cada treinta días.',
       'perfil.usuarioTrabado': 'Lo cambiaste hace poco. Vas a poder de nuevo más adelante.',
 
@@ -284,6 +286,7 @@ window.IDIOMAS = {
       'pio.vacio': 'Un pío vacío no es un pío.',
       'pio.largo': (d) => `Te pasaste por ${d.sobra}. El límite es ${d.limite}.`,
       'pio.noesta': 'Ese pío ya no está.',
+      'adjunto.origen': 'Esa imagen no viene de donde debería.',
       'pio.ajeno': 'Solo puedes borrar tus propios píos.',
       'bio.larga': (d) => `La bio tampoco pasa de ${d.limite} caracteres.`,
       'usuario.ocupado': 'Ya hay un pollito con ese nombre.',
@@ -569,6 +572,8 @@ window.IDIOMAS = {
       'perfil.editar': 'Edit profile',
       'perfil.guardar': 'Save',
       'perfil.guardado': 'Profile saved 🐤',
+      'perfil.cambiarFoto': 'Change photo',
+      'perfil.quitarFoto': 'Remove photo',
       'perfil.usuarioEspera': 'The username can be changed once every thirty days.',
       'perfil.usuarioTrabado': 'You changed it recently. You will be able to again later.',
 
@@ -610,6 +615,7 @@ window.IDIOMAS = {
       'pio.vacio': 'An empty pío is not a pío.',
       'pio.largo': (d) => `You went over by ${d.sobra}. The limit is ${d.limite}.`,
       'pio.noesta': 'That pío is gone.',
+      'adjunto.origen': 'That image does not come from where it should.',
       'pio.ajeno': 'You can only delete your own píos.',
       'bio.larga': (d) => `The bio does not go past ${d.limite} characters either.`,
       'usuario.ocupado': 'There is already a pollito with that name.',

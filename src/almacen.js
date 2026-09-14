@@ -324,6 +324,8 @@ class Almacen {
     // Recién ahora, con todo aprobado, se escribe.
     if (cambios.nombre !== undefined) cuenta.nombre = M.normalizarTexto(cambios.nombre);
     if (cambios.bio !== undefined) cuenta.bio = M.normalizarTexto(cambios.bio);
+    // Ya viene revisado de la API: sólo direcciones de los servicios de imágenes.
+    if (cambios.avatar !== undefined) cuenta.avatar = cambios.avatar || null;
 
     const lista = nuevoUsuario
       ? this.aplicarCambioDeUsuario(cuenta, nuevoUsuario)

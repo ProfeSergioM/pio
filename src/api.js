@@ -206,7 +206,16 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
     if (metodo === 'PATCH') {
       exigir(yo);
-      await almacen.actualizarPerfil(yo, cuerpo);
+      const cambios = Object.assign({}, cuerpo);
+      // La foto va en un <img> de todas las páginas del sitio: sólo se acepta
+      // una dirección de los servicios donde subimos imágenes. Vacío la quita.
+      if (cuerpo.avatar !== undefined) {
+        cambios.avatar = cuerpo.avatar ? urlDeConfianza(cuerpo.avatar) : null;
+        if (cuerpo.avatar && !cambios.avatar) {
+          throw new ErrorPio(400, 'Esa imagen no viene de donde debería.', 'adjunto.origen');
+        }
+      }
+      await almacen.actualizarPerfil(yo, cambios);
       return { datos: { yo: perfil(almacen, yo, yo) } };
     }
 
@@ -397,6 +406,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
           usuarios: almacen.datos.usuarios.map((u) => ({
             usuario: u.usuario,
             nombre: u.nombre,
+            avatar: u.avatar || null,
             creado: u.creado,
             porGoogle: !!u.google,
             tieneClave: !!(u.sal && u.hash),
@@ -739,7 +749,7 @@ function serializar(almacen, pio, yo) {
     respuestaA: pio.respuestaA,
     respuestaAUsuario: pio.respuestaA ? ((almacen.buscarPio(pio.respuestaA) || {}).autor || null) : null,
     autor: autor
-      ? { usuario: autor.usuario, nombre: autor.nombre }
+      ? { usuario: autor.usuario, nombre: autor.nombre, avatar: autor.avatar || null }
       : { usuario: pio.autor, nombre: pio.autor },
     // El número sólo lo ve quien escribió el pío. La competencia por
     // corazones es lo que más cansa de las otras redes; saber si a uno le
@@ -770,7 +780,9 @@ function serializarAviso(almacen, aviso, yo) {
     tipo: aviso.tipo,
     creado: aviso.creado,
     leida: aviso.leida,
-    de: de ? { usuario: de.usuario, nombre: de.nombre } : { usuario: aviso.de, nombre: aviso.de },
+    de: de
+      ? { usuario: de.usuario, nombre: de.nombre, avatar: de.avatar || null }
+      : { usuario: aviso.de, nombre: aviso.de },
     pio: pio ? serializar(almacen, pio, yo) : null,
   };
 }
@@ -782,7 +794,7 @@ function serializarMensaje(almacen, m) {
     texto: m.texto,
     creado: m.creado,
     autor: quien
-      ? { usuario: quien.usuario, nombre: quien.nombre }
+      ? { usuario: quien.usuario, nombre: quien.nombre, avatar: quien.avatar || null }
       : { usuario: m.autor, nombre: m.autor },
   };
 }
@@ -806,6 +818,7 @@ function perfil(almacen, cuenta, yo) {
   const seguidores = almacen.seguidores(cuenta.usuario).length;
   return {
     usuario: cuenta.usuario,
+    avatar: cuenta.avatar || null,
     // Sólo en el perfil propio: a los demás no les importa cuándo puedes
     // cambiarlo, y es información de más sobre otra persona.
     tieneClave: propio ? !!(cuenta.sal && cuenta.hash) : undefined,
@@ -853,16 +866,18 @@ function frenarAltas(altas, desde) {
   );
 }
 
+function urlDeConfianza(valor) {
+  try {
+    const u = new URL(String(valor));
+    return u.protocol === 'https:' && ORIGENES.test(u.hostname) ? u.href : null;
+  } catch (err) {
+    return null;
+  }
+}
+
 function limpiarAdjunto(crudo) {
   if (!crudo) return null;
-  const mirar = (valor) => {
-    try {
-      const u = new URL(String(valor));
-      return u.protocol === 'https:' && ORIGENES.test(u.hostname) ? u.href : null;
-    } catch (err) {
-      return null;
-    }
-  };
+  const mirar = urlDeConfianza;
   const url = mirar(crudo.url);
   if (!url) throw new ErrorPio(400, 'Esa imagen no viene de donde debería.', 'adjunto.origen');
   const entero = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null);

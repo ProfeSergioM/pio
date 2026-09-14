@@ -152,8 +152,13 @@ function hace(ms) {
   return new Date(ms).toLocaleDateString(diccionario().fechas, { day: 'numeric', month: 'short' });
 }
 
-function avatar(usuario, clase = '') {
-  return `<div class="avatar ${clase}">${escapar((usuario || '?')[0].toUpperCase())}</div>`;
+// La inicial está siempre, y la foto la tapa cuando llega. Así, mientras
+// carga o si nunca carga, se ve la inicial y no un círculo vacío, que parece
+// un error.
+function avatar(usuario, clase = '', url = null) {
+  const inicial = escapar((usuario || '?')[0].toUpperCase());
+  const foto = url ? `<img src="${escapar(url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  return `<div class="avatar ${clase}">${inicial}${foto}</div>`;
 }
 
 let temporizadorAviso = null;
@@ -568,7 +573,7 @@ async function vistaPerfil(usuario, solapa) {
   $('#contenido').innerHTML = `
     <div class="perfil-caja">
       <div class="perfil-fila">
-        ${avatar(perfil.usuario, 'grande')}
+        ${avatar(perfil.usuario, 'grande', perfil.avatar)}
         ${botonRelacion}
       </div>
       <h3 class="perfil-nombre">${escapar(perfil.nombre)}${medallita(perfil.medalla)}</h3>
@@ -960,7 +965,7 @@ function tarjetaPio(pio, opciones = {}) {
     <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''}" data-id="${pio.id}">
       ${cascaron}
       ${contexto}
-      ${avatar(pio.autor.usuario)}
+      ${avatar(pio.autor.usuario, '', pio.autor.avatar)}
       <div>
         <div class="pio-cabecera">
           <a class="pio-nombre" href="#/u/${escapar(pio.autor.usuario)}" data-parar>${escapar(pio.autor.nombre)}</a>
@@ -1076,7 +1081,7 @@ function medallita(medalla) {
 function filaUsuario(perfil) {
   return `
     <div class="sugerencia">
-      <a href="#/u/${escapar(perfil.usuario)}">${avatar(perfil.usuario, 'chico')}</a>
+      <a href="#/u/${escapar(perfil.usuario)}">${avatar(perfil.usuario, 'chico', perfil.avatar)}</a>
       <a class="crece" href="#/u/${escapar(perfil.usuario)}">
         <b>${escapar(perfil.nombre)}</b><span>@${escapar(perfil.usuario)}</span>
       </a>
@@ -1488,8 +1493,56 @@ async function buscarGifs(consulta) {
 
 // --- editar el perfil -----------------------------------------------------
 
+// undefined: no se tocó la foto. null: se quitó. Texto: la nueva.
+let avatarPendiente;
+
+function pintarAvatarVista() {
+  const url = avatarPendiente === undefined ? estado.yo.avatar : avatarPendiente;
+  $('#avatar-vista').innerHTML = avatar(estado.yo.usuario, 'grande', url);
+  $('#quitar-avatar').hidden = !url;
+}
+
+$('#cambiar-avatar').addEventListener('click', () => $('#archivo-avatar').click());
+$('#quitar-avatar').addEventListener('click', () => {
+  avatarPendiente = null;
+  pintarAvatarVista();
+});
+
+$('#archivo-avatar').addEventListener('change', async (ev) => {
+  const archivo = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!archivo) return;
+  const error = $('#error-perfil');
+  error.hidden = true;
+  if (archivo.size > 5 * 1024 * 1024) {
+    error.textContent = T('adjunto.pesada');
+    error.hidden = false;
+    return;
+  }
+  const boton = $('#cambiar-avatar');
+  boton.disabled = true;
+  boton.textContent = T('adjunto.subiendo');
+  try {
+    const { imagen } = await api('/imagenes', {
+      metodo: 'POST',
+      cuerpo: { imagen: await leerComoBase64(archivo) },
+    });
+    // La miniatura alcanza de sobra para un círculo de setenta píxeles.
+    avatarPendiente = imagen.miniatura || imagen.url;
+    pintarAvatarVista();
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  } finally {
+    boton.disabled = false;
+    boton.textContent = T('perfil.cambiarFoto');
+  }
+});
+
 function abrirPerfil() {
   const forma = $('#forma-perfil');
+  avatarPendiente = undefined;
+  pintarAvatarVista();
   forma.usuario.value = estado.yo.usuario;
   forma.nombre.value = estado.yo.nombre;
   forma.bio.value = estado.yo.bio || '';
@@ -1515,6 +1568,7 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
   error.hidden = true;
 
   const cuerpo = { nombre: forma.nombre.value, bio: forma.bio.value };
+  if (avatarPendiente !== undefined) cuerpo.avatar = avatarPendiente;
   // El usuario sólo viaja si de verdad cambió: mandarlo igual gastaría el
   // cambio de los treinta días sin que nadie lo haya pedido.
   if (!forma.usuario.disabled) {
@@ -1819,7 +1873,7 @@ async function panelPollitos(donde) {
       ].filter(Boolean);
       return `
         <div class="sugerencia">
-          ${avatar(u.usuario, 'chico')}
+          ${avatar(u.usuario, 'chico', u.avatar)}
           <a class="crece" href="#/u/${escapar(u.usuario)}">
             <b>${escapar(u.nombre)}</b>
             <span>@${escapar(u.usuario)} · ${escapar(T('admin.cuentas', { pios: u.pios, seguidores: u.seguidores }))}</span>
@@ -1860,7 +1914,7 @@ async function panelPios(donde) {
   if (!pios.length) { donde.innerHTML = `<div class="vacio"><span class="emoji">🌱</span>${escapar(T('admin.vacio'))}</div>`; return; }
   donde.innerHTML = pios.map((p) => `
     <article class="pio quieto">
-      ${avatar(p.autor.usuario)}
+      ${avatar(p.autor.usuario, '', p.autor.avatar)}
       <div>
         <div class="pio-cabecera">
           <a class="pio-nombre" href="#/u/${escapar(p.autor.usuario)}">${escapar(p.autor.nombre)}</a>
@@ -2037,7 +2091,7 @@ aplicarTema(localStorage.getItem('pio.tema')
 function pintarYoLateral() {
   $('#yo-lateral').innerHTML = `
     <a class="fila-usuario" href="#/u/${escapar(estado.yo.usuario)}">
-      ${avatar(estado.yo.usuario, 'chico')}
+      ${avatar(estado.yo.usuario, 'chico', estado.yo.avatar)}
       <div class="crece">
         <b>${escapar(estado.yo.nombre)}</b><br><span class="chico">@${escapar(estado.yo.usuario)}</span>
       </div>
@@ -2061,6 +2115,8 @@ async function cargarConfig() {
     $('#nav-admin').hidden = !config.soyAdmin;
     $('#acortar-enlaces').hidden = !config.acortador;
     $('#poner-imagen').hidden = !config.imagenes;
+    // Sin servicio de imágenes no hay de dónde sacar la foto.
+    $('#cambiar-avatar').hidden = !config.imagenes;
     $('#poner-gif').hidden = !config.gifs;
   } catch (err) {
     /* si no se puede preguntar, quedan como estaban */

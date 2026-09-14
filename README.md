@@ -508,8 +508,6 @@ abierta.
 
 ## Lo que todavía no está
 
-- Avatares de verdad: hoy el del perfil sigue siendo la inicial sobre un
-  degradé, aunque los píos ya aceptan imágenes.
 - Avisos en vivo: hoy el contador se refresca al cambiar de vista, no solo.
 - Paginación en el cliente: el servidor ya devuelve `hayMas` y acepta `antes`,
   pero la interfaz todavía no pide la página siguiente.

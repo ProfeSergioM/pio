@@ -2405,6 +2405,61 @@ async function main() {
   await new Promise((listo) => conPre.close(listo));
   fs.rmSync(carpetaPre, { recursive: true, force: true });
 
+  // --- la foto de perfil ---------------------------------------------------
+
+  grupo('Foto de perfil');
+
+  const carpetaAva = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-ava-'));
+  const conAva = crearServidor({ datos: carpetaAva, api: { altas: 100 } });
+  await new Promise((listo) => conAva.listen(0, '127.0.0.1', listo));
+  const baseAva = `http://127.0.0.1:${conAva.address().port}`;
+  const pedirAva = async (ruta, o = {}) => {
+    const r = await fetch(`${baseAva}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const retratoT = (await pedirAva('/registro', {
+    metodo: 'POST', cuerpo: { usuario: 'retratada', nombre: 'Retratada', clave: 'semillas' },
+  })).datos.token;
+
+  probar('sin foto, avatar vacío', (await pedirAva('/yo', { token: retratoT })).datos.yo.avatar === null);
+
+  const foto = 'https://res.cloudinary.com/demo/image/upload/c_thumb,w_200/pio/cara.jpg';
+  const puesta = await pedirAva('/yo', { metodo: 'PATCH', token: retratoT, cuerpo: { avatar: foto } });
+  probar('se pone una foto', puesta.estado === 200 && puesta.datos.yo.avatar === foto);
+  probar('sale en el perfil público', (await pedirAva('/usuarios/retratada')).datos.perfil.avatar === foto);
+
+  await pedirAva('/pios', { metodo: 'POST', token: retratoT, cuerpo: { texto: 'con cara nueva' } });
+  probar('y en cada pío', (await pedirAva('/pios?tipo=plaza')).datos.pios[0].autor.avatar === foto);
+
+  // Termina en un <img> de todas las páginas: sólo de los servicios de imágenes.
+  const ajena = await pedirAva('/yo', {
+    metodo: 'PATCH', token: retratoT, cuerpo: { avatar: 'https://malo.example/cara.png' },
+  });
+  probar('una foto de cualquier sitio se rechaza', ajena.estado === 400 && ajena.datos.clave === 'adjunto.origen');
+  const sinHttps = await pedirAva('/yo', {
+    metodo: 'PATCH', token: retratoT, cuerpo: { avatar: 'http://res.cloudinary.com/demo/cara.jpg' },
+  });
+  probar('sin https tampoco', sinHttps.estado === 400);
+  probar('y lo rechazado no cambia nada', (await pedirAva('/yo', { token: retratoT })).datos.yo.avatar === foto);
+  const truco = await pedirAva('/yo', {
+    metodo: 'PATCH', token: retratoT, cuerpo: { avatar: 'javascript:alert(1)' },
+  });
+  probar('ni direcciones que no son de imagen', truco.estado === 400);
+
+  const nombreSolo = await pedirAva('/yo', { metodo: 'PATCH', token: retratoT, cuerpo: { nombre: 'Otra' } });
+  probar('cambiar el nombre no toca la foto', nombreSolo.datos.yo.avatar === foto);
+
+  const quitada = await pedirAva('/yo', { metodo: 'PATCH', token: retratoT, cuerpo: { avatar: null } });
+  probar('se quita la foto', quitada.estado === 200 && quitada.datos.yo.avatar === null);
+
+  await new Promise((listo) => conAva.close(listo));
+  fs.rmSync(carpetaAva, { recursive: true, force: true });
+
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

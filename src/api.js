@@ -251,6 +251,21 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
   }
 
+  // TEMPORAL: para averiguar qué cabecera de proxy llega en el despliegue.
+  // Se saca apenas se sepa. No devuelve nada del sitio, sólo lo que ve el
+  // servidor de la petición que uno mismo acaba de hacer.
+  if (recurso === 'diagnostico' && metodo === 'GET') {
+    return {
+      datos: {
+        xff: (req.headers['x-forwarded-for'] || null),
+        otras: Object.keys(req.headers).filter((h) => /forward|real-ip|client-ip|cf-/i.test(h)),
+        socket: (req.socket && req.socket.remoteAddress) || null,
+        proxiesConfigurados: servicios.proxies,
+        claveDelCubo: dedonde(),
+      },
+    };
+  }
+
   // --- gifs ---------------------------------------------------------------
 
   // Pide sesión a propósito: sin eso esto sería un proxy abierto a Giphy con

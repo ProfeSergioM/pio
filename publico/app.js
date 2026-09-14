@@ -766,11 +766,9 @@ function aplicarTema(tema) {
 // por cascada. El DOM no cambia nunca: por eso las diez conviven y todas andan.
 const DISENOS = [
   { slug: '', nombre: null, que: null },
-  { slug: 'brutal', nombre: 'Brutalismo suave', que: 'Bordes gruesos, color plano, sombra dura.' },
   { slug: 'fichas', nombre: 'Fichas', que: 'Tarjetas flotando con mucho aire entre una y otra.' },
   { slug: 'revista', nombre: 'Revista', que: 'Titulares grandes y maquetación asimétrica.' },
   { slug: 'pixel', nombre: 'Pixel', que: 'Ocho bits: bordes escalonados y paleta corta.' },
-  { slug: 'brote', nombre: 'Brote', que: 'Curvas orgánicas, verdes de hoja, todo en calma.' },
 ];
 
 function disenoActual() {

@@ -102,7 +102,13 @@ async function api(ruta, opciones = {}) {
 
   const datos = await respuesta.json().catch(() => ({}));
   if (!respuesta.ok) {
-    if (respuesta.status === 401 && estado.yo) cerrarSesion(true);
+    // Sólo el 401 que dice "acá falta sesión" es una sesión vencida. Los otros
+    // son respuestas legítimas a algo que se pidió mal —la clave actual
+    // equivocada, un código que no coincide— y echar a alguien por eso es
+    // castigarlo por escribir mal.
+    if (respuesta.status === 401 && datos.clave === 'sesion.falta' && estado.yo) {
+      cerrarSesion(true);
+    }
     throw new Error(TError(datos));
   }
   return datos;
@@ -163,18 +169,42 @@ function avisar(mensaje) {
 
 let modoAcceso = 'entrar';
 
+function ponerModo(modo) {
+  modoAcceso = modo;
+  const esRegistro = modo === 'registro';
+  const esRecuperar = modo === 'recuperar';
+  const forma = $('#forma-acceso');
+
+  // Recuperar no es una pestaña: se llega por el enlace de abajo, y mientras
+  // dura no hay ninguna pestaña marcada.
+  document.querySelectorAll('.pestana').forEach((p) => {
+    p.classList.toggle('activa', !esRecuperar && p.dataset.modo === modo);
+  });
+  document.querySelectorAll('.solo-registro').forEach((c) => { c.hidden = !esRegistro; });
+  document.querySelectorAll('.solo-recuperar').forEach((c) => { c.hidden = !esRecuperar; });
+
+  forma.nombre.required = esRegistro;
+  forma.clave.autocomplete = (esRegistro || esRecuperar) ? 'new-password' : 'current-password';
+
+  const enviar = forma.querySelector('button[type=submit]');
+  enviar.dataset.t = esRecuperar ? 'acceso.boton.recuperar'
+    : (esRegistro ? 'acceso.boton.crear' : 'acceso.boton.entrar');
+  enviar.textContent = T(enviar.dataset.t);
+
+  const olvide = $('#olvide');
+  olvide.dataset.t = esRecuperar ? 'acceso.volver' : 'acceso.olvide';
+  olvide.textContent = T(olvide.dataset.t);
+
+  $('#error-acceso').hidden = true;
+}
+
 $('.pestanas').addEventListener('click', (ev) => {
   const boton = ev.target.closest('.pestana');
-  if (!boton) return;
-  modoAcceso = boton.dataset.modo;
-  document.querySelectorAll('.pestana').forEach((p) => p.classList.toggle('activa', p === boton));
-  document.querySelectorAll('.solo-registro').forEach((c) => { c.hidden = modoAcceso !== 'registro'; });
-  $('#forma-acceso [name=nombre]').required = modoAcceso === 'registro';
-  $('#forma-acceso [name=clave]').autocomplete = modoAcceso === 'registro' ? 'new-password' : 'current-password';
-  const enviar = $('#forma-acceso button[type=submit]');
-  enviar.dataset.t = modoAcceso === 'registro' ? 'acceso.boton.crear' : 'acceso.boton.entrar';
-  enviar.textContent = T(enviar.dataset.t);
-  $('#error-acceso').hidden = true;
+  if (boton) ponerModo(boton.dataset.modo);
+});
+
+$('#olvide').addEventListener('click', () => {
+  ponerModo(modoAcceso === 'recuperar' ? 'entrar' : 'recuperar');
 });
 
 $('#forma-acceso').addEventListener('submit', async (ev) => {
@@ -190,20 +220,22 @@ $('#forma-acceso').addEventListener('submit', async (ev) => {
     return;
   }
 
-  const cuerpo = {
-    usuario,
-    clave: forma.get('clave'),
-    nombre: forma.get('nombre') || usuario,
-  };
+  const rutas = { registro: '/registro', entrar: '/sesion', recuperar: '/recuperar' };
+  const cuerpo = modoAcceso === 'recuperar'
+    ? { usuario, codigo: forma.get('codigo'), clave: forma.get('clave') }
+    : { usuario, clave: forma.get('clave'), nombre: forma.get('nombre') || usuario };
 
   try {
-    const datos = await api(modoAcceso === 'registro' ? '/registro' : '/sesion', { metodo: 'POST', cuerpo });
+    const datos = await api(rutas[modoAcceso], { metodo: 'POST', cuerpo });
     estado.token = datos.token;
     estado.yo = datos.yo;
     localStorage.setItem('pio.token', datos.token);
     ev.target.reset();
+    ponerModo('entrar');
     mostrarApp();
     avisar(T(modoAcceso === 'registro' ? 'toast.nidoCreado' : 'toast.bienvenida'));
+    // El alta y la recuperación entregan código; entrar, no.
+    if (datos.recuperacion) mostrarCodigo(datos.recuperacion);
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
@@ -405,6 +437,7 @@ async function vistaPerfil(usuario, solapa) {
   const botonRelacion = perfil.soyYo
     ? `<div class="perfil-botones">
          <button class="boton" data-editar>${escapar(T('perfil.editar'))}</button>
+         <button class="boton" data-clave>${escapar(T('perfil.clave'))}</button>
          <button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>
        </div>`
     : `<button class="boton ${perfil.loSigo ? 'fantasma' : 'principal'}" data-seguir="${escapar(perfil.usuario)}">
@@ -453,6 +486,8 @@ async function vistaPerfil(usuario, solapa) {
   if (salir) salir.addEventListener('click', () => cerrarSesion(false));
   const editar = $('#contenido').querySelector('[data-editar]');
   if (editar) editar.addEventListener('click', abrirPerfil);
+  const clave = $('#contenido').querySelector('[data-clave]');
+  if (clave) clave.addEventListener('click', abrirClave);
 }
 
 // Qué ramas están plegadas, sólo mientras dura la vista. Guardarlo entre
@@ -726,6 +761,77 @@ document.body.addEventListener('click', async (ev) => {
 
   if (articulo && !ev.target.closest('a') && !articulo.classList.contains('destacado')) {
     location.hash = `#/p/${articulo.dataset.id}`;
+  }
+});
+
+// --- código de recuperación y clave ---------------------------------------
+
+// Se muestra una sola vez, al crearse la cuenta o al recuperarla. De ahí en
+// más el servidor sólo tiene su hash y nadie lo puede volver a ver.
+function mostrarCodigo(codigo) {
+  $('#codigo-texto').textContent = codigo;
+  $('#dialogo-codigo').showModal();
+}
+
+$('#cerrar-codigo').addEventListener('click', () => $('#dialogo-codigo').close());
+
+$('#copiar-codigo').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('#codigo-texto').textContent);
+    avisar(T('codigo.copiado'));
+  } catch (err) {
+    // Sin permiso de portapapeles queda seleccionable a mano, que para eso
+    // el recuadro tiene user-select: all.
+  }
+});
+
+function abrirClave() {
+  const forma = $('#forma-clave');
+  forma.reset();
+  // Una cuenta de Google todavía no tiene clave: no hay actual que pedirle.
+  $('#campo-actual').hidden = estado.yo.tieneClave === false;
+  $('#error-clave').hidden = true;
+  $('#dialogo-clave').showModal();
+}
+
+$('#cerrar-clave').addEventListener('click', () => $('#dialogo-clave').close());
+
+$('#forma-clave').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const forma = ev.target;
+  const error = $('#error-clave');
+  const enviar = forma.querySelector('button[type=submit]');
+  if (enviar.disabled) return;
+  enviar.disabled = true;
+  error.hidden = true;
+  try {
+    const datos = await api('/yo/clave', {
+      metodo: 'POST',
+      cuerpo: { actual: forma.actual.value, nueva: forma.nueva.value },
+    });
+    $('#dialogo-clave').close();
+    estado.yo.tieneClave = true;
+    avisar(T('clave.lista'));
+    if (datos.recuperacion) mostrarCodigo(datos.recuperacion);
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  } finally {
+    enviar.disabled = false;
+  }
+});
+
+$('#pedir-codigo').addEventListener('click', async () => {
+  const error = $('#error-clave');
+  error.hidden = true;
+  try {
+    const { recuperacion } = await api('/yo/codigo', { metodo: 'POST' });
+    $('#dialogo-clave').close();
+    avisar(T('codigo.nuevo'));
+    mostrarCodigo(recuperacion);
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
   }
 });
 

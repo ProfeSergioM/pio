@@ -43,6 +43,11 @@
         <input name="nombre" maxlength="30" placeholder="Pollito Primero">
       </label>
 
+      <label class="campo solo-recuperar" hidden>
+        <span data-t="campo.codigo"></span>
+        <input name="codigo" autocomplete="off" data-t-ph="campo.codigo.ph">
+      </label>
+
       <label class="campo">
         <span data-t="campo.clave"></span>
         <input name="clave" type="password" minlength="6" required
@@ -52,6 +57,10 @@
       <p id="error-acceso" class="error" role="alert" hidden></p>
       <button class="boton principal ancho" type="submit" data-t="acceso.boton.entrar"></button>
     </form>
+
+    <p class="chico centrado">
+      <button type="button" class="enlace" id="olvide" data-t="acceso.olvide"></button>
+    </p>
 
     <div id="con-google" hidden>
       <div class="separador"><span data-t="acceso.o"></span></div>
@@ -175,6 +184,46 @@
     <p id="error-perfil" class="error" role="alert" hidden></p>
     <div class="dialogo-pie">
       <button class="boton principal" type="submit" data-t="perfil.guardar"></button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogo-codigo" class="dialogo">
+  <div class="dialogo-caja">
+    <div class="dialogo-cabecera">
+      <span data-t="codigo.titulo"></span>
+    </div>
+    <p data-t="codigo.explica"></p>
+    <p class="codigo" id="codigo-texto"></p>
+    <p class="chico" data-t="codigo.aviso"></p>
+    <div class="dialogo-pie">
+      <button class="boton" type="button" id="copiar-codigo" data-t="codigo.copiar"></button>
+      <button class="boton principal" type="button" id="cerrar-codigo" data-t="codigo.guardado"></button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dialogo-clave" class="dialogo">
+  <form method="dialog" class="dialogo-caja" id="forma-clave" novalidate>
+    <div class="dialogo-cabecera">
+      <button type="button" class="icono" id="cerrar-clave" data-t-titulo="dialogo.cerrar">✕</button>
+      <span data-t="clave.titulo"></span>
+    </div>
+
+    <label class="campo" id="campo-actual">
+      <span data-t="clave.actual"></span>
+      <input name="actual" type="password" autocomplete="current-password">
+    </label>
+
+    <label class="campo">
+      <span data-t="clave.nueva"></span>
+      <input name="nueva" type="password" autocomplete="new-password" data-t-ph="campo.clave.ph">
+    </label>
+
+    <p id="error-clave" class="error" role="alert" hidden></p>
+    <div class="dialogo-pie">
+      <button class="boton fantasma" type="button" id="pedir-codigo" data-t="codigo.pedirOtro"></button>
+      <button class="boton principal" type="submit" data-t="clave.guardar"></button>
     </div>
   </form>
 </dialog>

@@ -378,6 +378,26 @@ a { color: inherit; text-decoration: none; }
 .medidor.aviso .anillo-frente { stroke: var(--pico); }
 .medidor.pasado .anillo-frente { stroke: var(--rojo); }
 
+/* --- códigos de recuperación ------------------------------------------- */
+
+.centrado { text-align: center; }
+
+/* Un botón que se lee como enlace: es una acción, no una navegación, así que
+   por dentro tiene que ser un botón. */
+.enlace {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  color: var(--pico); font-weight: 600; font-size: inherit; text-decoration: underline;
+}
+
+/* Monoespaciada y grande: esto se copia a mano de la pantalla a un papel. */
+.codigo {
+  font: 700 20px/1.5 ui-monospace, Consolas, monospace;
+  letter-spacing: 2px; text-align: center; user-select: all;
+  padding: 14px; margin: 10px 0;
+  background: var(--panel-2); border: 1px solid var(--borde); border-radius: var(--radio);
+  overflow-wrap: anywhere;
+}
+
 /* --- medallitas -------------------------------------------------------- */
 
 /* Chiquita y al lado del nombre, sin cambiar el alto del renglón. */

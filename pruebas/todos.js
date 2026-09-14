@@ -1432,6 +1432,162 @@ async function main() {
 
   await new Promise((listo) => conMed.close(listo));
   fs.rmSync(carpetaMed, { recursive: true, force: true });
+  // --- claves y recuperación ----------------------------------------------
+
+  grupo('Claves');
+  const REC = require('../src/recuperacion');
+
+  const unCodigo = REC.generar();
+  probar('el código tiene la forma esperada', /^PIO(-[23456789A-HJKMNP-Z]{5}){3}$/.test(unCodigo), unCodigo);
+  probar('no lleva letras que se copien mal', !/[01ILO]/.test(unCodigo.replace('PIO', '')));
+  const otros = new Set();
+  for (let i = 0; i < 200; i += 1) otros.add(REC.generar());
+  probar('no se repite', otros.size === 200);
+
+  const guardado = REC.guardable(unCodigo);
+  probar('se guarda hasheado, no en claro',
+    !JSON.stringify(guardado).includes(unCodigo.replace(/-/g, '')));
+  probar('el bueno coincide', REC.coincide(unCodigo, guardado));
+  // Se copia de un papel: hay que aceptarlo escrito como salga.
+  probar('en minúsculas también', REC.coincide(unCodigo.toLowerCase(), guardado));
+  probar('sin guiones también', REC.coincide(unCodigo.replace(/-/g, ''), guardado));
+  probar('con espacios de más también', REC.coincide('  ' + unCodigo + ' ', guardado));
+  probar('otro código no coincide', !REC.coincide(REC.generar(), guardado));
+  probar('ni uno recortado', !REC.coincide('PIO-ABCDE', guardado));
+  probar('ni nada', !REC.coincide('', guardado));
+
+  // --- y por HTTP ---
+
+  const carpetaCla = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-clave-'));
+  const conCla = crearServidor({ datos: carpetaCla, api: { altas: 100, intentos: 500 } });
+  await new Promise((listo) => conCla.listen(0, '127.0.0.1', listo));
+  const baseCla = `http://127.0.0.1:${conCla.address().port}`;
+
+  const pedirCla = async (ruta, o = {}) => {
+    const r = await fetch(`${baseCla}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+
+  const altaCla = await pedirCla('/registro', {
+    metodo: 'POST', cuerpo: { usuario: 'jilguero', nombre: 'Jilguero', clave: 'cascarita' },
+  });
+  probar('el alta entrega un código de recuperación', !!altaCla.datos.recuperacion, altaCla.datos.recuperacion);
+  const codigoUno = altaCla.datos.recuperacion;
+  let token = altaCla.datos.token;
+
+  probar('el código no vuelve a aparecer en el perfil',
+    !JSON.stringify((await pedirCla('/yo', { token })).datos).includes(codigoUno.slice(4, 9)));
+
+  // --- cambiar la clave sabiendo la actual ---
+
+  const otraSesion = (await pedirCla('/sesion', {
+    metodo: 'POST', cuerpo: { usuario: 'jilguero', clave: 'cascarita' },
+  })).datos.token;
+
+  const malActual = await pedirCla('/yo/clave', {
+    metodo: 'POST', token, cuerpo: { actual: 'no es esa', nueva: 'granito123' },
+  });
+  probar('con la clave actual equivocada no cambia', malActual.estado === 401
+    && malActual.datos.clave === 'clave.actualmala');
+
+  // El cliente cierra la sesión cuando ve un 401, pero SÓLO el de sesión
+  // faltante. Si los demás no se distinguieran, equivocarse al escribir la
+  // clave actual echaría a la gente de su cuenta.
+  const faltaSesion = await pedirCla('/yo');
+  probar('el 401 de sesión faltante se llama sesion.falta',
+    faltaSesion.estado === 401 && faltaSesion.datos.clave === 'sesion.falta');
+  probar('y el de la clave actual se llama distinto',
+    malActual.datos.clave !== faltaSesion.datos.clave);
+
+  const claveMala = await pedirCla('/sesion', {
+    metodo: 'POST', cuerpo: { usuario: 'jilguero', clave: 'no es esa' },
+  });
+  probar('entrar con la clave mal tampoco se confunde con sesión vencida',
+    claveMala.estado === 401 && claveMala.datos.clave === 'acceso.malo');
+
+  probar('la sesión sigue viva después de un 401 que no era de sesión',
+    (await pedirCla('/yo', { token })).estado === 200);
+
+  const cortaNueva = await pedirCla('/yo/clave', {
+    metodo: 'POST', token, cuerpo: { actual: 'cascarita', nueva: 'abc' },
+  });
+  probar('una clave nueva corta se rechaza', cortaNueva.estado === 400);
+
+  const cambiada = await pedirCla('/yo/clave', {
+    metodo: 'POST', token, cuerpo: { actual: 'cascarita', nueva: 'granito123' },
+  });
+  probar('con la actual correcta, cambia', cambiada.estado === 200);
+  probar('la clave vieja ya no entra',
+    (await pedirCla('/sesion', { metodo: 'POST', cuerpo: { usuario: 'jilguero', clave: 'cascarita' } })).estado === 401);
+  probar('y la nueva sí',
+    (await pedirCla('/sesion', { metodo: 'POST', cuerpo: { usuario: 'jilguero', clave: 'granito123' } })).estado === 200);
+
+  probar('la sesión que hizo el cambio sigue viva',
+    (await pedirCla('/yo', { token })).estado === 200);
+  // Cambiar la clave y dejar las otras sesiones abiertas sería dejar adentro
+  // justamente a quien uno quiere sacar.
+  probar('las otras sesiones se cierran',
+    (await pedirCla('/yo', { token: otraSesion })).estado === 401);
+
+  // --- recuperar con el código ---
+
+  const usuarioQueNoEsta = await pedirCla('/recuperar', {
+    metodo: 'POST', cuerpo: { usuario: 'nadie_de_nadie', codigo: codigoUno, clave: 'otraclave1' },
+  });
+  const codigoEquivocado = await pedirCla('/recuperar', {
+    metodo: 'POST', cuerpo: { usuario: 'jilguero', codigo: REC.generar(), clave: 'otraclave1' },
+  });
+  // El mismo error para los dos: distinguirlos regalaría la lista de cuentas.
+  probar('usuario inexistente y código malo dan lo mismo',
+    usuarioQueNoEsta.estado === codigoEquivocado.estado
+    && usuarioQueNoEsta.datos.error === codigoEquivocado.datos.error,
+    `${usuarioQueNoEsta.estado} vs ${codigoEquivocado.estado}`);
+
+  const recuperada = await pedirCla('/recuperar', {
+    metodo: 'POST', cuerpo: { usuario: 'jilguero', codigo: codigoUno.toLowerCase(), clave: 'plumita456' },
+  });
+  probar('el código recupera la cuenta', recuperada.estado === 200, JSON.stringify(recuperada.datos).slice(0, 80));
+  probar('y deja entrar con la clave nueva',
+    (await pedirCla('/sesion', { metodo: 'POST', cuerpo: { usuario: 'jilguero', clave: 'plumita456' } })).estado === 200);
+  probar('entrega un código nuevo', !!recuperada.datos.recuperacion
+    && recuperada.datos.recuperacion !== codigoUno);
+  // Una llave de repuesto ya usada no debería seguir abriendo.
+  probar('el código viejo ya no sirve',
+    (await pedirCla('/recuperar', { metodo: 'POST', cuerpo: { usuario: 'jilguero', codigo: codigoUno, clave: 'yotra789' } })).estado === 401);
+  probar('recuperar cierra todas las sesiones',
+    (await pedirCla('/yo', { token })).estado === 401);
+
+  // --- tope de intentos ---
+
+  // Servidor aparte, con el tope bajito: acá lo que se prueba es el freno.
+  const carpetaInt = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-int-'));
+  const conInt = crearServidor({ datos: carpetaInt, api: { intentos: 3 } });
+  await new Promise((listo) => conInt.listen(0, '127.0.0.1', listo));
+  const baseInt = `http://127.0.0.1:${conInt.address().port}`;
+
+  const intentar = () => fetch(`${baseInt}/api/recuperar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario: 'quiensea', codigo: REC.generar(), clave: 'loquesea1' }),
+  });
+
+  const estados = [];
+  for (let i = 0; i < 5; i += 1) estados.push((await intentar()).status);
+  // Adivinar quince letras al azar es inviable, pero sólo si hay un tope.
+  probar('adivinar el código a fuerza de intentos se frena',
+    estados.slice(0, 3).every((e) => e === 401) && estados.slice(3).every((e) => e === 429),
+    estados.join());
+
+  await new Promise((listo) => conInt.close(listo));
+  fs.rmSync(carpetaInt, { recursive: true, force: true });
+
+  await new Promise((listo) => conCla.close(listo));
+  fs.rmSync(carpetaCla, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

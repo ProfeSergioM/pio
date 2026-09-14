@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const M = require('./modelo');
 const { crearDeposito, vacio } = require('./deposito');
 const E = require('./emojis');
+const R = require('./recuperacion');
 const { esReservado } = require('./reservados');
 
 // Cada cambio dice qué registro tocar. El depósito de archivo los ignora y
@@ -69,7 +70,10 @@ class Almacen {
       || null;
   }
 
+  // Devuelve la cuenta y el codigo de recuperacion en claro. Ese codigo es lo
+  // unico que no se puede volver a ver: de aca en adelante solo existe su hash.
   async crearUsuario(usuario, nombre, clave) {
+    const codigo = R.generar();
     const u = M.normalizarUsuario(usuario);
     const error = M.validarUsuario(u) || M.validarNombre(nombre) || M.validarClave(clave);
     if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
@@ -85,13 +89,79 @@ class Almacen {
       usuarioCambiado: null,
       sal,
       hash: hashear(clave, sal),
+      recuperacion: R.guardable(codigo),
       google: null,
       creado: Date.now(),
       siguiendo: [],
     };
     this.datos.usuarios.push(nuevo);
     await this.guardar([cambioUsuario(nuevo), cambioSecuencia(this.datos.secuencia)]);
-    return nuevo;
+    return { cuenta: nuevo, codigo };
+  }
+
+  // Cierra todas las sesiones de una cuenta, menos la que se indique. Cambiar
+  // la clave y no echar a las demas seria dejar adentro justamente a quien uno
+  // esta tratando de sacar.
+  cerrarLasDemas(cuenta, salvo) {
+    const cambios = [];
+    for (const [token, sesion] of Object.entries(this.datos.sesiones)) {
+      if (sesion.usuario !== cuenta.usuario || token === salvo) continue;
+      delete this.datos.sesiones[token];
+      cambios.push(baja('pio_sesiones', token));
+    }
+    return cambios;
+  }
+
+  // El token de quien está haciendo el cambio: es la única sesión que
+  // sobrevive. Si no se pasa, se cierran todas.
+  async cambiarClave(cuenta, actual, nueva, tokenActual) {
+    // Una cuenta de Google no tiene clave todavia: puede poner una primera vez
+    // sin tener que demostrar cual era, porque no habia ninguna.
+    const tenia = !!(cuenta.sal && cuenta.hash);
+    if (tenia && !this.verificarClave(cuenta.usuario, actual)) {
+      throw new ErrorPio(401, 'Esa no es tu clave actual.', 'clave.actualmala');
+    }
+    const error = M.validarClave(nueva);
+    if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
+
+    cuenta.sal = crypto.randomBytes(16).toString('hex');
+    cuenta.hash = hashear(nueva, cuenta.sal);
+    // Si no tenia clave, tampoco tenia codigo: se le da uno ahora.
+    const codigo = cuenta.recuperacion ? null : R.generar();
+    if (codigo) cuenta.recuperacion = R.guardable(codigo);
+
+    await this.guardar([cambioUsuario(cuenta), ...this.cerrarLasDemas(cuenta, tokenActual || null)]);
+    return { cuenta, codigo };
+  }
+
+  async nuevoCodigo(cuenta) {
+    const codigo = R.generar();
+    cuenta.recuperacion = R.guardable(codigo);
+    await this.guardar([cambioUsuario(cuenta)]);
+    return codigo;
+  }
+
+  // Recuperar con el codigo. El codigo se gasta: se entrega uno nuevo, porque
+  // dejar valido el viejo seria dejar una llave de repuesto ya usada.
+  async recuperar(usuario, codigoCrudo, nueva) {
+    const cuenta = this.buscarUsuario(usuario);
+    // Mismo error dé lo que dé: decir "ese pollito no existe" le regala a
+    // cualquiera una lista de qué cuentas hay.
+    const malo = () => new ErrorPio(401, 'Ese usuario y ese código no coinciden.', 'codigo.malo');
+    if (!cuenta || !cuenta.recuperacion) throw malo();
+    if (!R.coincide(codigoCrudo, cuenta.recuperacion)) throw malo();
+
+    const error = M.validarClave(nueva);
+    if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
+
+    cuenta.sal = crypto.randomBytes(16).toString('hex');
+    cuenta.hash = hashear(nueva, cuenta.sal);
+    const codigo = R.generar();
+    cuenta.recuperacion = R.guardable(codigo);
+
+    // Todas afuera: quien entra por acá viene de haber perdido el control.
+    await this.guardar([cambioUsuario(cuenta), ...this.cerrarLasDemas(cuenta, null)]);
+    return { cuenta, codigo };
   }
 
   buscarPorGoogle(sub) {

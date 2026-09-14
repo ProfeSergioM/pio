@@ -17,6 +17,9 @@ const M = require('./modelo');
 const PAGINA = 50;
 const ALTAS_POR_HORA = 5;
 const SUBIDAS_POR_HORA = 20;
+// Adivinar un codigo de quince letras a fuerza de intentos es inviable, pero
+// solo mientras haya un tope de intentos.
+const INTENTOS_POR_HORA = 10;
 const TOPE_CUERPO = 64 * 1024;
 // Una imagen no entra en 64 KB. El base64 infla un tercio, asi que 8 MB de
 // cuerpo dan lugar a los 5 MB de imagen que acepta el subidor.
@@ -39,6 +42,10 @@ function crearApi(almacen, opciones = {}) {
     proxies: Number(opciones.proxies) || 0,
     ipCabecera: opciones.ipCabecera || null,
     altas,
+    intentos: new Limite({
+      cuantos: opciones.intentos || INTENTOS_POR_HORA,
+      ventana: opciones.ventanaIntentos || 60 * 60 * 1000,
+    }),
     subidas: new Limite({
       cuantos: opciones.subidas || SUBIDAS_POR_HORA,
       ventana: opciones.ventanaSubidas || 60 * 60 * 1000,
@@ -94,11 +101,16 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     // quiere frenar es el alta en masa, y un pedido mal formado no crea nada.
     const desde = dedonde();
     frenarAltas(altas, desde);
-    const cuenta = await almacen.crearUsuario(cuerpo.usuario, cuerpo.nombre, cuerpo.clave);
+    const { cuenta, codigo } = await almacen.crearUsuario(cuerpo.usuario, cuerpo.nombre, cuerpo.clave);
     altas.anotar(desde);
     return {
       codigo: 201,
-      datos: { token: await almacen.abrirSesion(cuenta), yo: perfil(almacen, cuenta, cuenta) },
+      datos: {
+        token: await almacen.abrirSesion(cuenta),
+        yo: perfil(almacen, cuenta, cuenta),
+        // La única vez que este código viaja en claro.
+        recuperacion: codigo,
+      },
     };
   }
 
@@ -161,6 +173,47 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       await almacen.actualizarPerfil(yo, cuerpo);
       return { datos: { yo: perfil(almacen, yo, yo) } };
     }
+
+    // Cambiar la clave sabiendo la actual.
+    if (metodo === 'POST' && id === 'clave') {
+      exigir(yo);
+      const { codigo } = await almacen.cambiarClave(yo, cuerpo.actual, cuerpo.nueva, tokenDe(req));
+      // Si la cuenta no tenía clave —venía de Google— ahora estrena código.
+      return { datos: Object.assign({ ok: true }, codigo ? { recuperacion: codigo } : {}) };
+    }
+
+    // Pedir un código nuevo, que anula el anterior.
+    if (metodo === 'POST' && id === 'codigo') {
+      exigir(yo);
+      return { datos: { recuperacion: await almacen.nuevoCodigo(yo) } };
+    }
+  }
+
+  // --- recuperar la clave con el código -----------------------------------
+
+  if (recurso === 'recuperar' && metodo === 'POST') {
+    const desde = dedonde();
+    const espera = servicios.intentos.esperaDe(desde);
+    if (espera) {
+      throw new ErrorPio(
+        429,
+        `Demasiados intentos desde aquí. Intenta ${enEspera(espera)}.`,
+        'intentos.muchos',
+        { minutos: Math.ceil(espera / 60000) },
+      );
+    }
+    // Se cuenta el intento ANTES de saber si acertó: contar sólo los fallos
+    // deja la puerta abierta a probar mientras no se acierte.
+    servicios.intentos.anotar(desde);
+
+    const { cuenta, codigo } = await almacen.recuperar(cuerpo.usuario, cuerpo.codigo, cuerpo.clave);
+    return {
+      datos: {
+        token: await almacen.abrirSesion(cuenta),
+        yo: perfil(almacen, cuenta, cuenta),
+        recuperacion: codigo,
+      },
+    };
   }
 
   // --- píos ---------------------------------------------------------------
@@ -474,6 +527,7 @@ function perfil(almacen, cuenta, yo) {
     usuario: cuenta.usuario,
     // Sólo en el perfil propio: a los demás no les importa cuándo podés
     // cambiarlo, y es información de más sobre otra persona.
+    tieneClave: propio ? !!(cuenta.sal && cuenta.hash) : undefined,
     puedeCambiarUsuario: propio
       ? !cuenta.usuarioCambiado || Date.now() - cuenta.usuarioCambiado >= 30 * 24 * 60 * 60 * 1000
       : undefined,

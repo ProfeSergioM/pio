@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 296 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 327 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -89,6 +89,7 @@ queda apagada y lo dice.
 | [`src/enlaces.js`](src/enlaces.js) | Acortar direcciones, con proveedor de repuesto |
 | [`src/emojis.js`](src/emojis.js) | Los emojis propios del sitio |
 | [`src/medallas.js`](src/medallas.js) | Medallitas por cantidad de seguidores |
+| [`src/recuperacion.js`](src/recuperacion.js) | Códigos para volver a entrar si se olvida la clave |
 | [`src/deposito.js`](src/deposito.js) | Dónde vive todo: archivo JSON o Supabase |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |
@@ -278,6 +279,34 @@ Y lo mismo que con todo lo demás: **sólo se acortan direcciones `http` y
 que es justamente para lo que sirve un acortador. La dirección que vuelve se
 comprueba contra el dominio del proveedor al que se le preguntó.
 
+## Claves y códigos de recuperación
+
+**Pío no guarda el correo de nadie**, así que no hay a dónde mandar un enlace
+de recuperación. En su lugar, al crear la cuenta se entrega un código —
+`PIO-XXXXX-XXXXX-XXXXX`— que sirve una sola vez para poner una clave nueva.
+
+Se muestra una única vez. Del lado del servidor sólo queda su hash, con
+`scrypt` y sal propia, igual que las claves: si alguien se lleva la base, se
+lleva hashes, no la llave de todas las cuentas.
+
+Tres decisiones que vale la pena conocer:
+
+**El código se acepta escrito como salga.** En minúsculas, sin guiones, con
+espacios de más. Está pensado para copiarse de un papel, así que el alfabeto no
+tiene `0`, `1`, `I`, `L` ni `O`: son las que se copian mal.
+
+**Cambiar la clave cierra las demás sesiones**, menos la que hizo el cambio.
+Dejarlas abiertas sería dejar adentro justamente a quien uno está tratando de
+sacar. Recuperar con el código las cierra todas, porque quien llega por ahí
+viene de haber perdido el control de la cuenta.
+
+**Un usuario que no existe y un código equivocado dan exactamente el mismo
+error.** Distinguirlos le regalaría a cualquiera la lista de qué cuentas hay.
+
+Las cuentas de Google no tienen clave, y no la necesitan. Si igual quieren
+ponerse una, pueden: no hay clave actual que demostrar porque no había ninguna,
+y ahí estrenan su código.
+
 ## Vocabulario
 
 | En Pío | En el resto del mundo |
@@ -355,6 +384,4 @@ crezca sin control.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
 - Corrales: subtemas con su propio feed y una pestaña de chat.
 - Panel de administración.
-- Nadie puede cambiar ni recuperar su clave. Si un pollito la olvida, queda
-  afuera para siempre.
 - Las sesiones no vencen nunca.

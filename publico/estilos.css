@@ -1,0 +1,359 @@
+/* Pío — paleta pollito: amarillo cáscara sobre fondo cálido. */
+
+:root {
+  --amarillo: #f2b705;
+  --amarillo-suave: #ffdf6b;
+  --pico: #f07c1f;
+  --fondo: #fffdf7;
+  --panel: #ffffff;
+  --panel-2: #fdf8e9;
+  --borde: #eae2cd;
+  --texto: #201d16;
+  --tenue: #7c7566;
+  --rojo: #e0245e;
+  --verde: #17bf63;
+  --sombra: 0 1px 2px rgba(32, 29, 22, .06), 0 8px 24px rgba(32, 29, 22, .05);
+  --radio: 16px;
+  color-scheme: light;
+}
+
+:root[data-tema="oscuro"] {
+  --fondo: #14120c;
+  --panel: #1c1912;
+  --panel-2: #241f16;
+  --borde: #332c20;
+  --texto: #f3eee1;
+  --tenue: #9a9284;
+  --sombra: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+/* Varias reglas de abajo fijan display, así que hidden necesita ganar. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, textarea { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+
+/* --- portada -------------------------------------------------------- */
+
+.portada {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr 440px;
+  align-items: center;
+  gap: 40px;
+  padding: 32px;
+  background:
+    radial-gradient(900px 500px at 10% 10%, var(--amarillo-suave) 0%, transparent 60%),
+    var(--fondo);
+}
+
+.portada-arte {
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+
+.pollito { font-size: clamp(120px, 22vw, 260px); filter: drop-shadow(0 12px 30px rgba(0,0,0,.15)); }
+
+.globo {
+  position: absolute;
+  top: 12%;
+  right: 18%;
+  background: var(--panel);
+  border: 2px solid var(--borde);
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-weight: 700;
+  box-shadow: var(--sombra);
+  animation: flota 3s ease-in-out infinite;
+}
+
+@keyframes flota { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+@media (prefers-reduced-motion: reduce) { .globo { animation: none; } }
+
+.portada-caja {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: var(--sombra);
+}
+
+.marca { font-size: 34px; margin: 0 0 6px; letter-spacing: -.5px; }
+.marca.chica { font-size: 20px; margin: 0; }
+.marca-pollito { filter: drop-shadow(0 2px 4px rgba(0,0,0,.15)); }
+.lema { color: var(--tenue); margin: 0 0 20px; }
+
+.pestanas { display: flex; gap: 6px; background: var(--panel-2); padding: 4px; border-radius: 999px; margin-bottom: 18px; }
+.pestana { flex: 1; border: 0; background: transparent; padding: 9px; border-radius: 999px; cursor: pointer; font-weight: 600; color: var(--tenue); }
+.pestana.activa { background: var(--panel); color: var(--texto); box-shadow: var(--sombra); }
+
+.campo { display: block; margin-bottom: 14px; }
+.campo > span { display: block; font-size: 13px; font-weight: 600; color: var(--tenue); margin-bottom: 5px; }
+.campo input {
+  width: 100%; padding: 11px 13px; border: 1px solid var(--borde);
+  border-radius: 12px; background: var(--fondo);
+}
+.campo input:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 1px; }
+.con-arroba { display: flex; align-items: center; gap: 6px; border: 1px solid var(--borde); border-radius: 12px; background: var(--fondo); padding-left: 12px; }
+.con-arroba span { color: var(--tenue); font-weight: 700; }
+.con-arroba input { border: 0; background: transparent; padding-left: 0; }
+.con-arroba:focus-within { outline: 2px solid var(--amarillo); outline-offset: 1px; }
+
+.error { color: var(--rojo); font-size: 13px; margin: 8px 0 0; }
+.chico { font-size: 12px; color: var(--tenue); }
+.chico code { background: var(--panel-2); padding: 1px 5px; border-radius: 5px; }
+
+/* --- botones -------------------------------------------------------- */
+
+.boton {
+  border: 1px solid var(--borde); background: var(--panel);
+  padding: 9px 18px; border-radius: 999px; font-weight: 700; cursor: pointer;
+  transition: transform .08s ease, filter .15s ease;
+}
+.boton:hover { filter: brightness(.97); }
+.boton:active { transform: scale(.97); }
+.boton.principal { background: var(--amarillo); border-color: var(--amarillo); color: #201d16; }
+.boton.principal:disabled { opacity: .45; cursor: not-allowed; }
+.boton.ancho { width: 100%; margin-top: 6px; padding: 12px; }
+.boton.fantasma { background: transparent; }
+
+.icono {
+  border: 0; background: transparent; cursor: pointer; font-size: 18px;
+  width: 36px; height: 36px; border-radius: 50%;
+}
+.icono:hover { background: var(--panel-2); }
+
+/* --- estructura ----------------------------------------------------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 620px) 320px;
+  gap: 24px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 16px;
+  align-items: start;
+}
+
+.barra-superior { display: none; }
+
+.lateral {
+  position: sticky; top: 0; padding: 20px 0; display: flex; flex-direction: column; gap: 4px;
+}
+.lateral .marca { margin-bottom: 14px; padding-left: 12px; }
+
+.nav {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: 999px; font-weight: 600; color: var(--tenue);
+  /* Sirve tanto para los <a> como para el <button> del tema. */
+  background: transparent; border: 0; cursor: pointer; text-align: left; font-size: 15px;
+}
+.nav:hover { background: var(--panel-2); }
+.nav.activa { background: var(--panel-2); color: var(--texto); }
+.nav span { font-size: 19px; }
+.nav em { font-style: normal; }
+
+.yo-lateral { margin-top: auto; padding-top: 16px; }
+.yo-lateral .fila-usuario { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; }
+.yo-lateral .fila-usuario:hover { background: var(--panel-2); }
+
+.columna {
+  border-left: 1px solid var(--borde);
+  border-right: 1px solid var(--borde);
+  min-height: 100vh;
+  background: var(--panel);
+}
+
+.derecha { position: sticky; top: 0; padding: 20px 0; display: flex; flex-direction: column; gap: 16px; }
+
+.tarjeta { background: var(--panel-2); border: 1px solid var(--borde); border-radius: var(--radio); padding: 16px; }
+.tarjeta h2 { font-size: 16px; margin: 0 0 10px; }
+
+/* --- cabecera de vista ---------------------------------------------- */
+
+.cabecera {
+  position: sticky; top: 0; z-index: 5;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--borde);
+  padding: 14px 18px;
+}
+.cabecera h2 { margin: 0; font-size: 19px; }
+.cabecera p { margin: 2px 0 0; font-size: 13px; color: var(--tenue); }
+
+.buscador { width: 100%; padding: 11px 14px; border-radius: 999px; border: 1px solid var(--borde); background: var(--fondo); }
+.buscador:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 1px; }
+
+/* --- píos ------------------------------------------------------------ */
+
+.pio {
+  display: grid; grid-template-columns: 46px 1fr; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--borde); cursor: pointer;
+}
+.pio:hover { background: var(--panel-2); }
+.pio.destacado { cursor: default; }
+.pio.destacado .texto { font-size: 22px; line-height: 1.35; }
+
+.avatar {
+  width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 22px; font-weight: 700;
+  background: linear-gradient(140deg, var(--amarillo-suave), var(--pico));
+  color: #2a2109; user-select: none;
+}
+.avatar.chico { width: 34px; height: 34px; font-size: 16px; }
+
+.pio-cabecera { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.pio-nombre { font-weight: 700; }
+.pio-usuario, .pio-fecha { color: var(--tenue); font-size: 14px; }
+.texto { margin: 3px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.texto a { color: var(--pico); font-weight: 600; }
+.texto a:hover { text-decoration: underline; }
+
+.contexto { grid-column: 1 / -1; font-size: 13px; color: var(--tenue); margin-bottom: 2px; }
+
+.acciones { display: flex; gap: 4px; margin-top: 8px; margin-left: -8px; }
+.accion {
+  border: 0; background: transparent; cursor: pointer; color: var(--tenue);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 999px; font-size: 13px;
+}
+.accion:hover { background: var(--panel); color: var(--texto); }
+.accion.activa { color: var(--rojo); font-weight: 700; }
+.accion.repio.activa { color: var(--verde); }
+.accion.borrar:hover { color: var(--rojo); }
+
+/* --- perfil ---------------------------------------------------------- */
+
+.perfil-caja { padding: 18px; border-bottom: 1px solid var(--borde); }
+.perfil-fila { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.avatar.grande { width: 76px; height: 76px; font-size: 34px; }
+.perfil-nombre { margin: 12px 0 0; font-size: 21px; }
+.perfil-usuario { color: var(--tenue); }
+.perfil-bio { margin: 10px 0 0; }
+.perfil-datos { display: flex; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--tenue); }
+.perfil-datos b { color: var(--texto); }
+
+.sub-pestanas { display: flex; border-bottom: 1px solid var(--borde); }
+.sub-pestana { flex: 1; border: 0; background: transparent; padding: 13px; cursor: pointer; font-weight: 600; color: var(--tenue); border-bottom: 3px solid transparent; }
+.sub-pestana.activa { color: var(--texto); border-bottom-color: var(--amarillo); }
+
+/* --- listas auxiliares ---------------------------------------------- */
+
+.tendencia { display: block; padding: 8px 6px; border-radius: 10px; }
+.tendencia:hover { background: var(--panel); }
+.tendencia b { display: block; }
+.tendencia span { font-size: 12px; color: var(--tenue); }
+
+.sugerencia { display: flex; align-items: center; gap: 10px; padding: 8px 6px; }
+.sugerencia .crece { flex: 1; min-width: 0; }
+.sugerencia .crece b, .sugerencia .crece span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sugerencia .crece span { font-size: 13px; color: var(--tenue); }
+
+.vacio { padding: 48px 24px; text-align: center; color: var(--tenue); }
+.vacio .emoji { font-size: 48px; display: block; margin-bottom: 10px; }
+
+.cargando { padding: 32px; text-align: center; color: var(--tenue); }
+
+/* --- diálogo de piar ------------------------------------------------- */
+
+.dialogo { border: 0; padding: 0; background: transparent; }
+.dialogo::backdrop { background: rgba(20, 18, 12, .55); backdrop-filter: blur(2px); }
+.dialogo-caja {
+  width: min(560px, 94vw);
+  background: var(--panel); color: var(--texto);
+  border: 1px solid var(--borde); border-radius: 20px; padding: 16px;
+  box-shadow: var(--sombra);
+}
+.dialogo-cabecera { display: flex; align-items: center; gap: 10px; font-weight: 700; margin-bottom: 10px; }
+.respondiendo { font-size: 13px; color: var(--tenue); padding: 8px 10px; background: var(--panel-2); border-radius: 10px; margin-bottom: 10px; }
+
+#texto-pio {
+  width: 100%; border: 0; background: transparent; resize: none;
+  font-size: 20px; line-height: 1.4; padding: 6px 2px; min-height: 90px;
+}
+#texto-pio:focus-visible { outline: none; }
+
+.dialogo-pie { display: flex; align-items: center; justify-content: flex-end; gap: 14px; border-top: 1px solid var(--borde); padding-top: 12px; }
+
+.medidor { position: relative; width: 38px; height: 38px; display: grid; place-items: center; }
+.medidor span { position: absolute; font-size: 11px; font-weight: 700; color: var(--tenue); }
+.medidor.aviso span { color: var(--pico); }
+.medidor.pasado span { color: var(--rojo); }
+.anillo { width: 38px; height: 38px; transform: rotate(-90deg); }
+.anillo circle { fill: none; stroke-width: 3.2; }
+.anillo-fondo { stroke: var(--borde); }
+.anillo-frente {
+  stroke: var(--amarillo); stroke-linecap: round;
+  stroke-dasharray: 97.4; stroke-dashoffset: 97.4;
+  transition: stroke-dashoffset .15s linear, stroke .15s linear;
+}
+.medidor.aviso .anillo-frente { stroke: var(--pico); }
+.medidor.pasado .anillo-frente { stroke: var(--rojo); }
+
+/* --- aviso flotante -------------------------------------------------- */
+
+.aviso {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  background: var(--texto); color: var(--fondo);
+  padding: 10px 18px; border-radius: 999px; font-weight: 600; z-index: 60;
+  box-shadow: var(--sombra);
+}
+
+.flotante {
+  position: fixed; right: 18px; bottom: 76px; z-index: 20;
+  width: 58px; height: 58px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--amarillo); font-size: 26px; box-shadow: var(--sombra);
+}
+
+/* --- adaptable ------------------------------------------------------- */
+
+.solo-movil { display: none; }
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 88px minmax(0, 1fr); }
+  .derecha { display: none; }
+  .lateral .marca, .nav em, .solo-escritorio { display: none; }
+  .nav { justify-content: center; }
+  /* Sin el boton Piar del lateral, el flotante pasa a ser la unica forma de piar. */
+  .flotante { display: grid; place-items: center; bottom: 24px; }
+}
+
+@media (max-width: 700px) {
+  .portada { grid-template-columns: 1fr; padding: 20px; }
+  .portada-arte { display: none; }
+
+  .app { grid-template-columns: 1fr; gap: 0; padding: 0; }
+  .solo-movil { display: inline-flex; }
+  .oculto-movil { display: none !important; }
+  .flotante { bottom: 76px; }
+
+  .barra-superior {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    position: sticky; top: 0; z-index: 10;
+    padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--borde);
+  }
+
+  .lateral {
+    /* top: 0 viene de la versión de escritorio; sin anularlo la barra se estira
+       a toda la altura y tapa la columna. */
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 20;
+    flex-direction: row; justify-content: space-around;
+    padding: 6px 4px; background: var(--panel); border-top: 1px solid var(--borde);
+  }
+  .nav { padding: 8px 16px; }
+  .columna { border: 0; }
+  .contenido { padding-bottom: 72px; }
+}

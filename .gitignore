@@ -1,0 +1,9 @@
+datos/
+node_modules/
+*.log
+
+# Estado generado por Citadel (reportes regenerables)
+.planning/
+
+# Configuración local de Claude Code, propia de esta máquina
+.claude/settings.local.json

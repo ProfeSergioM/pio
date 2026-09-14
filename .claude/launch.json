@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pio",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["servidor.js"],
+      "port": 3100
+    }
+  ]
+}

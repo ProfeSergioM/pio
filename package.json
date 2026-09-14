@@ -1,0 +1,13 @@
+{
+  "name": "pio",
+  "version": "1.0.0",
+  "description": "Red social de 100 caracteres. Sin dependencias.",
+  "main": "servidor.js",
+  "scripts": {
+    "start": "node servidor.js",
+    "pruebas": "node pruebas/todos.js",
+    "semillas": "node pruebas/semillas.js"
+  },
+  "license": "MIT",
+  "private": true
+}

@@ -1,0 +1,69 @@
+'use strict';
+
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { Almacen } = require('./src/almacen');
+const { crearApi } = require('./src/api');
+
+const TIPOS = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.png': 'image/png',
+};
+
+function crearServidor(opciones = {}) {
+  const raizDatos = opciones.datos || path.join(__dirname, 'datos');
+  const publico = opciones.publico || path.join(__dirname, 'publico');
+  const almacen = new Almacen(raizDatos);
+  const api = crearApi(almacen);
+
+  const servidor = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    if (await api(req, res, url)) return;
+    servirEstatico(req, res, url, publico);
+  });
+
+  servidor.almacen = almacen;
+  return servidor;
+}
+
+function servirEstatico(req, res, url, publico) {
+  // Toda ruta que no sea un archivo real cae en index.html: el ruteo es del cliente.
+  const pedido = decodeURIComponent(url.pathname);
+  const relativo = path.normalize(pedido).replace(/^([/\\])+/, '');
+  let destino = path.join(publico, relativo);
+
+  if (!destino.startsWith(publico)) {
+    res.writeHead(403).end('Prohibido');
+    return;
+  }
+  if (!path.extname(destino) || !fs.existsSync(destino)) {
+    destino = path.join(publico, 'index.html');
+  }
+
+  fs.readFile(destino, (err, contenido) => {
+    if (err) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('No encontrado');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': TIPOS[path.extname(destino)] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+    });
+    res.end(contenido);
+  });
+}
+
+if (require.main === module) {
+  const puerto = Number(process.env.PUERTO || process.env.PORT || 3100);
+  crearServidor().listen(puerto, () => {
+    console.log(`Pio volando en http://localhost:${puerto}`);
+  });
+}
+
+module.exports = { crearServidor };

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pío — 100 caracteres y listo</title>
+<meta name="description" content="Pío: una red social donde cada mensaje entra en 100 caracteres.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐤</text></svg>">
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+
+<div id="portada" class="portada" hidden>
+  <div class="portada-arte" aria-hidden="true">
+    <div class="pollito">🐤</div>
+    <div class="globo">¡pío!</div>
+  </div>
+  <div class="portada-caja">
+    <h1 class="marca"><span class="marca-pollito">🐤</span> Pío</h1>
+    <p class="lema">Cien caracteres. Ni uno más.<br>Si no entra, no era tan importante.</p>
+
+    <div class="pestanas" role="tablist">
+      <button class="pestana activa" data-modo="entrar" role="tab">Entrar</button>
+      <button class="pestana" data-modo="registro" role="tab">Crear nido</button>
+    </div>
+
+    <form id="forma-acceso" autocomplete="on">
+      <label class="campo">
+        <span>Usuario</span>
+        <div class="con-arroba">
+          <span>@</span>
+          <input name="usuario" maxlength="15" required autocomplete="username"
+                 placeholder="pollito_01" pattern="[a-zA-Z0-9_]{3,15}">
+        </div>
+      </label>
+
+      <label class="campo solo-registro" hidden>
+        <span>Nombre para mostrar</span>
+        <input name="nombre" maxlength="30" placeholder="Pollito Primero">
+      </label>
+
+      <label class="campo">
+        <span>Clave</span>
+        <input name="clave" type="password" minlength="6" required
+               autocomplete="current-password" placeholder="mínimo 6 caracteres">
+      </label>
+
+      <p id="error-acceso" class="error" role="alert" hidden></p>
+      <button class="boton principal ancho" type="submit">Entrar al nido</button>
+    </form>
+
+    <p class="chico">Todo se guarda en tu propia máquina, en <code>datos/pio.json</code>.</p>
+  </div>
+</div>
+
+<div id="app" class="app" hidden>
+
+  <header class="barra-superior">
+    <button class="icono solo-movil" id="atras" title="Volver" hidden>←</button>
+    <h1 class="marca chica"><span class="marca-pollito">🐤</span> Pío</h1>
+    <button class="icono" id="tema" title="Cambiar tema">◐</button>
+  </header>
+
+  <nav class="lateral">
+    <h1 class="marca solo-escritorio"><span class="marca-pollito">🐤</span> Pío</h1>
+    <a class="nav" href="#/nido" data-nav="nido"><span>🪹</span><em>Nido</em></a>
+    <a class="nav" href="#/plaza" data-nav="plaza"><span>🌎</span><em>Plaza</em></a>
+    <a class="nav" href="#/buscar" data-nav="buscar"><span>🔍</span><em>Buscar</em></a>
+    <a class="nav" href="#/yo" data-nav="yo"><span>🐣</span><em>Mi perfil</em></a>
+    <button class="nav oculto-movil" id="tema-lateral" type="button"><span>◐</span><em>Tema</em></button>
+    <button class="boton principal ancho solo-escritorio" id="piar-lateral">Piar</button>
+    <div class="yo-lateral solo-escritorio" id="yo-lateral"></div>
+  </nav>
+
+  <main class="columna" id="columna">
+    <div id="cabecera-vista"></div>
+    <div id="contenido" class="contenido"></div>
+  </main>
+
+  <aside class="derecha">
+    <section class="tarjeta">
+      <h2>Tendencias del gallinero</h2>
+      <div id="tendencias" class="tendencias"></div>
+    </section>
+    <section class="tarjeta">
+      <h2>A quién seguir</h2>
+      <div id="sugerencias" class="sugerencias"></div>
+    </section>
+    <p class="chico pie">Pío · 100 caracteres · hecho en casa</p>
+  </aside>
+
+  <button class="flotante solo-movil" id="piar-flotante" title="Piar">🐤</button>
+</div>
+
+<dialog id="dialogo-piar" class="dialogo">
+  <form method="dialog" class="dialogo-caja" id="forma-piar">
+    <div class="dialogo-cabecera">
+      <button type="button" class="icono" id="cerrar-dialogo">✕</button>
+      <span id="dialogo-titulo">Nuevo pío</span>
+    </div>
+    <div id="dialogo-contexto" class="respondiendo" hidden></div>
+    <textarea id="texto-pio" maxlength="200" rows="3"
+              placeholder="¿Qué estás piando?" aria-label="Texto del pío"></textarea>
+    <div class="dialogo-pie">
+      <div class="medidor" id="medidor">
+        <svg viewBox="0 0 36 36" class="anillo" aria-hidden="true">
+          <circle class="anillo-fondo" cx="18" cy="18" r="15.5"></circle>
+          <circle class="anillo-frente" cx="18" cy="18" r="15.5"></circle>
+        </svg>
+        <span id="restantes">100</span>
+      </div>
+      <button class="boton principal" id="enviar-pio" type="submit" disabled>Piar</button>
+    </div>
+    <p id="error-pio" class="error" role="alert" hidden></p>
+  </form>
+</dialog>
+
+<div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

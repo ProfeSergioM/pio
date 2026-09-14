@@ -70,6 +70,7 @@ descuido— y las variables son para el despliegue.
 | `SUPABASE_SERVICE_KEY` | `supabase.clave` | La `service_role`, nunca la `anon`. |
 | `PIO_DEPOSITO` | `deposito` | `archivo` fuerza el JSON local aunque haya credenciales. |
 | `PIO_PROXIES` | `proxies` | Cuántos proxies de confianza hay delante. En tu máquina 0, en Render 1. |
+| `PIO_ADMINS` | `admins` | Quiénes ven el panel de administración, separados por coma. |
 
 Sin ninguna de estas, Pío arranca igual: cada función que necesita una clave
 queda apagada y lo dice.
@@ -229,7 +230,7 @@ Se elige solo. Si hay credenciales de Supabase, las usa; si no, el archivo.
 `PIO_DEPOSITO=archivo npm start` fuerza el archivo, que es lo que conviene
 para trabajar sin ensuciar la base de verdad.
 
-Para armar las tablas, pegá [`supabase.sql`](supabase.sql) en el SQL Editor de
+Para armar las tablas, pega [`supabase.sql`](supabase.sql) en el SQL Editor de
 Supabase. Todas llevan prefijo `pio_`, así que conviven con cualquier otra
 cosa que ya tengas en ese proyecto.
 
@@ -322,7 +323,7 @@ y ahí estrenan su código.
 |---|---|
 | pío | el mensaje |
 | piar | publicar |
-| nido | tu línea de tiempo (vos y quienes seguís) |
+| nido | tu línea de tiempo (lo tuyo y lo de quienes sigues) |
 | plaza | todo lo público |
 | repío | compartir el pío de otro |
 | pollito | el que usa Pío |
@@ -360,9 +361,18 @@ GET    /api/usuarios/:usuario                      ->     {perfil}
 POST   /api/usuarios/:usuario/seguir   alterna     ->     {perfil}
 GET    /api/buscar?q=                              ->     {pios, usuarios}
 GET    /api/tendencias   etiquetas de 7 días       ->     {tendencias}
+
+GET    /api/admin/resumen      cuántos hay de cada cosa  ->  {resumen}
+GET    /api/admin/usuarios     todas las cuentas         ->  {usuarios}
+GET    /api/admin/pios         los últimos 50, corrales incluidos -> {pios}
+DELETE /api/admin/usuarios/:u  borra la cuenta y lo suyo ->  {borrado}
+DELETE /api/admin/pios/:id     borra cualquier pío       ->  {borrado}
+DELETE /api/admin/corrales/:n  borra el corral, no sus píos -> {borrado}
+GET    /api/admin/emojis       los guardados y los de fábrica -> {emojis, enUso, defecto}
+PUT    /api/admin/emojis       {emojis}                  ->  {emojis, enUso}
 ```
 
-Las líneas de tiempo vienen de a 50. Para pedir la siguiente página agregá
+Las líneas de tiempo vienen de a 50. Para pedir la siguiente página agrega
 `&antes=<orden del último pío que recibiste>`; `hayMas` te dice si vale la pena.
 Los errores son `{error}` con el código HTTP correspondiente: 400 si el pedido
 está mal, 401 si falta o venció la sesión, 404 si no existe.
@@ -382,6 +392,39 @@ está mal, 401 si falta o venció la sesión, 404 si no existe.
 El único que importa de verdad es el primero. Los demás están para que nada
 crezca sin control.
 
+## El panel de administración
+
+Quien administra el sitio se fija en `PIO_ADMINS`, una lista de nombres de
+usuario separados por coma. Va en la configuración del despliegue y no en la
+base a propósito: así nadie se vuelve administrador desde adentro de la
+aplicación, ni comprometiendo la base de datos.
+
+```
+PIO_ADMINS=sergi,otro_nombre
+```
+
+Sin esa variable no hay panel para nadie, que es el estado seguro. Con ella,
+a quien esté en la lista le aparece 🎛️ en el menú y entra por `#/admin`. Ahí
+hay cinco solapas: el resumen de cuántos hay de cada cosa, las cuentas, los
+últimos cincuenta píos —los de los corrales incluidos, porque lo que no se ve
+no se modera—, los corrales y el editor de emojis propios.
+
+Tres cosas que conviene saber antes de apretar **Borrar**:
+
+- Borrar una cuenta se lleva sus píos, sus me gusta, sus repíos, sus avisos,
+  sus mensajes y sus sesiones. No hay papelera.
+- Borrar un corral **no** borra sus píos: se quedan sin corral, o sea en la
+  plaza. Que se evapore lo que la gente escribió sería peor que el desorden.
+- A quien administra no se lo puede borrar desde el panel. Sería la forma más
+  rápida de quedarse sin nadie que administre el sitio.
+
+El editor de emojis reemplaza la lista entera: lo que quede escrito al
+guardar es lo que va a andar. Si se guarda vacía, vuelven los cinco de
+fábrica. En el valor de cada uno va un emoji suelto o una dirección `https`
+de una imagen; lo que no tenga nombre válido —minúsculas, números y guión
+bajo— se descarta en silencio, porque un emoji roto rompe el texto de todos
+los píos.
+
 ## Lo que todavía no está
 
 - Avatares de verdad: hoy el del perfil sigue siendo la inicial sobre un
@@ -391,4 +434,4 @@ crezca sin control.
   pero la interfaz todavía no pide la página siguiente.
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
-- Panel de administración.
+- Un panel que muestre más de los últimos 50 píos, con búsqueda propia.

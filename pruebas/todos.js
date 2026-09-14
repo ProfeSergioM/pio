@@ -142,7 +142,7 @@ async function main() {
   probar('el perfil cuenta un seguidor', perfilCalandria.datos.perfil.seguidores === 1);
 
   const autoSeguir = await pedir('/usuarios/pinzon/seguir', { metodo: 'POST', token: tokenA });
-  probar('no te podés seguir a vos mismo', autoSeguir.estado === 400);
+  probar('no te puedes seguir a ti mismo', autoSeguir.estado === 400);
 
   await pedir('/usuarios/calandria/seguir', { metodo: 'POST', token: tokenA });
   const nidoSinCalandria = await pedir('/pios?tipo=nido', { token: tokenA });
@@ -209,7 +209,7 @@ async function main() {
 
   grupo('Borrar');
   const borrarAjeno = await pedir(`/pios/${pioA}`, { metodo: 'DELETE', token: tokenB });
-  probar('no podés borrar un pío ajeno', borrarAjeno.estado === 403);
+  probar('no puedes borrar un pío ajeno', borrarAjeno.estado === 403);
 
   const propio = await pedir('/pios', { metodo: 'POST', token: tokenC, cuerpo: { texto: 'me arrepiento' } });
   const borrado = await pedir(`/pios/${propio.datos.pio.id}`, { metodo: 'DELETE', token: tokenC });
@@ -991,7 +991,7 @@ async function main() {
   const inventada = await pedirAdj('/pios', {
     metodo: 'POST',
     token: tokenAdj,
-    cuerpo: { texto: 'mirá esto', adjunto: { url: 'https://malo.example/x.png' } },
+    cuerpo: { texto: 'mira esto', adjunto: { url: 'https://malo.example/x.png' } },
   });
   probar('una URL inventada por el cliente se rechaza', inventada.estado === 400
     && inventada.datos.clave === 'adjunto.origen');
@@ -1882,6 +1882,123 @@ async function main() {
 
   await new Promise((listo) => conCha.close(listo));
   fs.rmSync(carpetaCha, { recursive: true, force: true });
+  // --- panel de administración --------------------------------------------
+
+  grupo('Administración');
+
+  const carpetaAdm = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-adm-'));
+  const conAdm = crearServidor({
+    datos: carpetaAdm,
+    api: { altas: 100, admins: ['jefa'] },
+  });
+  await new Promise((listo) => conAdm.listen(0, '127.0.0.1', listo));
+  const baseAdm = `http://127.0.0.1:${conAdm.address().port}`;
+
+  const pedirAdm = async (ruta, o = {}) => {
+    const r = await fetch(`${baseAdm}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceAdm = async (usuario) => (await pedirAdm('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+
+  const jefaT = await naceAdm('jefa');
+  const pollitoT = await naceAdm('calandria');
+
+  // Quien manda se define en la configuración del despliegue, no en la base.
+  probar('la config le dice a quien manda que manda',
+    (await pedirAdm('/config', { token: jefaT })).datos.soyAdmin === true);
+  probar('y al resto que no',
+    (await pedirAdm('/config', { token: pollitoT })).datos.soyAdmin === false);
+  probar('sin sesión, tampoco',
+    (await pedirAdm('/config')).datos.soyAdmin === false);
+
+  probar('el panel rechaza a quien no manda',
+    (await pedirAdm('/admin/resumen', { token: pollitoT })).estado === 403);
+  probar('y a quien no tiene sesión',
+    (await pedirAdm('/admin/resumen')).estado === 401);
+
+  const resumen = await pedirAdm('/admin/resumen', { token: jefaT });
+  probar('el resumen cuenta lo que hay', resumen.estado === 200
+    && resumen.datos.resumen.usuarios === 2, JSON.stringify(resumen.datos.resumen || {}));
+  probar('y dice dónde está guardado', resumen.datos.resumen.deposito === 'archivo');
+
+  const listaAdm = await pedirAdm('/admin/usuarios', { token: jefaT });
+  probar('se listan los usuarios', listaAdm.datos.usuarios.length === 2);
+  probar('marcando a quien manda',
+    listaAdm.datos.usuarios.find((u) => u.usuario === 'jefa').manda === true);
+
+  // --- emojis ---
+
+  const emojisAntes = await pedirAdm('/admin/emojis', { token: jefaT });
+  probar('sin nada guardado, los de fábrica', emojisAntes.datos.emojis.length === 0
+    && emojisAntes.datos.enUso.length === 5);
+
+  const puestos = await pedirAdm('/admin/emojis', {
+    metodo: 'PUT', token: jefaT,
+    cuerpo: { emojis: [{ nombre: 'jefa', caracter: '👑' }, { nombre: 'NO VALE', caracter: 'x' }] },
+  });
+  probar('se guardan los emojis propios', puestos.estado === 200
+    && puestos.datos.enUso.length === 1 && puestos.datos.enUso[0].nombre === 'jefa');
+  probar('y el que no servía no llega al sitio',
+    !puestos.datos.enUso.some((e) => e.nombre === 'no vale'));
+  probar('el sitio ya los sirve',
+    (await pedirAdm('/emojis')).datos.emojis[0].nombre === 'jefa');
+
+  await pedirAdm('/admin/emojis', { metodo: 'PUT', token: jefaT, cuerpo: { emojis: [] } });
+  probar('vaciarlos devuelve los de fábrica',
+    (await pedirAdm('/emojis')).datos.emojis.length === 5);
+
+  // --- borrar ---
+
+  // Borrar a quien administra sería la forma más rápida de quedarse sin nadie
+  // que administre el sitio.
+  probar('a quien manda no se lo borra desde el panel',
+    (await pedirAdm('/admin/usuarios/jefa', { metodo: 'DELETE', token: jefaT })).estado === 403);
+
+  const suPio = (await pedirAdm('/pios', {
+    metodo: 'POST', token: pollitoT, cuerpo: { texto: 'algo que se va a ir conmigo' },
+  })).datos.pio.id;
+  await pedirAdm(`/pios/${suPio}/megusta`, { metodo: 'POST', token: jefaT });
+
+  const borradoAdm = await pedirAdm('/admin/usuarios/calandria', { metodo: 'DELETE', token: jefaT });
+  probar('se borra una cuenta', borradoAdm.estado === 200);
+  probar('y se lleva sus píos',
+    (await pedirAdm('/pios?tipo=plaza')).datos.pios.length === 0);
+  probar('y sus avisos', conAdm.almacen.datos.notificaciones.length === 0);
+  probar('y sus sesiones', (await pedirAdm('/yo', { token: pollitoT })).estado === 401);
+  probar('y ya no existe', (await pedirAdm('/usuarios/calandria')).estado === 404);
+
+  // --- corrales ---
+
+  await pedirAdm('/corrales', {
+    metodo: 'POST', token: jefaT, cuerpo: { nombre: 'sobras', titulo: 'Sobras' },
+  });
+  const pioEnCorral = (await pedirAdm('/pios', {
+    metodo: 'POST', token: jefaT, cuerpo: { texto: 'adentro del corral', corral: 'sobras' },
+  })).datos.pio.id;
+
+  // Lo que no se ve no se modera: la plaza deja afuera lo de los corrales.
+  probar('el panel ve también lo que se dijo adentro de un corral',
+    (await pedirAdm('/admin/pios', { token: jefaT })).datos.pios.some((p) => p.id === pioEnCorral));
+  probar('y la plaza no',
+    !(await pedirAdm('/pios?tipo=plaza')).datos.pios.some((p) => p.id === pioEnCorral));
+  probar('la lista de píos del panel también es del corral de los que mandan',
+    (await pedirAdm('/admin/pios')).estado === 401);
+
+  await pedirAdm('/admin/corrales/sobras', { metodo: 'DELETE', token: jefaT });
+  probar('se borra un corral', (await pedirAdm('/corrales/sobras')).estado === 404);
+  // Que se evapore lo que la gente escribió sería peor que el desorden.
+  probar('pero sus píos no se evaporan: quedan en la plaza',
+    (await pedirAdm('/pios?tipo=plaza')).datos.pios.some((p) => p.id === pioEnCorral));
+
+  await new Promise((listo) => conAdm.close(listo));
+  fs.rmSync(carpetaAdm, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

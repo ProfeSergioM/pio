@@ -9,6 +9,7 @@ const { crearAcortador, ErrorEnlace } = require('./enlaces');
 const { medallaDe, faltanPara } = require('./medallas');
 const C = require('./corrales');
 const MSG = require('./mensajes');
+const E = require('./emojis');
 
 // De donde se acepta que venga un adjunto. El cliente manda una URL, y una URL
 // que manda el cliente es un dato, no una verdad: si no se comprobara, cualquiera
@@ -53,6 +54,9 @@ function crearApi(almacen, opciones = {}) {
       ventana: opciones.ventanaSubidas || 60 * 60 * 1000,
     }),
     google: new Google(opciones.googleClienteId, opciones.google),
+    // Se normalizan una vez acá: comparar a mano en cada petición es donde se
+    // cuela el descuido que deja entrar a quien no debe.
+    admins: new Set((opciones.admins || []).map((x) => String(x).toLowerCase())),
     imagenes: crearSubidor(opciones, opciones.imagenes),
     gifs: crearGifs(opciones, opciones.gifs),
     enlaces: crearAcortador(opciones, opciones.enlaces),
@@ -91,6 +95,14 @@ function crearApi(almacen, opciones = {}) {
 
 async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
   const { altas, google, imagenes, gifs, enlaces } = servicios;
+
+  // El alias no sirve: se compara contra el nombre de ahora. Si alguien se
+  // renombra, hay que actualizar PIO_ADMINS.
+  const mando = () => !!yo && servicios.admins.has(yo.usuario);
+  const exigirMando = () => {
+    exigir(yo);
+    if (!mando()) throw new ErrorPio(403, 'Esto es del corral de los que mandan.', 'admin.no');
+  };
   const dedonde = () => deDonde(req, {
     proxies: servicios.proxies,
     cabecera: servicios.ipCabecera,
@@ -128,6 +140,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
         proveedorImagenes: imagenes.nombre,
         gifs: gifs.activo,
         acortador: enlaces.activo,
+        soyAdmin: mando(),
       },
     };
   }
@@ -322,6 +335,88 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     } catch (err) {
       if (err instanceof ErrorImagen) throw new ErrorPio(400, err.message, err.clave);
       throw err;
+    }
+  }
+
+  // --- panel de administración ----------------------------------------------
+
+  if (recurso === 'admin') {
+    exigirMando();
+
+    if (metodo === 'GET' && id === 'resumen') {
+      const d = almacen.datos;
+      return {
+        datos: {
+          resumen: {
+            usuarios: d.usuarios.length,
+            pios: d.pios.length,
+            corrales: d.corrales.length,
+            mensajes: d.mensajes.length,
+            avisos: d.notificaciones.length,
+            sesiones: Object.keys(d.sesiones).length,
+            deposito: almacen.deposito.nombre,
+          },
+        },
+      };
+    }
+
+    if (metodo === 'GET' && id === 'usuarios') {
+      return {
+        datos: {
+          usuarios: almacen.datos.usuarios.map((u) => ({
+            usuario: u.usuario,
+            nombre: u.nombre,
+            creado: u.creado,
+            porGoogle: !!u.google,
+            tieneClave: !!(u.sal && u.hash),
+            alias: u.alias || [],
+            pios: almacen.datos.pios.filter((p) => p.autor === u.usuario).length,
+            seguidores: almacen.seguidores(u.usuario).length,
+            manda: servicios.admins.has(u.usuario),
+          })).sort((a, b) => b.creado - a.creado),
+        },
+      };
+    }
+
+    if (metodo === 'DELETE' && id === 'usuarios' && accion) {
+      // Quien manda no se puede borrar desde acá: sería la forma más rápida de
+      // quedarse sin nadie que administre el sitio.
+      if (servicios.admins.has(String(accion).toLowerCase())) {
+        throw new ErrorPio(403, 'A quien administra no se lo borra desde acá.', 'admin.protegido');
+      }
+      return { datos: { borrado: await almacen.borrarCuenta(accion) } };
+    }
+
+    // La plaza deja afuera lo que se dijo adentro de un corral, y lo que no
+    // se ve no se modera. Acá se ven todos, del más nuevo al más viejo.
+    if (metodo === 'GET' && id === 'pios') {
+      const lista = almacen.datos.pios
+        .slice()
+        .sort((a, b) => b.creado - a.creado)
+        .slice(0, PAGINA)
+        .map((p) => serializar(almacen, p, yo));
+      return { datos: { pios: lista } };
+    }
+
+    if (metodo === 'DELETE' && id === 'pios' && accion) {
+      return { datos: { borrado: await almacen.borrarPio(accion) } };
+    }
+
+    if (metodo === 'DELETE' && id === 'corrales' && accion) {
+      return { datos: { borrado: await almacen.borrarCorral(accion) } };
+    }
+
+    if (metodo === 'GET' && id === 'emojis') {
+      // Van tambien los de fabrica: sin ellos, el panel no tiene de donde
+      // partir la primera vez y habria que escribir los cinco a mano.
+      return {
+        datos: { emojis: almacen.datos.emojis, enUso: almacen.emojis(), defecto: E.POR_DEFECTO },
+      };
+    }
+
+    if (metodo === 'PUT' && id === 'emojis') {
+      const guardados = await almacen.guardarEmojis(cuerpo.emojis);
+      return { datos: { emojis: almacen.datos.emojis, enUso: guardados } };
     }
   }
 
@@ -627,7 +722,7 @@ function perfil(almacen, cuenta, yo) {
   const seguidores = almacen.seguidores(cuenta.usuario).length;
   return {
     usuario: cuenta.usuario,
-    // Sólo en el perfil propio: a los demás no les importa cuándo podés
+    // Sólo en el perfil propio: a los demás no les importa cuándo puedes
     // cambiarlo, y es información de más sobre otra persona.
     tieneClave: propio ? !!(cuenta.sal && cuenta.hash) : undefined,
     tieneCodigo: propio ? !!cuenta.recuperacion : undefined,

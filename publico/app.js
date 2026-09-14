@@ -361,6 +361,7 @@ async function pintar() {
     else if (vista === 'e') await vistaEtiqueta(argumento);
     else if (vista === 'avisos') await vistaAvisos();
     else if (vista === 'disenos') await vistaDisenos();
+    else if (vista === 'admin') await vistaAdmin(params.get('ver'));
     else if (vista === 'corrales') await vistaCorrales();
     else if (vista === 'c') await vistaCorral(argumento, params.get('ver'));
     else await vistaLinea('nido');
@@ -985,7 +986,8 @@ document.body.addEventListener('click', async (ev) => {
     return;
   }
 
-  if (articulo && !ev.target.closest('a') && !articulo.classList.contains('destacado')) {
+  if (articulo && articulo.dataset.id && !ev.target.closest('a')
+      && !articulo.classList.contains('destacado')) {
     location.hash = `#/p/${articulo.dataset.id}`;
   }
 });
@@ -1465,6 +1467,216 @@ function aplicarDiseno(slug) {
   if (!$('#portada').hidden) prepararGoogle();
 }
 
+// --- el panel de administración -------------------------------------------
+
+// Todo lo que se hace acá es irreversible, así que todo pasa por una
+// pregunta. El `confirm` del navegador es feo, pero es lo único que frena de
+// verdad, y frenar es justo lo que se quiere acá.
+async function borrarDesdePanel(ruta, pregunta, despues) {
+  if (!window.confirm(pregunta)) return;
+  try {
+    await api(ruta, { metodo: 'DELETE' });
+    avisar(T('admin.borrado'));
+    await despues();
+  } catch (err) {
+    avisar(err.message);
+  }
+}
+
+async function panelResumen(donde) {
+  const { resumen } = await api('/admin/resumen');
+  const numeros = [
+    ['admin.n.usuarios', resumen.usuarios],
+    ['admin.n.pios', resumen.pios],
+    ['admin.n.corrales', resumen.corrales],
+    ['admin.n.mensajes', resumen.mensajes],
+    ['admin.n.avisos', resumen.avisos],
+    ['admin.n.sesiones', resumen.sesiones],
+  ];
+  donde.innerHTML = `
+    <div class="numeros">
+      ${numeros.map(([clave, cuanto]) => `
+        <div class="numero"><b>${cuanto}</b><span>${escapar(T(clave))}</span></div>`).join('')}
+    </div>
+    <p class="chico centrado" style="padding: 0 16px 16px">
+      ${escapar(T('admin.deposito'))} <b>${escapar(resumen.deposito)}</b>
+    </p>`;
+}
+
+async function panelPollitos(donde) {
+  const { usuarios } = await api('/admin/usuarios');
+  donde.innerHTML = `<div class="tarjeta" style="margin: 12px 16px">${
+    usuarios.map((u) => {
+      const sellos = [
+        u.manda ? T('admin.manda') : '',
+        u.porGoogle ? T('admin.porGoogle') : '',
+        !u.tieneClave && !u.porGoogle ? T('admin.sinClave') : '',
+      ].filter(Boolean);
+      return `
+        <div class="sugerencia">
+          ${avatar(u.usuario, 'chico')}
+          <a class="crece" href="#/u/${escapar(u.usuario)}">
+            <b>${escapar(u.nombre)}</b>
+            <span>@${escapar(u.usuario)} · ${escapar(T('admin.cuentas', { pios: u.pios, seguidores: u.seguidores }))}</span>
+          </a>
+          ${sellos.map((s) => `<span class="sello">${escapar(s)}</span>`).join('')}
+          ${u.manda ? '' : `<button class="boton peligro chico" data-borrar-pollito="${escapar(u.usuario)}">${escapar(T('admin.borrar'))}</button>`}
+        </div>`;
+    }).join('')
+  }</div>`;
+
+  for (const boton of donde.querySelectorAll('[data-borrar-pollito]')) {
+    const quien = boton.dataset.borrarPollito;
+    boton.addEventListener('click', () => borrarDesdePanel(
+      `/admin/usuarios/${encodeURIComponent(quien)}`,
+      T('admin.seguro.pollito', { usuario: quien }),
+      () => panelPollitos(donde),
+    ));
+  }
+}
+
+async function panelPios(donde) {
+  const { pios } = await api('/admin/pios');
+  if (!pios.length) { donde.innerHTML = `<div class="vacio"><span class="emoji">🌱</span>${escapar(T('admin.vacio'))}</div>`; return; }
+  donde.innerHTML = pios.map((p) => `
+    <article class="pio quieto">
+      ${avatar(p.autor.usuario)}
+      <div>
+        <div class="pio-cabecera">
+          <a class="pio-nombre" href="#/u/${escapar(p.autor.usuario)}">${escapar(p.autor.nombre)}</a>
+          <span class="pio-usuario">@${escapar(p.autor.usuario)}</span>
+          <span class="pio-fecha">· ${hace(p.creado)}</span>
+        </div>
+        ${p.texto ? `<p class="texto">${enriquecer(p.texto)}</p>` : ''}
+        <div class="perfil-botones" style="margin-top: 8px">
+          <a class="boton fantasma chico" href="#/p/${escapar(p.id)}">${escapar(T('admin.ver'))}</a>
+          <button class="boton peligro chico" data-borrar-pio="${escapar(p.id)}">${escapar(T('admin.borrar'))}</button>
+        </div>
+      </div>
+    </article>`).join('');
+
+  for (const boton of donde.querySelectorAll('[data-borrar-pio]')) {
+    boton.addEventListener('click', () => borrarDesdePanel(
+      `/admin/pios/${encodeURIComponent(boton.dataset.borrarPio)}`,
+      T('admin.seguro.pio'),
+      () => panelPios(donde),
+    ));
+  }
+}
+
+async function panelCorrales(donde) {
+  const { corrales } = await api('/corrales');
+  if (!corrales.length) { donde.innerHTML = `<div class="vacio"><span class="emoji">🚜</span>${escapar(T('admin.vacio'))}</div>`; return; }
+  donde.innerHTML = `<div class="tarjeta" style="margin: 12px 16px">${
+    corrales.map((c) => `
+      <div class="sugerencia">
+        <a class="crece" href="#/c/${escapar(c.nombre)}">
+          <b>${escapar(c.titulo)}</b>
+          <span>${escapar(c.nombre)} · ${escapar(T('admin.corralCuentas', { pios: c.pios, suscritos: c.suscritos }))}</span>
+        </a>
+        <button class="boton peligro chico" data-borrar-corral="${escapar(c.nombre)}">${escapar(T('admin.borrar'))}</button>
+      </div>`).join('')
+  }</div>`;
+
+  for (const boton of donde.querySelectorAll('[data-borrar-corral]')) {
+    const cual = boton.dataset.borrarCorral;
+    boton.addEventListener('click', () => borrarDesdePanel(
+      `/admin/corrales/${encodeURIComponent(cual)}`,
+      T('admin.seguro.corral', { corral: cual }),
+      () => panelCorrales(donde),
+    ));
+  }
+}
+
+// El valor de un emoji es un carácter o una dirección. Se decide por lo que
+// hay escrito y no con un selector: un campo menos que entender.
+function filaEmoji(emoji) {
+  const valor = emoji && emoji.url ? emoji.url : ((emoji && emoji.caracter) || '');
+  return `
+    <div class="fila-emoji">
+      <input class="emoji-nombre" maxlength="20" placeholder="${escapar(T('admin.emojis.nombre'))}"
+             value="${escapar((emoji && emoji.nombre) || '')}">
+      <input class="emoji-valor" placeholder="${escapar(T('admin.emojis.valor'))}" value="${escapar(valor)}">
+      <button class="boton fantasma chico" data-quitar-emoji type="button"
+              title="${escapar(T('admin.emojis.quitar'))}">✕</button>
+    </div>`;
+}
+
+async function panelEmojis(donde) {
+  const { emojis, defecto } = await api('/admin/emojis');
+  const lista = emojis.length ? emojis : defecto;
+  donde.innerHTML = `
+    <div class="tarjeta" style="margin: 12px 16px">
+      <p class="chico">${escapar(T('admin.emojis.como'))}</p>
+      ${emojis.length ? '' : `<p class="chico">${escapar(T('admin.emojis.defecto'))}</p>`}
+      <div id="filas-emoji">${lista.map(filaEmoji).join('')}</div>
+      <div class="perfil-botones" style="margin-top: 12px">
+        <button class="boton fantasma" id="mas-emoji" type="button">${escapar(T('admin.emojis.agregar'))}</button>
+        <button class="boton principal" id="guardar-emojis" type="button">${escapar(T('admin.emojis.guardar'))}</button>
+      </div>
+    </div>`;
+
+  const filas = $('#filas-emoji');
+  // Una sola escucha para todas las filas: las que se agreguen después ya
+  // quedan atendidas sin volver a enganchar nada.
+  filas.addEventListener('click', (ev) => {
+    const boton = ev.target.closest('[data-quitar-emoji]');
+    if (boton) boton.parentElement.remove();
+  });
+  $('#mas-emoji').addEventListener('click', () => {
+    filas.insertAdjacentHTML('beforeend', filaEmoji(null));
+    filas.lastElementChild.querySelector('.emoji-nombre').focus();
+  });
+
+  $('#guardar-emojis').addEventListener('click', async () => {
+    const puestos = [];
+    for (const fila of filas.querySelectorAll('.fila-emoji')) {
+      const nombre = fila.querySelector('.emoji-nombre').value.trim().toLowerCase();
+      const valor = fila.querySelector('.emoji-valor').value.trim();
+      if (!nombre || !valor) continue;
+      puestos.push(/^https:\/\//i.test(valor) ? { nombre, url: valor } : { nombre, caracter: valor });
+    }
+    try {
+      const { enUso } = await api('/admin/emojis', { metodo: 'PUT', cuerpo: { emojis: puestos } });
+      // El sitio entero los usa al escribir un pío: hay que refrescar el mapa
+      // acá mismo, si no se siguen viendo los viejos hasta recargar.
+      emojisDelSitio = new Map(enUso.map((e) => [e.nombre, e.src]));
+      avisar(T('admin.emojis.guardados', { n: enUso.length }));
+      await panelEmojis(donde);
+    } catch (err) {
+      avisar(err.message);
+    }
+  });
+}
+
+const SOLAPAS_PANEL = [
+  ['resumen', panelResumen],
+  ['pollitos', panelPollitos],
+  ['pios', panelPios],
+  ['corrales', panelCorrales],
+  ['emojis', panelEmojis],
+];
+
+async function vistaAdmin(solapa) {
+  cabecera(T('admin.titulo'), T('admin.sub'));
+  const cual = SOLAPAS_PANEL.some(([n]) => n === solapa) ? solapa : 'resumen';
+  $('#contenido').innerHTML = `
+    <div class="sub-pestanas muchas">
+      ${SOLAPAS_PANEL.map(([nombre]) => `
+        <button class="sub-pestana ${nombre === cual ? 'activa' : ''}" data-solapa-panel="${nombre}">${escapar(T(`admin.solapa.${nombre}`))}</button>`).join('')}
+    </div>
+    <div id="panel"><div class="cargando">${escapar(T('cargando'))}</div></div>`;
+
+  for (const boton of $('#contenido').querySelectorAll('[data-solapa-panel]')) {
+    boton.addEventListener('click', () => {
+      location.hash = `#/admin?ver=${boton.dataset.solapaPanel}`;
+    });
+  }
+
+  const dibujar = SOLAPAS_PANEL.find(([nombre]) => nombre === cual)[1];
+  await dibujar($('#panel'));
+}
+
 async function vistaDisenos() {
   cabecera(T('disenos.titulo'), T('disenos.sub'));
   const actual = disenoActual();
@@ -1526,6 +1738,7 @@ async function cargarEmojis() {
 async function cargarConfig() {
   try {
     const config = await api('/config');
+    $('#nav-admin').hidden = !config.soyAdmin;
     $('#acortar-enlaces').hidden = !config.acortador;
     $('#poner-imagen').hidden = !config.imagenes;
     $('#poner-gif').hidden = !config.gifs;

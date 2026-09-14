@@ -48,6 +48,11 @@ function leerAjustes(directorio) {
       secreto: deNube('PIO_CLOUDINARY_SECRETO', 'secreto'),
       carpeta: deNube('PIO_CLOUDINARY_CARPETA', 'carpeta'),
     },
+    // Quien administra el sitio. Va en la configuración del despliegue y no
+    // en la base a propósito: así nadie se vuelve administrador desde dentro
+    // de la aplicación, ni comprometiendo la base.
+    admins: String(elegir('PIO_ADMINS', 'admins') || '')
+      .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean),
     // Para trabajar sin ensuciar la base real: PIO_DEPOSITO=archivo
     deposito: elegir('PIO_DEPOSITO', 'deposito'),
     supabase: {

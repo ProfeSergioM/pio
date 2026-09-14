@@ -555,6 +555,97 @@ class Almacen {
     return this.datos.pios.filter((p) => p.respuestaA === id);
   }
 
+  // Borra una cuenta y todo lo que colgaba de ella. Es irreversible y por eso
+  // vive en un solo lugar: repartir un borrado en cascada por varios sitios es
+  // la forma mas segura de dejar restos.
+  async borrarCuenta(usuario) {
+    const cuenta = this.buscarUsuario(usuario);
+    if (!cuenta) throw new ErrorPio(404, 'No existe ese pollito.', 'pollito.noexiste');
+    const quien = cuenta.usuario;
+    const cambios = [baja('pio_usuarios', quien)];
+
+    for (const p of this.datos.pios.filter((x) => x.autor === quien)) {
+      cambios.push(baja('pio_pios', p.id));
+    }
+    this.datos.pios = this.datos.pios.filter((p) => p.autor !== quien);
+
+    // Lo que dejo en pios ajenos: me gusta, repios y respuestas huerfanas.
+    for (const p of this.datos.pios) {
+      let tocado = false;
+      const i = p.meGusta.indexOf(quien);
+      if (i !== -1) { p.meGusta.splice(i, 1); tocado = true; }
+      const antes = p.repios.length;
+      p.repios = p.repios.filter((r) => r.usuario !== quien);
+      if (p.repios.length !== antes) tocado = true;
+      if (tocado) cambios.push(cambioPio(p));
+    }
+
+    for (const otro of this.datos.usuarios) {
+      const i = otro.siguiendo.indexOf(quien);
+      if (i !== -1) { otro.siguiendo.splice(i, 1); cambios.push(cambioUsuario(otro)); }
+    }
+    this.datos.usuarios = this.datos.usuarios.filter((u) => u.usuario !== quien);
+
+    for (const n of this.datos.notificaciones.filter((x) => x.para === quien || x.de === quien)) {
+      cambios.push(baja('pio_avisos', n.id));
+    }
+    this.datos.notificaciones = this.datos.notificaciones
+      .filter((n) => n.para !== quien && n.de !== quien);
+
+    for (const [token, s] of Object.entries(this.datos.sesiones)) {
+      if (s.usuario === quien) { delete this.datos.sesiones[token]; cambios.push(baja('pio_sesiones', token)); }
+    }
+
+    for (const m of this.datos.mensajes.filter((x) => x.autor === quien)) {
+      cambios.push(baja('pio_mensajes', m.id));
+    }
+    this.datos.mensajes = this.datos.mensajes.filter((m) => m.autor !== quien);
+
+    await this.guardar(cambios);
+    return quien;
+  }
+
+  async borrarPio(id) {
+    const pio = this.buscarPio(id);
+    if (!pio) throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
+    this.datos.pios = this.datos.pios.filter((p) => p.id !== id);
+    const huerfanos = this.datos.notificaciones.filter((n) => n.pio === id);
+    this.datos.notificaciones = this.datos.notificaciones.filter((n) => n.pio !== id);
+    await this.guardar([baja('pio_pios', id), ...huerfanos.map((n) => baja('pio_avisos', n.id))]);
+    return id;
+  }
+
+  // Borrar el corral NO borra sus pios: se quedan sin corral, o sea en la
+  // plaza. Que se evapore lo que la gente escribio seria peor que el desorden.
+  async borrarCorral(nombre) {
+    const corral = this.buscarCorral(nombre);
+    if (!corral) throw new ErrorPio(404, 'Ese corral no existe.', 'corral.noexiste');
+    const cambios = [baja('pio_corrales', corral.nombre)];
+
+    for (const p of this.datos.pios) {
+      if (p.corral === corral.nombre) { p.corral = null; cambios.push(cambioPio(p)); }
+    }
+    for (const u of this.datos.usuarios) {
+      const i = (u.corrales || []).indexOf(corral.nombre);
+      if (i !== -1) { u.corrales.splice(i, 1); cambios.push(cambioUsuario(u)); }
+    }
+    for (const m of this.datos.mensajes.filter((x) => x.corral === corral.nombre)) {
+      cambios.push(baja('pio_mensajes', m.id));
+    }
+    this.datos.mensajes = this.datos.mensajes.filter((m) => m.corral !== corral.nombre);
+    this.datos.corrales = this.datos.corrales.filter((c) => c.nombre !== corral.nombre);
+
+    await this.guardar(cambios);
+    return corral.nombre;
+  }
+
+  async guardarEmojis(lista) {
+    const limpios = E.servibles(lista);
+    this.datos.emojis = Array.isArray(lista) ? lista : [];
+    await this.guardar([{ tabla: 'pio_meta', clave: 'emojis', valor: { clave: 'emojis', valor: this.datos.emojis } }]);
+    return limpios;
+  }
+
   // --- corrales -----------------------------------------------------------
 
   buscarCorral(nombre) {

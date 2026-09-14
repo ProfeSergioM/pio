@@ -1925,10 +1925,8 @@ async function panelPollitos(donde) {
   }
 }
 
-async function panelPios(donde) {
-  const { pios } = await api('/admin/pios');
-  if (!pios.length) { donde.innerHTML = `<div class="vacio"><span class="emoji">🌱</span>${escapar(T('admin.vacio'))}</div>`; return; }
-  donde.innerHTML = pios.map((p) => `
+function filaPioPanel(p) {
+  return `
     <article class="pio quieto">
       ${avatar(p.autor.usuario, '', p.autor.avatar)}
       <div>
@@ -1943,15 +1941,66 @@ async function panelPios(donde) {
           <button class="boton peligro chico" data-borrar-pio="${escapar(p.id)}">${escapar(T('admin.borrar'))}</button>
         </div>
       </div>
-    </article>`).join('');
+    </article>`;
+}
 
-  for (const boton of donde.querySelectorAll('[data-borrar-pio]')) {
-    boton.addEventListener('click', () => borrarDesdePanel(
-      `/admin/pios/${encodeURIComponent(boton.dataset.borrarPio)}`,
-      T('admin.seguro.pio'),
-      () => panelPios(donde),
-    ));
+async function panelPios(donde, busqueda = '') {
+  donde.innerHTML = `
+    <div class="buscador-panel">
+      <input type="search" id="buscar-panel" autocomplete="off"
+             placeholder="${escapar(T('admin.buscarPh'))}" value="${escapar(busqueda)}">
+      <span class="chico" id="total-panel"></span>
+    </div>
+    <div id="lista-panel"><div class="cargando">${escapar(T('cargando'))}</div></div>`;
+
+  const campo = $('#buscar-panel');
+  const lista = $('#lista-panel');
+  let pedido = 0;
+
+  // Se agregan de a cincuenta. `antes` es la fecha del último que se mostró.
+  async function traer(antes) {
+    const yo = ++pedido;
+    const q = campo.value.trim();
+    const datos = await api(`/admin/pios?q=${encodeURIComponent(q)}${antes ? `&antes=${antes}` : ''}`);
+    // Si mientras tanto se escribió otra cosa, esta respuesta ya no importa.
+    if (yo !== pedido) return;
+    if (!antes) {
+      $('#total-panel').textContent = T('admin.totalPios', { n: datos.total });
+      lista.innerHTML = datos.pios.length
+        ? ''
+        : `<div class="vacio"><span class="emoji">🔍</span>${escapar(T('admin.vacio'))}</div>`;
+    }
+    const viejoBoton = lista.querySelector('[data-mas-panel]');
+    if (viejoBoton) viejoBoton.parentElement.remove();
+    lista.insertAdjacentHTML('beforeend', datos.pios.map(filaPioPanel).join(''));
+    if (datos.hayMas) {
+      const ultimo = datos.pios[datos.pios.length - 1].creado;
+      lista.insertAdjacentHTML('beforeend', `<div class="pie-linea"><button class="boton fantasma" type="button" data-mas-panel="${ultimo}">${escapar(T('aldia.mas'))}</button></div>`);
+    }
   }
+
+  lista.addEventListener('click', (ev) => {
+    const mas = ev.target.closest('[data-mas-panel]');
+    if (mas) { mas.disabled = true; traer(Number(mas.dataset.masPanel)).catch((err) => avisar(err.message)); return; }
+    const borrar = ev.target.closest('[data-borrar-pio]');
+    if (borrar) {
+      borrarDesdePanel(
+        `/admin/pios/${encodeURIComponent(borrar.dataset.borrarPio)}`,
+        T('admin.seguro.pio'),
+        async () => { borrar.closest('.pio').remove(); },
+      );
+    }
+  });
+
+  // Se busca mientras se escribe, pero sin preguntar por cada letra.
+  let espera = null;
+  campo.addEventListener('input', () => {
+    clearTimeout(espera);
+    espera = setTimeout(() => traer(0).catch((err) => avisar(err.message)), 250);
+  });
+
+  await traer(0);
+  if (busqueda) campo.focus();
 }
 
 async function panelCorrales(donde) {

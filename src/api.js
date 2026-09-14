@@ -431,13 +431,29 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
 
     // La plaza deja afuera lo que se dijo adentro de un corral, y lo que no
     // se ve no se modera. Acá se ven todos, del más nuevo al más viejo.
+    // Todos los píos, de a cincuenta, con búsqueda. "@alguien" busca por
+    // autor; cualquier otra cosa, en el texto. Acá se ve lo oculto, lo
+    // silenciado y los huevos: lo que no se ve no se modera.
     if (metodo === 'GET' && id === 'pios') {
-      const lista = almacen.datos.pios
-        .slice()
-        .sort((a, b) => b.creado - a.creado)
-        .slice(0, PAGINA)
-        .map((p) => serializar(almacen, p, yo));
-      return { datos: { pios: lista } };
+      const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
+      const antes = Number(url.searchParams.get('antes') || 0);
+      const porAutor = q.startsWith('@') ? M.normalizarUsuario(q.slice(1)) : null;
+      const coinciden = almacen.datos.pios
+        .filter((p) => {
+          if (antes && p.creado >= antes) return false;
+          if (!q) return true;
+          if (porAutor) return p.autor.startsWith(porAutor);
+          return (p.texto || '').toLowerCase().includes(q);
+        })
+        .sort((a, b) => b.creado - a.creado);
+      const pagina = coinciden.slice(0, PAGINA);
+      return {
+        datos: {
+          pios: pagina.map((p) => serializar(almacen, p, yo)),
+          hayMas: coinciden.length > pagina.length,
+          total: antes ? undefined : coinciden.length,
+        },
+      };
     }
 
     if (metodo === 'POST' && id === 'ocultos' && accion) {

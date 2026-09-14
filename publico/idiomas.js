@@ -80,6 +80,8 @@ window.IDIOMAS = {
       'admin.corralCuentas': (d) => `${d.pios} ${d.pios === 1 ? 'pío' : 'píos'}`
         + ` · ${d.suscritos} ${d.suscritos === 1 ? 'suscrito' : 'suscritos'}`,
       'admin.ver': 'Ver',
+      'admin.buscarPh': 'Buscar en el texto, o @usuario',
+      'admin.totalPios': (d) => `${d.n} ${d.n === 1 ? 'pío' : 'píos'}`,
       'admin.borrar': 'Borrar',
       'admin.ocultar': 'Ocultar',
       'admin.mostrar': 'Mostrar',
@@ -398,6 +400,8 @@ window.IDIOMAS = {
       'admin.corralCuentas': (d) => `${d.pios} ${d.pios === 1 ? 'pío' : 'píos'}`
         + ` · ${d.suscritos} member${d.suscritos === 1 ? '' : 's'}`,
       'admin.ver': 'Open',
+      'admin.buscarPh': 'Search the text, or @user',
+      'admin.totalPios': (d) => `${d.n} ${d.n === 1 ? 'pío' : 'píos'}`,
       'admin.borrar': 'Delete',
       'admin.ocultar': 'Hide',
       'admin.mostrar': 'Show',

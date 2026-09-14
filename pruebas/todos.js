@@ -2005,6 +2005,18 @@ async function main() {
     (await pedirAdm('/admin/pios', { token: jefaT })).datos.pios.some((p) => p.id === pioEnCorral));
   probar('y la plaza no',
     !(await pedirAdm('/pios?tipo=plaza')).datos.pios.some((p) => p.id === pioEnCorral));
+  const buscaTexto = await pedirAdm('/admin/pios?q=CORRAL', { token: jefaT });
+  probar('el panel busca en el texto, sin importar mayúsculas',
+    buscaTexto.datos.pios.length === 1 && buscaTexto.datos.pios[0].id === pioEnCorral && buscaTexto.datos.total === 1);
+  probar('y por autor con @', (await pedirAdm('/admin/pios?q=@jefa', { token: jefaT })).datos.pios.every((p) => p.autor.usuario === 'jefa'));
+  probar('lo que no coincide no aparece', (await pedirAdm('/admin/pios?q=zzzz', { token: jefaT })).datos.pios.length === 0);
+  // Más de cincuenta: se pagina.
+  for (let i = 0; i < 55; i += 1) conAdm.almacen.datos.pios.push({ id: `pmuchos${i}`, autor: 'jefa', texto: `relleno ${i}`, creado: 1000 + i, meGusta: [], repios: [], etiquetas: [], menciones: [] });
+  const paginaUno = await pedirAdm('/admin/pios?q=relleno', { token: jefaT });
+  probar('de a cincuenta', paginaUno.datos.pios.length === 50 && paginaUno.datos.hayMas === true && paginaUno.datos.total === 55);
+  const paginaDos = await pedirAdm(`/admin/pios?q=relleno&antes=${paginaUno.datos.pios[49].creado}`, { token: jefaT });
+  probar('y la página siguiente trae el resto', paginaDos.datos.pios.length === 5 && paginaDos.datos.hayMas === false);
+  conAdm.almacen.datos.pios = conAdm.almacen.datos.pios.filter((p) => !p.id.startsWith('pmuchos'));
   probar('la lista de píos del panel también es del corral de los que mandan',
     (await pedirAdm('/admin/pios')).estado === 401);
 

@@ -511,4 +511,3 @@ abierta.
 
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.
 - Etiquetar cuentas dentro de una imagen, con su posición sobre la foto.
-- Un panel que muestre más de los últimos 50 píos, con búsqueda propia.

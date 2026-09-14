@@ -16,6 +16,7 @@ const vacio = () => ({
   usuarios: [], pios: [], sesiones: {}, notificaciones: [], secuencia: 0,
   // Vacío significa "los de fábrica"; el panel de administración lo llena.
   emojis: [],
+  corrales: [],
 });
 
 // Que columna es la llave y como se arma la fila. Lo que de verdad se consulta
@@ -41,6 +42,10 @@ const TABLAS = {
   pio_meta: {
     llave: 'clave',
     fila: (m) => ({ clave: m.clave, valor: m.valor }),
+  },
+  pio_corrales: {
+    llave: 'nombre',
+    fila: (c) => ({ nombre: c.nombre, creado: c.creado, dueno: c.dueno, datos: c }),
   },
 };
 
@@ -103,12 +108,16 @@ class DepositoSupabase {
   }
 
   async cargar() {
-    const [usuarios, pios, sesiones, avisos, meta] = await Promise.all([
+    const [usuarios, pios, sesiones, avisos, meta, corrales] = await Promise.all([
       this.pedir('pio_usuarios?select=datos'),
       this.pedir('pio_pios?select=datos'),
       this.pedir('pio_sesiones?select=token,usuario,creada'),
       this.pedir('pio_avisos?select=datos'),
       this.pedir('pio_meta?select=clave,valor'),
+      // Opcional a proposito: si la tabla todavia no existe porque falta
+      // correr la migracion, el sitio arranca igual y sin corrales, en vez de
+      // no arrancar. Una funcion que falta es mejor que un sitio caido.
+      this.pedir('pio_corrales?select=datos').catch(() => null),
     ]);
 
     const datos = vacio();
@@ -122,6 +131,7 @@ class DepositoSupabase {
     datos.secuencia = Number(enMeta('secuencia')) || 0;
     const guardados = enMeta('emojis');
     datos.emojis = Array.isArray(guardados) ? guardados : [];
+    datos.corrales = (corrales || []).map((f) => f.datos).filter(Boolean);
     return datos;
   }
 

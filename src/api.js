@@ -7,6 +7,7 @@ const { crearSubidor, ErrorImagen } = require('./imagenes');
 const { crearGifs, ErrorGif } = require('./gifs');
 const { crearAcortador, ErrorEnlace } = require('./enlaces');
 const { medallaDe, faltanPara } = require('./medallas');
+const C = require('./corrales');
 
 // De donde se acepta que venga un adjunto. El cliente manda una URL, y una URL
 // que manda el cliente es un dato, no una verdad: si no se comprobara, cualquiera
@@ -226,7 +227,16 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
     if (metodo === 'POST' && !id) {
       exigir(yo);
-      const pio = await almacen.publicar(yo, cuerpo.texto, cuerpo.respuestaA, limpiarAdjunto(cuerpo.adjunto));
+      // Se comprueba que exista antes de escribir: un pío colgado de un
+      // corral inventado no lo ve nadie nunca más.
+      const dondeVa = cuerpo.corral ? almacen.buscarCorral(cuerpo.corral) : null;
+      if (cuerpo.corral && !dondeVa) {
+        throw new ErrorPio(404, C.mensaje({ clave: 'corral.noexiste' }), 'corral.noexiste');
+      }
+      const pio = await almacen.publicar(
+        yo, cuerpo.texto, cuerpo.respuestaA, limpiarAdjunto(cuerpo.adjunto),
+        dondeVa ? dondeVa.nombre : null,
+      );
       return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
     }
     if (metodo === 'DELETE' && id) {
@@ -311,6 +321,38 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     } catch (err) {
       if (err instanceof ErrorImagen) throw new ErrorPio(400, err.message, err.clave);
       throw err;
+    }
+  }
+
+  // --- corrales -------------------------------------------------------------
+
+  if (recurso === 'corrales') {
+    if (metodo === 'GET' && !id) {
+      const lista = almacen.datos.corrales
+        .map((c) => serializarCorral(almacen, c, yo))
+        .sort((a, b) => b.pios - a.pios || a.nombre.localeCompare(b.nombre));
+      return { datos: { corrales: lista } };
+    }
+
+    if (metodo === 'POST' && !id) {
+      exigir(yo);
+      const corral = await almacen.crearCorral(yo, cuerpo);
+      return { codigo: 201, datos: { corral: serializarCorral(almacen, corral, yo) } };
+    }
+
+    if (id) {
+      const corral = almacen.buscarCorral(id);
+      if (!corral) {
+        throw new ErrorPio(404, C.mensaje({ clave: 'corral.noexiste' }), 'corral.noexiste');
+      }
+      if (metodo === 'GET' && !accion) {
+        return { datos: { corral: serializarCorral(almacen, corral, yo) } };
+      }
+      if (metodo === 'POST' && accion === 'seguir') {
+        exigir(yo);
+        await almacen.alternarCorral(yo, corral.nombre);
+        return { datos: { corral: serializarCorral(almacen, corral, yo) } };
+      }
     }
   }
 
@@ -449,11 +491,21 @@ function linea(almacen, params, yo) {
   if (tipo === 'nido') {
     exigir(yo);
     const seguidos = new Set([yo.usuario, ...yo.siguiendo]);
+    const mios = new Set(yo.corrales || []);
     for (const p of almacen.datos.pios) {
-      if (seguidos.has(p.autor) && !p.respuestaA) agregar(p, p.creado, null);
+      // De quien sigo, sólo lo que dijo en la plaza: si sigo a alguien pero no
+      // estoy en su corral, ese corral no es asunto mío.
+      const deQuienSigo = !p.corral && seguidos.has(p.autor);
+      const deMisCorrales = !!p.corral && mios.has(p.corral);
+      if ((deQuienSigo || deMisCorrales) && !p.respuestaA) agregar(p, p.creado, null);
       for (const r of p.repios) {
         if (seguidos.has(r.usuario) && r.usuario !== p.autor) agregar(p, r.fecha, r.usuario);
       }
+    }
+  } else if (tipo === 'corral') {
+    const cual = C.aNombre(params.get('corral'));
+    for (const p of almacen.datos.pios) {
+      if (p.corral === cual && !p.respuestaA) agregar(p, p.creado, null);
     }
   } else if (tipo === 'usuario') {
     const quien = M.normalizarUsuario(params.get('usuario'));
@@ -468,7 +520,9 @@ function linea(almacen, params, yo) {
     const quien = M.normalizarUsuario(params.get('usuario'));
     for (const p of almacen.datos.pios) if (p.meGusta.includes(quien)) agregar(p, p.creado, null);
   } else {
-    for (const p of almacen.datos.pios) if (!p.respuestaA) agregar(p, p.creado, null);
+    // La plaza es el tema general, sin necesidad de llamarlo así: todo lo que
+    // no vive dentro de un corral.
+    for (const p of almacen.datos.pios) if (!p.respuestaA && !p.corral) agregar(p, p.creado, null);
   }
 
   entradas.sort((a, b) => b.orden - a.orden);
@@ -503,6 +557,7 @@ function serializar(almacen, pio, yo) {
     yoRepio: !!yo && pio.repios.some((r) => r.usuario === yo.usuario),
     respuestas: almacen.contarRespuestas(pio.id),
     adjunto: pio.adjunto || null,
+    corral: pio.corral || null,
     mio: !!yo && pio.autor === yo.usuario,
   };
 }
@@ -519,6 +574,20 @@ function serializarAviso(almacen, aviso, yo) {
     leida: aviso.leida,
     de: de ? { usuario: de.usuario, nombre: de.nombre } : { usuario: aviso.de, nombre: aviso.de },
     pio: pio ? serializar(almacen, pio, yo) : null,
+  };
+}
+
+function serializarCorral(almacen, corral, yo) {
+  return {
+    nombre: corral.nombre,
+    titulo: corral.titulo,
+    descripcion: corral.descripcion || '',
+    creado: corral.creado,
+    dueno: corral.dueno,
+    pios: almacen.piosDe(corral.nombre),
+    suscritos: almacen.suscritos(corral.nombre),
+    estoy: !!yo && (yo.corrales || []).includes(corral.nombre),
+    esMio: !!yo && yo.usuario === corral.dueno,
   };
 }
 
@@ -634,4 +703,4 @@ function responder(res, codigo, datos) {
   res.end(cuerpo);
 }
 
-module.exports = { crearApi, serializar, serializarAviso, perfil, limpiarAdjunto };
+module.exports = { crearApi, serializar, serializarAviso, serializarCorral, perfil, limpiarAdjunto };

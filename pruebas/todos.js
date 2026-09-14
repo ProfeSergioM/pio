@@ -1668,6 +1668,122 @@ async function main() {
 
   await new Promise((listo) => conSes.close(listo));
   fs.rmSync(carpetaSes, { recursive: true, force: true });
+  // --- corrales -----------------------------------------------------------
+
+  grupo('Corrales');
+  const COR = require('../src/corrales');
+
+  probar('un nombre con espacios se arregla solo', COR.aNombre('Cosas de Cocina') === 'cosas_de_cocina');
+  probar('y los acentos también', COR.aNombre('Fútbol Ñoño') === 'futbol_nono');
+  probar('general está reservado', (COR.validarNombre('general') || {}).clave === 'corral.reservado');
+  probar('y corral también', (COR.validarNombre('corral') || {}).clave === 'corral.reservado');
+  probar('uno de dos letras no alcanza', (COR.validarNombre('ab') || {}).clave === 'corral.forma');
+  probar('uno normal pasa', COR.validarNombre('cocina') === null);
+  probar('sin título no vale', (COR.validarTitulo('') || {}).clave === 'corral.sintitulo');
+  probar('un título largo tampoco', (COR.validarTitulo('x'.repeat(50)) || {}).clave === 'corral.titulolargo');
+
+  // --- y por HTTP ---
+
+  const carpetaCor = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-cor-'));
+  const conCor = crearServidor({ datos: carpetaCor, api: { altas: 100 } });
+  await new Promise((listo) => conCor.listen(0, '127.0.0.1', listo));
+  const baseCor = `http://127.0.0.1:${conCor.address().port}`;
+
+  const pedirCor = async (ruta, o = {}) => {
+    const r = await fetch(`${baseCor}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceCor = async (usuario) => (await pedirCor('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+
+  const duenoT = await naceCor('jilguero');
+  const visitaT = await naceCor('calandria');
+
+  const creado = await pedirCor('/corrales', {
+    metodo: 'POST', token: duenoT,
+    cuerpo: { nombre: 'Cosas de Cocina', titulo: 'Cocina', descripcion: 'Recetas y desastres' },
+  });
+  probar('se crea un corral', creado.estado === 201, JSON.stringify(creado.datos).slice(0, 80));
+  probar('con el nombre ya saneado', creado.datos.corral.nombre === 'cosas_de_cocina');
+  // Nadie arma un corral para no mirarlo.
+  probar('quien lo crea queda adentro', creado.datos.corral.estoy === true);
+  probar('y es suyo', creado.datos.corral.esMio === true);
+
+  const corralRepetido = await pedirCor('/corrales', {
+    metodo: 'POST', token: visitaT, cuerpo: { nombre: 'cosas_de_cocina', titulo: 'Otro' },
+  });
+  probar('no se puede repetir el nombre', corralRepetido.estado === 409);
+
+  const sinSesionCor = await pedirCor('/corrales', {
+    metodo: 'POST', cuerpo: { nombre: 'libre', titulo: 'Libre' },
+  });
+  probar('crear pide sesión', sinSesionCor.estado === 401);
+
+  // --- píos dentro y fuera ---
+
+  await pedirCor('/pios', { metodo: 'POST', token: duenoT, cuerpo: { texto: 'Un pío de la plaza' } });
+  const enCorral = await pedirCor('/pios', {
+    metodo: 'POST', token: duenoT,
+    cuerpo: { texto: 'Un pío de cocina', corral: 'cosas_de_cocina' },
+  });
+  probar('se pía dentro de un corral', enCorral.estado === 201
+    && enCorral.datos.pio.corral === 'cosas_de_cocina');
+
+  const aInventado = await pedirCor('/pios', {
+    metodo: 'POST', token: duenoT, cuerpo: { texto: 'a la nada', corral: 'no_existe_esto' },
+  });
+  probar('un corral inventado se rechaza', aInventado.estado === 404);
+
+  // La plaza es el tema general: lo del corral no la ensucia.
+  const plazaCor = await pedirCor('/pios?tipo=plaza');
+  probar('la plaza muestra sólo lo de afuera', plazaCor.datos.pios.length === 1
+    && plazaCor.datos.pios[0].texto.includes('plaza'), String(plazaCor.datos.pios.length));
+
+  const feedCorral = await pedirCor('/pios?tipo=corral&corral=cosas_de_cocina');
+  probar('y el corral muestra lo suyo', feedCorral.datos.pios.length === 1
+    && feedCorral.datos.pios[0].texto.includes('cocina'));
+
+  // Media conversación en un corral y media en la plaza sería ilegible.
+  const respuestaCor = await pedirCor('/pios', {
+    metodo: 'POST', token: visitaT,
+    cuerpo: { texto: 'contesto sin decir dónde', respuestaA: enCorral.datos.pio.id },
+  });
+  probar('una respuesta hereda el corral del pío que contesta',
+    respuestaCor.datos.pio.corral === 'cosas_de_cocina');
+
+  // --- suscribirse ---
+
+  const nidoAntes = await pedirCor('/pios?tipo=nido', { token: visitaT });
+  probar('sin suscribirse, el corral no llega al nido', nidoAntes.datos.pios.length === 0,
+    String(nidoAntes.datos.pios.length));
+
+  const entrada = await pedirCor('/corrales/cosas_de_cocina/seguir', { metodo: 'POST', token: visitaT });
+  probar('suscribirse funciona', entrada.datos.corral.estoy === true);
+  probar('y se cuentan los suscritos', entrada.datos.corral.suscritos === 2);
+
+  const nidoDespues = await pedirCor('/pios?tipo=nido', { token: visitaT });
+  probar('ahora sí llega al nido', nidoDespues.datos.pios.length === 1);
+
+  const salida = await pedirCor('/corrales/cosas_de_cocina/seguir', { metodo: 'POST', token: visitaT });
+  probar('y se puede salir', salida.datos.corral.estoy === false);
+  probar('con lo que el nido vuelve a quedar vacío',
+    (await pedirCor('/pios?tipo=nido', { token: visitaT })).datos.pios.length === 0);
+
+  const lista = await pedirCor('/corrales');
+  probar('se listan los corrales', lista.datos.corrales.length === 1);
+  probar('con cuántos píos tiene', lista.datos.corrales[0].pios === 2);
+
+  probar('un corral que no existe da 404',
+    (await pedirCor('/corrales/no_existe_esto')).estado === 404);
+
+  await new Promise((listo) => conCor.close(listo));
+  fs.rmSync(carpetaCor, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

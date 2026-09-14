@@ -5,6 +5,7 @@ const M = require('./modelo');
 const { crearDeposito, vacio } = require('./deposito');
 const E = require('./emojis');
 const R = require('./recuperacion');
+const C = require('./corrales');
 const { esReservado } = require('./reservados');
 
 // Cada cambio dice qué registro tocar. El depósito de archivo los ignora y
@@ -17,6 +18,7 @@ const cambioSesion = (token, s) => ({
   valor: { token, usuario: s.usuario, creada: s.creada },
 });
 const cambioAviso = (a) => ({ tabla: 'pio_avisos', clave: a.id, valor: a });
+const cambioCorral = (c) => ({ tabla: 'pio_corrales', clave: c.nombre, valor: c });
 const cambioSecuencia = (n) => ({ tabla: 'pio_meta', clave: 'secuencia', valor: { clave: 'secuencia', valor: n } });
 const baja = (tabla, clave) => ({ tabla, clave, valor: null });
 
@@ -404,6 +406,13 @@ class Almacen {
       if (tocado) cambios.push(cambioPio(pio));
     }
 
+    for (const corral of this.datos.corrales) {
+      if (corral.dueno === viejo) {
+        corral.dueno = nuevo;
+        cambios.push(cambioCorral(corral));
+      }
+    }
+
     for (const otro of this.datos.usuarios) {
       const i = otro.siguiendo.indexOf(viejo);
       if (i !== -1) {
@@ -440,15 +449,19 @@ class Almacen {
     return this.datos.pios.find((p) => p.id === id) || null;
   }
 
-  async publicar(cuenta, texto, respuestaA, adjunto) {
+  async publicar(cuenta, texto, respuestaA, adjunto, corral) {
     // Con imagen el texto puede faltar, porque la imagen ya dice algo. Lo que
     // no cambia nunca es el limite de cien.
     const limpio = M.normalizarTexto(texto);
     const error = adjunto && !limpio ? null : M.validarPio(texto);
     if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
-    if (respuestaA && !this.buscarPio(respuestaA)) {
+    const padre = respuestaA ? this.buscarPio(respuestaA) : null;
+    if (respuestaA && !padre) {
       throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
     }
+    // Una respuesta vive donde vive el pio al que contesta: si no, media
+    // conversacion quedaria en un corral y la otra media en la plaza.
+    if (padre) corral = padre.corral || null;
     const nuevo = {
       id: this.proximoId('p'),
       autor: cuenta.usuario,
@@ -460,6 +473,9 @@ class Almacen {
       // Uno solo, a proposito: un pio de cien caracteres con una galeria
       // adentro deja de ser un pio. El adjunto ya viene validado de la API.
       adjunto: adjunto || null,
+      // En que corral vive. Sin corral es la plaza, que es el tema general
+      // sin necesidad de llamarlo asi.
+      corral: corral || null,
       meGusta: [],
       repios: [],
     };
@@ -524,6 +540,61 @@ class Almacen {
 
   respuestasDe(id) {
     return this.datos.pios.filter((p) => p.respuestaA === id);
+  }
+
+  // --- corrales -----------------------------------------------------------
+
+  buscarCorral(nombre) {
+    const n = C.aNombre(nombre);
+    if (!n) return null;
+    return this.datos.corrales.find((c) => c.nombre === n) || null;
+  }
+
+  async crearCorral(cuenta, pedido) {
+    const error = C.validarNombre(pedido.nombre)
+      || C.validarTitulo(pedido.titulo)
+      || C.validarDescripcion(pedido.descripcion);
+    if (error) throw new ErrorPio(400, C.mensaje(error), error.clave, error.datos);
+
+    const nombre = C.aNombre(pedido.nombre);
+    if (this.buscarCorral(nombre)) {
+      throw new ErrorPio(409, C.mensaje({ clave: 'corral.ocupado' }), 'corral.ocupado');
+    }
+
+    const nuevo = {
+      nombre,
+      titulo: M.recortar(M.normalizarTexto(pedido.titulo), C.LIMITE_TITULO),
+      descripcion: M.recortar(M.normalizarTexto(pedido.descripcion || ''), C.LIMITE_DESCRIPCION),
+      dueno: cuenta.usuario,
+      creado: Date.now(),
+    };
+    this.datos.corrales.push(nuevo);
+
+    // Quien lo crea queda suscrito: nadie arma un corral para no mirarlo.
+    cuenta.corrales = cuenta.corrales || [];
+    cuenta.corrales.push(nombre);
+
+    await this.guardar([cambioCorral(nuevo), cambioUsuario(cuenta)]);
+    return nuevo;
+  }
+
+  async alternarCorral(cuenta, nombre) {
+    const corral = this.buscarCorral(nombre);
+    if (!corral) throw new ErrorPio(404, C.mensaje({ clave: 'corral.noexiste' }), 'corral.noexiste');
+    cuenta.corrales = cuenta.corrales || [];
+    const i = cuenta.corrales.indexOf(corral.nombre);
+    if (i === -1) cuenta.corrales.push(corral.nombre);
+    else cuenta.corrales.splice(i, 1);
+    await this.guardar([cambioUsuario(cuenta)]);
+    return i === -1;
+  }
+
+  suscritos(corral) {
+    return this.datos.usuarios.filter((u) => (u.corrales || []).includes(corral)).length;
+  }
+
+  piosDe(corral) {
+    return this.datos.pios.filter((p) => p.corral === corral).length;
   }
 
   // --- avisos -------------------------------------------------------------

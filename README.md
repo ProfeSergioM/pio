@@ -26,7 +26,7 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 207 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 214 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
 persistencia, altas masivas, nombres reservados, respuestas en cascada,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
@@ -68,6 +68,7 @@ descuido— y las variables son para el despliegue.
 | `SUPABASE_URL` | `supabase.url` | Guarda en Supabase en vez de en un archivo. |
 | `SUPABASE_SERVICE_KEY` | `supabase.clave` | La `service_role`, nunca la `anon`. |
 | `PIO_DEPOSITO` | `deposito` | `archivo` fuerza el JSON local aunque haya credenciales. |
+| `PIO_PROXIES` | `proxies` | Cuántos proxies de confianza hay delante. En tu máquina 0, en Render 1. |
 
 Sin ninguna de estas, Pío arranca igual: cada función que necesita una clave
 queda apagada y lo dice.
@@ -232,6 +233,29 @@ Un solo proceso, que es lo que hay.
 En `jsonb` va el objeto entero con la misma forma que tenía en el JSON, y en
 columnas sueltas sólo lo que de verdad se consulta u ordena. Por eso el código
 de dominio no se enteró del cambio.
+
+## Desplegar
+
+El archivo [`render.yaml`](render.yaml) ya describe el servicio. En Render:
+**New → Blueprint**, se elige el repositorio, y Render lo lee y arma todo solo.
+No hay nada que compilar: el proyecto no tiene dependencias, así que el build
+es un no-op y el arranque es `node servidor.js`.
+
+Las claves no están en el archivo. Van marcadas como `sync: false`, que
+significa "preguntámelo en el panel"; Render las pide al desplegar y las guarda
+de su lado. Las dos imprescindibles son `SUPABASE_URL` y
+`SUPABASE_SERVICE_KEY`; el resto enciende funciones sueltas.
+
+**`PIO_PROXIES=1` no es opcional en Render.** Hay un balanceador delante, y sin
+eso el límite de altas vería siempre la IP del proxy y metería a todos los
+visitantes en el mismo cubo: cinco altas por hora para el sitio entero.
+
+Dos cosas del plan gratuito que conviene saber de antemano, porque van a pasar:
+
+- **El servicio de Render se duerme tras 15 minutos sin visitas.** La primera
+  visita después de eso tarda cerca de un minuto en responder.
+- **Los proyectos de Supabase se pausan tras una semana sin actividad** y hay
+  que reactivarlos a mano desde su panel.
 
 ## Vocabulario
 

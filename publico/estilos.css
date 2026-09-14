@@ -608,6 +608,9 @@ img.emoji {
 .gif:focus-visible { outline: 2px solid var(--amarillo); outline-offset: 2px; }
 
 .pio-imagen { display: block; margin-top: 8px; }
+.pio-spotify { margin-top: 8px; }
+iframe.spotify { display: block; width: 100%; border: 0; border-radius: 12px; }
+.adjunto iframe.spotify { margin-top: 4px; }
 .pio-imagen img {
   display: block; width: 100%; max-height: 420px; object-fit: cover;
   border-radius: var(--radio); border: 1px solid var(--borde);

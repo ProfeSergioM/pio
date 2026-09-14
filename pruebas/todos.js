@@ -2488,6 +2488,46 @@ async function main() {
   await new Promise((listo) => conAva.close(listo));
   fs.rmSync(carpetaAva, { recursive: true, force: true });
 
+  // --- spotify --------------------------------------------------------------
+
+  grupo('Spotify');
+
+  const carpetaSpo = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-spo-'));
+  const conSpo = crearServidor({ datos: carpetaSpo, api: { altas: 100 } });
+  await new Promise((listo) => conSpo.listen(0, '127.0.0.1', listo));
+  const baseSpo = `http://127.0.0.1:${conSpo.address().port}`;
+  const piarSpo = async (token, cuerpo) => {
+    const r = await fetch(`${baseSpo}/api/pios`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(cuerpo),
+    });
+    return { estado: r.status, datos: await r.json() };
+  };
+  const melomanaT = (await (await fetch(`${baseSpo}/api/registro`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario: 'melomana', nombre: 'Melómana', clave: 'semillas' }),
+  })).json()).token;
+
+  const cancion = await piarSpo(melomanaT, {
+    texto: 'Para empezar el día', adjunto: { tipo: 'spotify', recurso: 'track', id: '4cOdK2wGLETKBW3PvgPWqT' },
+  });
+  probar('un pío lleva una canción de Spotify', cancion.estado === 201
+    && cancion.datos.pio.adjunto.tipo === 'spotify' && cancion.datos.pio.adjunto.id === '4cOdK2wGLETKBW3PvgPWqT');
+  probar('se guarda sólo el tipo y el identificador',
+    JSON.stringify(Object.keys(cancion.datos.pio.adjunto).sort()) === JSON.stringify(['id', 'recurso', 'tipo']));
+  probar('sin texto también vale, como con una imagen',
+    (await piarSpo(melomanaT, { texto: '', adjunto: { tipo: 'spotify', recurso: 'album', id: '1DFixLWuPkv3KT3TnV35m3' } })).estado === 201);
+  probar('un tipo que no es de Spotify se rechaza',
+    (await piarSpo(melomanaT, { texto: 'x', adjunto: { tipo: 'spotify', recurso: 'pagina', id: '4cOdK2wGLETKBW3PvgPWqT' } })).estado === 400);
+  // El identificador termina dentro de la dirección del reproductor.
+  probar('un identificador raro se rechaza',
+    (await piarSpo(melomanaT, { texto: 'x', adjunto: { tipo: 'spotify', recurso: 'track', id: '../../evil.com/xxxxxxxx' } })).estado === 400);
+  probar('y una imagen sin tipo sigue siendo imagen',
+    (await piarSpo(melomanaT, { texto: 'x', adjunto: { url: 'https://malo.example/a.png' } })).datos.clave === 'adjunto.origen');
+
+  await new Promise((listo) => conSpo.close(listo));
+  fs.rmSync(carpetaSpo, { recursive: true, force: true });
+
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

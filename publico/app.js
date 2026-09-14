@@ -956,6 +956,44 @@ function listaPios(pios, vacio) {
   return pios.map((p) => tarjetaPio(p)).join('');
 }
 
+// --- Spotify ----------------------------------------------------------------
+
+// Un enlace de Spotify pegado en el texto se vuelve reproductor. Así no gasta
+// caracteres: la dirección sola se come casi todo el pío.
+const SPOTIFY = /https?:\/\/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]{22})\S*/i;
+
+// Una canción o un episodio caben en la versión chica; lo que tiene lista
+// necesita la alta para mostrar algo más que la portada.
+const altoSpotify = (recurso) => (recurso === 'track' || recurso === 'episode' ? 80 : 152);
+
+function reproductorSpotify(a) {
+  return `<iframe class="spotify" src="https://open.spotify.com/embed/${escapar(a.recurso)}/${escapar(a.id)}"
+    height="${altoSpotify(a.recurso)}" loading="lazy" title="Spotify"
+    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
+}
+
+function adjuntoDePio(pio) {
+  const a = pio.adjunto;
+  if (!a) return '';
+  if (a.tipo === 'spotify') return `<div class="pio-spotify">${reproductorSpotify(a)}</div>`;
+  return `
+    <a class="pio-imagen" href="${escapar(a.url)}" target="_blank" rel="noopener noreferrer">
+      <img src="${escapar(a.miniatura || a.url)}" alt="${escapar(a.texto || '')}" loading="lazy">
+    </a>`;
+}
+
+// Si el texto trae un enlace de Spotify y no hay otro adjunto, el enlace sale
+// del texto y pasa a ser el adjunto. Uno solo por pío, como las imágenes.
+function spotifyDelTexto() {
+  if (adjunto) return false;
+  const m = SPOTIFY.exec(areaTexto.value);
+  if (!m) return false;
+  adjunto = { tipo: 'spotify', recurso: m[1].toLowerCase(), id: m[2] };
+  areaTexto.value = areaTexto.value.replace(m[0], '').replace(/[ \t]{2,}/g, ' ').trim();
+  pintarAdjunto();
+  return true;
+}
+
 function tarjetaPio(pio, opciones = {}) {
   // Dentro de la cascada, la sangría ya dice que es una respuesta: repetirlo en
   // cada rama es ruido, y lo que se pidió fue un sitio poco recargado.
@@ -990,11 +1028,7 @@ function tarjetaPio(pio, opciones = {}) {
           ${largo(pio.texto) === LIMITE ? `<span class="cien-justos" title="${escapar(T('pio.cienJustos'))}" aria-label="${escapar(T('pio.cienJustos'))}">💯</span>` : ''}
         </div>
         ${pio.texto ? `<p class="texto">${enriquecer(pio.texto)}</p>` : ''}
-        ${pio.adjunto ? `
-          <a class="pio-imagen" href="${escapar(pio.adjunto.url)}" target="_blank" rel="noopener noreferrer">
-            <img src="${escapar(pio.adjunto.miniatura || pio.adjunto.url)}"
-                 alt="${escapar(pio.adjunto.texto || '')}" loading="lazy">
-          </a>` : ''}
+        ${adjuntoDePio(pio)}
         <div class="acciones">
           <button class="accion" data-accion="responder" title="${escapar(T('accion.responder'))}">💬 <span>${pio.respuestas || ''}</span></button>
           <button class="accion repio ${pio.yoRepio ? 'activa' : ''}" data-accion="repio" title="${escapar(T('accion.repiar'))}">🔁 <span>${pio.repios || ''}</span></button>
@@ -1425,6 +1459,13 @@ function pintarAdjunto() {
     return;
   }
   caja.hidden = false;
+  if (adjunto.tipo === 'spotify') {
+    caja.innerHTML = `
+      ${reproductorSpotify(adjunto)}
+      <button type="button" class="icono quitar" data-quitar-adjunto
+              title="${escapar(T('adjunto.quitar'))}">✕</button>`;
+    return;
+  }
   caja.innerHTML = `
     <img src="${escapar(adjunto.miniatura || adjunto.url)}" alt="">
     <button type="button" class="icono quitar" data-quitar-adjunto
@@ -1655,7 +1696,15 @@ function actualizarMedidor() {
   $('#enviar-pio').disabled = (usados === 0 && !adjunto) || restantes < 0;
 }
 
-areaTexto.addEventListener('input', actualizarMedidor);
+areaTexto.addEventListener('input', () => {
+  if (spotifyDelTexto()) avisar(T('spotify.puesto'));
+  actualizarMedidor();
+});
+
+$('#poner-spotify').addEventListener('click', () => {
+  avisar(T('spotify.como'));
+  areaTexto.focus();
+});
 areaTexto.addEventListener('keydown', (ev) => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') $('#forma-piar').requestSubmit();
 });

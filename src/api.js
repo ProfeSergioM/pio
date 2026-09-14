@@ -897,8 +897,21 @@ function urlDeConfianza(valor) {
   }
 }
 
+// Lo que Spotify deja insertar. Se guarda sólo el tipo y el identificador, no
+// una dirección: el reproductor se arma siempre contra open.spotify.com, así
+// que no hay forma de colar otra página adentro del pío.
+const SPOTIFY_RECURSOS = new Set(['track', 'album', 'playlist', 'episode', 'show', 'artist']);
+
 function limpiarAdjunto(crudo) {
   if (!crudo) return null;
+  if (crudo.tipo === 'spotify') {
+    const recurso = String(crudo.recurso || '');
+    const id = String(crudo.id || '');
+    if (!SPOTIFY_RECURSOS.has(recurso) || !/^[A-Za-z0-9]{22}$/.test(id)) {
+      throw new ErrorPio(400, 'Ese enlace de Spotify no se entiende.', 'spotify.malo');
+    }
+    return { tipo: 'spotify', recurso, id };
+  }
   const mirar = urlDeConfianza;
   const url = mirar(crudo.url);
   if (!url) throw new ErrorPio(400, 'Esa imagen no viene de donde debería.', 'adjunto.origen');

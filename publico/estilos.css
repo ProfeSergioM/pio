@@ -485,9 +485,12 @@ a.boton { display: inline-block; color: inherit; }
 
 /* Al alto de la línea y alineado con la letra: un emoji que sobresale corre
    el renglón y se nota en cada pío que lo tenga. */
-.emoji {
-  display: inline-block; width: 1.25em; height: 1.25em;
-  vertical-align: -0.25em; margin: 0 .05em;
+/* Se fija el alto y el ancho sale solo: forzar un cuadrado aplasta cualquier
+   imagen que no lo sea, y los emojis de foro casi nunca lo son. El tope de
+   ancho es para que una imagen apaisada no se coma el renglón. */
+img.emoji {
+  display: inline-block; width: auto; height: 1.25em; max-width: 4em;
+  object-fit: contain; vertical-align: -0.25em; margin: 0 .05em;
 }
 
 /* --- adjuntos --------------------------------------------------------- */

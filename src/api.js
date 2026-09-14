@@ -323,6 +323,11 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       await almacen.alternarSeguir(yo, id);
       return { datos: { perfil: perfil(almacen, cuenta, yo) } };
     }
+    if (metodo === 'POST' && accion === 'silenciar') {
+      exigir(yo);
+      await almacen.alternarSilencio(yo, id);
+      return { datos: { perfil: perfil(almacen, cuenta, yo) } };
+    }
   }
 
   // --- imagenes -----------------------------------------------------------
@@ -545,7 +550,9 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     if (metodo === 'GET' && !id) {
       return {
         datos: {
-          notificaciones: almacen.avisosDe(yo).map((n) => serializarAviso(almacen, n, yo)),
+          notificaciones: almacen.avisosDe(yo)
+            .filter((n) => !silenciado(yo, n.de))
+            .map((n) => serializarAviso(almacen, n, yo)),
           sinLeer: almacen.sinLeer(yo),
         },
       };
@@ -566,7 +573,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       .slice(0, 10)
       .map((u) => perfil(almacen, u, yo));
     const pios = almacen.datos.pios
-      .filter((p) => p.texto.toLowerCase().includes(q))
+      .filter((p) => p.texto.toLowerCase().includes(q) && !silenciado(yo, p.autor))
       .sort((a, b) => b.creado - a.creado)
       .slice(0, PAGINA)
       .map((p) => serializar(almacen, p, yo));
@@ -651,6 +658,16 @@ function linea(almacen, params, yo) {
     // La plaza es el tema general, sin necesidad de llamarlo así: todo lo que
     // no vive dentro de un corral.
     for (const p of almacen.datos.pios) if (!p.respuestaA && !p.corral) agregar(p, p.creado, null);
+  }
+
+  // Lo silenciado no se muestra en ninguna línea, salvo en el perfil de esa
+  // misma cuenta: si alguien entra a mirarla a propósito, esconderle lo que
+  // fue a buscar sería confuso.
+  if (tipo !== 'usuario') {
+    for (let i = entradas.length - 1; i >= 0; i -= 1) {
+      const e = entradas[i];
+      if (silenciado(yo, e.pio.autor) || silenciado(yo, e.repiadoPor)) entradas.splice(i, 1);
+    }
   }
 
   entradas.sort((a, b) => b.orden - a.orden);
@@ -754,8 +771,13 @@ function perfil(almacen, cuenta, yo) {
     proxima: propio ? faltanPara(seguidores) : undefined,
     pios: almacen.datos.pios.filter((p) => p.autor === cuenta.usuario).length,
     loSigo: !!yo && yo.siguiendo.includes(cuenta.usuario),
+    loSilencio: silenciado(yo, cuenta.usuario),
     soyYo: !!yo && yo.usuario === cuenta.usuario,
   };
+}
+
+function silenciado(yo, usuario) {
+  return !!(yo && usuario && Array.isArray(yo.silenciados) && yo.silenciados.includes(usuario));
 }
 
 // --- utilidades HTTP ------------------------------------------------------

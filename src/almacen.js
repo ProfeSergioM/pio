@@ -347,6 +347,23 @@ class Almacen {
     return i === -1;
   }
 
+  // Silenciar es dejar de ver sin que el otro se entere: no hay aviso, y sus
+  // pios siguen llegando a la base. Solo cambia lo que se le muestra a quien
+  // silencio.
+  async alternarSilencio(cuenta, objetivoUsuario) {
+    const objetivo = this.buscarUsuario(objetivoUsuario);
+    if (!objetivo) throw new ErrorPio(404, 'No existe ese pollito.', 'pollito.noexiste');
+    if (objetivo.usuario === cuenta.usuario) {
+      throw new ErrorPio(400, 'No puedes silenciarte a ti mismo.', 'silencio.vosmismo');
+    }
+    if (!Array.isArray(cuenta.silenciados)) cuenta.silenciados = [];
+    const i = cuenta.silenciados.indexOf(objetivo.usuario);
+    if (i === -1) cuenta.silenciados.push(objetivo.usuario);
+    else cuenta.silenciados.splice(i, 1);
+    await this.guardar([cambioUsuario(cuenta)]);
+    return i === -1;
+  }
+
   // Cambiar de nombre obliga a reescribir todo lo que apuntaba al viejo: los
   // pios, los me gusta, los repios, las listas de seguidos de los demas, los
   // avisos y las sesiones. Es caro, y por eso hay una espera entre cambios;
@@ -427,11 +444,13 @@ class Almacen {
     }
 
     for (const otro of this.datos.usuarios) {
+      let tocado = false;
       const i = otro.siguiendo.indexOf(viejo);
-      if (i !== -1) {
-        otro.siguiendo[i] = nuevo;
-        if (otro !== cuenta) cambios.push(cambioUsuario(otro));
-      }
+      if (i !== -1) { otro.siguiendo[i] = nuevo; tocado = true; }
+      // Un renombre no puede ser la forma de salir del silencio de alguien.
+      const j = (otro.silenciados || []).indexOf(viejo);
+      if (j !== -1) { otro.silenciados[j] = nuevo; tocado = true; }
+      if (tocado && otro !== cuenta) cambios.push(cambioUsuario(otro));
     }
 
     for (const aviso of this.datos.notificaciones) {
@@ -581,8 +600,12 @@ class Almacen {
     }
 
     for (const otro of this.datos.usuarios) {
+      let tocado = false;
       const i = otro.siguiendo.indexOf(quien);
-      if (i !== -1) { otro.siguiendo.splice(i, 1); cambios.push(cambioUsuario(otro)); }
+      if (i !== -1) { otro.siguiendo.splice(i, 1); tocado = true; }
+      const j = (otro.silenciados || []).indexOf(quien);
+      if (j !== -1) { otro.silenciados.splice(j, 1); tocado = true; }
+      if (tocado) cambios.push(cambioUsuario(otro));
     }
     this.datos.usuarios = this.datos.usuarios.filter((u) => u.usuario !== quien);
 
@@ -794,7 +817,11 @@ class Almacen {
   }
 
   sinLeer(cuenta) {
-    return this.datos.notificaciones.filter((n) => n.para === cuenta.usuario && !n.leida).length;
+    // Lo de una cuenta silenciada no se muestra, así que tampoco se cuenta: una
+    // insignia con un número que no lleva a nada es peor que ninguna.
+    const callados = new Set(cuenta.silenciados || []);
+    return this.datos.notificaciones
+      .filter((n) => n.para === cuenta.usuario && !n.leida && !callados.has(n.de)).length;
   }
 
   async marcarLeidos(cuenta) {

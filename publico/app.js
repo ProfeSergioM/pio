@@ -451,9 +451,15 @@ async function vistaPerfil(usuario, solapa) {
          <button class="boton" data-clave>${escapar(T('perfil.clave'))}</button>
          <button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>
        </div>`
-    : `<button class="boton ${perfil.loSigo ? 'fantasma' : 'principal'}" data-seguir="${escapar(perfil.usuario)}">
-         ${escapar(T(perfil.loSigo ? 'perfil.siguiendoYa' : 'perfil.seguir'))}
-       </button>`;
+    : `<div class="perfil-botones">
+         <button class="boton fantasma" data-silenciar="${escapar(perfil.usuario)}"
+                 title="${escapar(T(perfil.loSilencio ? 'perfil.quitarSilencio' : 'perfil.silenciar'))}">
+           ${perfil.loSilencio ? '🔇' : '🔈'} ${escapar(T(perfil.loSilencio ? 'perfil.silenciado' : 'perfil.silenciar'))}
+         </button>
+         <button class="boton ${perfil.loSigo ? 'fantasma' : 'principal'}" data-seguir="${escapar(perfil.usuario)}">
+           ${escapar(T(perfil.loSigo ? 'perfil.siguiendoYa' : 'perfil.seguir'))}
+         </button>
+       </div>`;
 
   const tipo = solapa === 'megusta' ? 'megusta' : 'usuario';
   const datos = await api(`/pios?tipo=${tipo}&usuario=${encodeURIComponent(perfil.usuario)}`);
@@ -945,6 +951,18 @@ document.body.addEventListener('click', async (ev) => {
   if (otroIdioma) {
     ev.preventDefault();
     cambiarIdioma(otroIdioma.dataset.idioma);
+    return;
+  }
+
+  const silenciar = ev.target.closest('[data-silenciar]');
+  if (silenciar) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    try {
+      const { perfil } = await api(`/usuarios/${encodeURIComponent(silenciar.dataset.silenciar)}/silenciar`, { metodo: 'POST' });
+      avisar(T(perfil.loSilencio ? 'toast.silenciado' : 'toast.sinSilencio', { usuario: perfil.usuario }));
+      await pintar();
+    } catch (err) { avisar(err.message); }
     return;
   }
 

@@ -2077,6 +2077,77 @@ async function main() {
   probar('sin clave configurada no hay puerta', sinPuerta.status === 404);
   await new Promise((listo) => conSin.close(listo));
   fs.rmSync(carpetaSin, { recursive: true, force: true });
+  // --- silenciar ------------------------------------------------------------
+
+  grupo('Silenciar');
+
+  const carpetaSil = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-sil-'));
+  const conSil = crearServidor({ datos: carpetaSil, api: { altas: 100 } });
+  await new Promise((listo) => conSil.listen(0, '127.0.0.1', listo));
+  const baseSil = `http://127.0.0.1:${conSil.address().port}`;
+  const pedirSil = async (ruta, o = {}) => {
+    const r = await fetch(`${baseSil}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceSil = async (usuario) => (await pedirSil('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+
+  const lectoraT = await naceSil('lectora');
+  const ruidosoT = await naceSil('ruidoso');
+  const otroSilT = await naceSil('tranquilo');
+  await pedirSil('/usuarios/ruidoso/seguir', { metodo: 'POST', token: lectoraT });
+  await pedirSil('/pios', { metodo: 'POST', token: ruidosoT, cuerpo: { texto: 'bla bla ruido #eco' } });
+  await pedirSil('/pios', { metodo: 'POST', token: otroSilT, cuerpo: { texto: 'algo tranquilo #eco' } });
+
+  const autoresDe = async (ruta, token) => (await pedirSil(ruta, { token })).datos.pios.map((p) => p.autor.usuario);
+
+  probar('antes de silenciar se ve en la plaza', (await autoresDe('/pios?tipo=plaza', lectoraT)).includes('ruidoso'));
+
+  const sil = await pedirSil('/usuarios/ruidoso/silenciar', { metodo: 'POST', token: lectoraT });
+  probar('se silencia una cuenta', sil.estado === 200 && sil.datos.perfil.loSilencio === true);
+  probar('no se muestra en la plaza', !(await autoresDe('/pios?tipo=plaza', lectoraT)).includes('ruidoso'));
+  probar('ni en el nido, aunque la siga', !(await autoresDe('/pios?tipo=nido', lectoraT)).includes('ruidoso'));
+  probar('ni en una etiqueta', !(await autoresDe('/pios?tipo=etiqueta&etiqueta=eco', lectoraT)).includes('ruidoso'));
+  probar('ni en la búsqueda', !(await pedirSil('/buscar?q=ruido', { token: lectoraT })).datos.pios.length);
+  probar('lo demás se sigue viendo', (await autoresDe('/pios?tipo=plaza', lectoraT)).includes('tranquilo'));
+
+  // Silenciar es de quien silencia: el resto del mundo no cambia.
+  probar('los demás lo siguen viendo', (await autoresDe('/pios?tipo=plaza', otroSilT)).includes('ruidoso'));
+  probar('y sin sesión también', (await autoresDe('/pios?tipo=plaza')).includes('ruidoso'));
+
+  // Sus píos siguen llegando: sólo no se muestran.
+  probar('sus píos siguen llegando', conSil.almacen.datos.pios.some((p) => p.autor === 'ruidoso'));
+  probar('y puede seguir piando', (await pedirSil('/pios', { metodo: 'POST', token: ruidosoT, cuerpo: { texto: 'sigo' } })).estado === 201);
+
+  // Si alguien entra a mirar su perfil a propósito, lo encuentra.
+  probar('en su propio perfil sí se ve', (await autoresDe('/pios?tipo=usuario&usuario=ruidoso', lectoraT)).includes('ruidoso'));
+
+  // Y no se entera: no hay aviso.
+  probar('a quien se silencia no le llega aviso',
+    !(await pedirSil('/notificaciones', { token: ruidosoT })).datos.notificaciones.some((n) => n.tipo === 'silenciar'));
+  await pedirSil('/usuarios/lectora/seguir', { metodo: 'POST', token: ruidosoT });
+  probar('y sus avisos tampoco se muestran',
+    !(await pedirSil('/notificaciones', { token: lectoraT })).datos.notificaciones.some((n) => n.de && n.de.usuario === 'ruidoso'));
+
+  probar('ni se cuentan en la insignia',
+    (await pedirSil('/notificaciones', { token: lectoraT })).datos.sinLeer === 0);
+  probar('no se puede silenciar a sí mismo',
+    (await pedirSil('/usuarios/lectora/silenciar', { metodo: 'POST', token: lectoraT })).estado === 400);
+  probar('silenciar pide sesión',
+    (await pedirSil('/usuarios/ruidoso/silenciar', { metodo: 'POST' })).estado === 401);
+
+  const quitar = await pedirSil('/usuarios/ruidoso/silenciar', { metodo: 'POST', token: lectoraT });
+  probar('se quita el silencio', quitar.datos.perfil.loSilencio === false);
+  probar('y vuelve a verse', (await autoresDe('/pios?tipo=plaza', lectoraT)).includes('ruidoso'));
+
+  await new Promise((listo) => conSil.close(listo));
+  fs.rmSync(carpetaSil, { recursive: true, force: true });
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

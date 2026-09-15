@@ -645,6 +645,10 @@ a.boton { display: inline-block; color: inherit; }
 .burbuja p { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .burbuja .cuando { display: block; margin-top: 2px; font-size: 11px; color: var(--tenue); }
 .burbuja.mia .cuando { color: #6b5b18; }
+/* El amarillo es el mismo en los dos modos, así que el texto también: con el
+   texto claro del modo oscuro, la burbuja propia quedaba ilegible. */
+.burbuja.mia { color: #201d16; }
+.burbuja.mia a { color: #8a3d00; }
 
 .decir {
   display: flex; gap: 8px; align-items: center;

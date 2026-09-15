@@ -803,6 +803,11 @@ function caminoHasta(nodos, id) {
 
 let hiloResaltado = null;
 let ultimoDestacadoVisto = null;
+// Si se tocó un comentario que ya está a la vista, no hay que llevar la
+// pantalla hasta él: se quedaría saltando bajo el dedo.
+// Guarda dónde estaba la pantalla, porque volver a dibujar la vista la vacía un
+// instante y el navegador la sube.
+let quedarseQuieto = null;
 
 async function vistaHilo(id) {
   cabecera(T('hilo.titulo'), T('hilo.sub'));
@@ -835,7 +840,10 @@ async function vistaHilo(id) {
 
   // Se lleva la vista hasta la respuesta sólo al llegar: si se la llevara en
   // cada me gusta, la pantalla saltaría mientras uno lee otra cosa.
-  if (hiloResaltado && ultimoDestacadoVisto !== hiloResaltado) {
+  const quieto = quedarseQuieto;
+  quedarseQuieto = null;
+  if (quieto !== null) window.scrollTo(0, quieto);
+  else if (hiloResaltado && ultimoDestacadoVisto !== hiloResaltado) {
     const destino = $('#cascada').querySelector(`.comentario[data-id="${CSS.escape(hiloResaltado)}"]`);
     if (destino) destino.scrollIntoView({ block: 'center' });
   }
@@ -962,6 +970,7 @@ async function vistaCorrales() {
 // amigos alcanza de sobra.
 let latidoChat = null;
 let ultimoMensaje = 0;
+const mostrados = new Set();
 
 function pararChat() {
   if (latidoChat) clearInterval(latidoChat);
@@ -992,10 +1001,16 @@ async function traerMensajes(corral, primeraVez) {
       return;
     }
     if (!mensajes.length) return;
-    if (primeraVez) caja.innerHTML = '';
+    // El "nadie dijo nada" se va con el primer mensaje, llegue cuando llegue.
+    if (primeraVez || caja.querySelector('.chico.centrado')) caja.innerHTML = '';
 
     for (const m of mensajes) {
       ultimoMensaje = Math.max(ultimoMensaje, m.creado);
+      // Al enviar se pregunta por lo nuevo, y el latido de cada cuatro
+      // segundos también: si coinciden, las dos respuestas traen el mismo
+      // mensaje. Lo que ya está en pantalla no se vuelve a poner.
+      if (mostrados.has(m.id)) continue;
+      mostrados.add(m.id);
       caja.insertAdjacentHTML('beforeend',
         burbuja(m, !!estado.yo && m.autor.usuario === estado.yo.usuario));
     }
@@ -1008,6 +1023,7 @@ async function traerMensajes(corral, primeraVez) {
 
 function pintarChat(corral, donde) {
   ultimoMensaje = 0;
+  mostrados.clear();
   donde.innerHTML = `
     <div class="charla" id="charla"></div>
     ${corral.estoy
@@ -1192,7 +1208,7 @@ function tarjetaPio(pio, opciones = {}) {
   const contexto = pio.repiadoPor
     ? `<div class="contexto">${T('pio.repiadoPor', { usuario: escapar(pio.repiadoPor) })}</div>`
     : (pio.respuestaA && !opciones.enCascada
-      ? `<div class="contexto"><a href="#/p/${escapar(pio.respuestaA)}">${escapar(T('pio.respuestaA', { usuario: pio.respuestaAUsuario }))}</a></div>`
+      ? `<div class="contexto"><a href="#/p/${escapar(pio.id)}">${escapar(T('pio.respuestaA', { usuario: pio.respuestaAUsuario }))}</a></div>`
       // Dentro del corral no hace falta decir en qué corral se está.
       : pio.pregunta && !opciones.enPregunta
         ? `<div class="contexto"><a href="#/pregunta/${escapar(pio.pregunta)}">${escapar(T('pio.pregunta'))}</a></div>`
@@ -1567,6 +1583,14 @@ document.body.addEventListener('click', async (ev) => {
   const fila = ev.target.closest('[data-ir]');
   if (fila && !ev.target.closest('a')) {
     location.hash = fila.dataset.ir;
+    return;
+  }
+
+  if (articulo && articulo.dataset.id && articulo.classList.contains('comentario')
+      && !ev.target.closest('a, button')) {
+    if (articulo.classList.contains('resaltado')) return;
+    quedarseQuieto = window.scrollY;
+    location.hash = `#/p/${articulo.dataset.id}`;
     return;
   }
 

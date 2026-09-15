@@ -146,7 +146,7 @@ window.IDIOMAS = {
       'hilo.titulo': 'Pío',
       'hilo.sub': 'El hilo completo',
       'hilo.vacio': 'Sin respuestas. Contesta tú.',
-      'hilo.plegar': 'Plegar esta rama',
+      'hilo.plegar': 'Plegar esta rama (toca la línea)',
       'hilo.desplegar': 'Desplegar esta rama',
       'hilo.ocultas': (d) => `${d.n} respuesta${d.n === 1 ? '' : 's'} oculta${d.n === 1 ? '' : 's'}`,
       'hilo.recortado': 'El hilo sigue, pero hasta aquí llega lo que mostramos.',

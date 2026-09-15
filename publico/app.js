@@ -628,33 +628,55 @@ function cuantasCuelgan(nodo) {
   return (nodo.ramas || []).reduce((suma, rama) => suma + 1 + cuantasCuelgan(rama), 0);
 }
 
-function rama(nodo) {
-  const tiene = !!(nodo.ramas && nodo.ramas.length);
+// Cada respuesta es un comentario compacto: avatar chico, nombre y hora en una
+// línea, el texto debajo. De cada avatar baja una línea que se dobla hacia
+// cada respuesta, así se ve de un vistazo quién le contesta a quién, sin
+// contar sangrías. Tocar la línea pliega esa rama entera.
+function comentario(nodo) {
+  const hijos = nodo.ramas || [];
   const cerrada = plegadas.has(nodo.id);
-  const boton = tiene
-    ? `<button class="plegar" data-plegar="${escapar(nodo.id)}"
-         title="${escapar(T(cerrada ? 'hilo.desplegar' : 'hilo.plegar'))}">${cerrada ? '+' : '−'}</button>`
-    : '<span class="plegar-hueco"></span>';
+  const abiertos = hijos.length && !cerrada;
 
-  // El botón va afuera del <article>, no adentro: si estuviera dentro, cada
-  // clic para plegar dispararía también la navegación al pío.
+  // Las ramas van afuera del <article>: adentro, cada clic para plegar
+  // dispararía también las acciones del pío.
   return `
-    <div class="rama">
-      <div class="rama-fila">${boton}<div class="rama-pio">${tarjetaPio(nodo, { enCascada: true })}</div></div>
-      ${tiene && !cerrada ? `<div class="ramas">${nodo.ramas.map(rama).join('')}</div>` : ''}
-      ${tiene && cerrada
-        ? `<div class="plegado">${escapar(T('hilo.ocultas', { n: cuantasCuelgan(nodo) }))}</div>`
-        : ''}
+    <div class="comentario-rama">
+      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''}" data-id="${nodo.id}">
+        ${cascaronDe(nodo)}
+        <div class="com-cabeza">
+          ${avatar(nodo.autor.usuario, 'mini', nodo.autor.avatar)}
+          <a class="pio-nombre" href="#/u/${escapar(nodo.autor.usuario)}">${escapar(nodo.autor.nombre)}</a>
+          <span class="pio-usuario">@${escapar(nodo.autor.usuario)}</span>
+          <span class="pio-fecha">· ${hace(nodo.creado)}</span>
+          ${cienJustos(nodo)}
+        </div>
+        <div class="com-cuerpo">
+          ${nodo.texto ? `<p class="texto">${enriquecer(nodo.texto)}</p>` : ''}
+          ${adjuntoDePio(nodo)}
+          ${accionesDePio(nodo)}
+        </div>
+      </article>
+      ${hijos.length && cerrada ? `
+        <button type="button" class="com-desplegar" data-plegar="${escapar(nodo.id)}">
+          ⊕ ${escapar(T('hilo.ocultas', { n: cuantasCuelgan(nodo) }))}
+        </button>` : ''}
+      ${abiertos ? `
+        <div class="com-hijos">
+          <button type="button" class="com-linea" data-plegar="${escapar(nodo.id)}"
+                  title="${escapar(T('hilo.plegar'))}" aria-label="${escapar(T('hilo.plegar'))}"></button>
+          ${hijos.map(comentario).join('')}
+        </div>` : ''}
     </div>`;
 }
 
 let hiloEnPantalla = null;
+let hiloAbierto = null;
 
 function pintarCascada() {
   if (!hiloEnPantalla) return;
   const { despues, recortado } = hiloEnPantalla;
   $('#cascada').innerHTML = despues.length
-    ? despues.map(rama).join('')
+    ? despues.map(comentario).join('')
       + (recortado ? `<div class="plegado">${escapar(T('hilo.recortado'))}</div>` : '')
     : `<div class="vacio"><span class="emoji">💬</span>${escapar(T('hilo.vacio'))}</div>`;
 }
@@ -663,7 +685,8 @@ async function vistaHilo(id) {
   cabecera(T('hilo.titulo'), T('hilo.sub'));
   const datos = await api(`/pios/${encodeURIComponent(id)}/hilo`);
   hiloEnPantalla = datos;
-  plegadas.clear();
+  if (hiloAbierto !== id) plegadas.clear();
+  hiloAbierto = id;
   $('#contenido').innerHTML =
     datos.antes.map((p) => tarjetaPio(p)).join('')
     + tarjetaPio(datos.pio, { destacado: true })
@@ -1029,12 +1052,7 @@ function tarjetaPio(pio, opciones = {}) {
         ? `<div class="contexto"><a href="#/c/${escapar(pio.corral)}">${escapar(T('pio.enCorral', { corral: pio.corral }))}</a></div>`
         : ''));
 
-  const cascaron = pio.huevo
-    ? `<div class="contexto huevo-aviso" data-nace="${Date.now() + pio.naceEn}">
-         <span data-cuenta>${escapar(T('huevo.nace', { s: Math.ceil(pio.naceEn / 1000) }))}</span>
-         <button class="enlace-boton" type="button" data-deshacer="${escapar(pio.id)}">${escapar(T('huevo.deshacer'))}</button>
-       </div>`
-    : '';
+  const cascaron = cascaronDe(pio);
 
   return `
     <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''}" data-id="${pio.id}">
@@ -1046,10 +1064,32 @@ function tarjetaPio(pio, opciones = {}) {
           <a class="pio-nombre" href="#/u/${escapar(pio.autor.usuario)}" data-parar>${escapar(pio.autor.nombre)}</a>
           <span class="pio-usuario">@${escapar(pio.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(pio.creado)}</span>
-          ${largo(pio.texto) === LIMITE ? `<span class="cien-justos" title="${escapar(T('pio.cienJustos'))}" aria-label="${escapar(T('pio.cienJustos'))}">💯</span>` : ''}
+          ${cienJustos(pio)}
         </div>
         ${pio.texto ? `<p class="texto">${enriquecer(pio.texto)}</p>` : ''}
         ${adjuntoDePio(pio)}
+        ${accionesDePio(pio)}
+      </div>
+    </article>`;
+}
+
+function cascaronDe(pio) {
+  return pio.huevo
+    ? `<div class="contexto huevo-aviso" data-nace="${Date.now() + pio.naceEn}">
+         <span data-cuenta>${escapar(T('huevo.nace', { s: Math.ceil(pio.naceEn / 1000) }))}</span>
+         <button class="enlace-boton" type="button" data-deshacer="${escapar(pio.id)}">${escapar(T('huevo.deshacer'))}</button>
+       </div>`
+    : '';
+}
+
+function cienJustos(pio) {
+  return largo(pio.texto) === LIMITE
+    ? `<span class="cien-justos" title="${escapar(T('pio.cienJustos'))}" aria-label="${escapar(T('pio.cienJustos'))}">💯</span>`
+    : '';
+}
+
+function accionesDePio(pio) {
+  return `
         <div class="acciones">
           <button class="accion" data-accion="responder" title="${escapar(T('accion.responder'))}">💬 <span>${pio.respuestas || ''}</span></button>
           <button class="accion repio ${pio.yoRepio ? 'activa' : ''}" data-accion="repio" title="${escapar(T('accion.repiar'))}">🔁 <span>${pio.repios || ''}</span></button>
@@ -1061,9 +1101,7 @@ function tarjetaPio(pio, opciones = {}) {
             : (estado.soyAdmin
               ? `<button class="accion borrar como-admin" data-accion="borrar" data-como-admin title="${escapar(T('accion.borrarAdmin'))}">🗑️</button>`
               : '')}
-        </div>
-      </div>
-    </article>`;
+        </div>`;
 }
 
 // --- compartir ------------------------------------------------------------
@@ -1295,7 +1333,7 @@ document.body.addEventListener('click', async (ev) => {
   }
 
   if (articulo && articulo.dataset.id && !ev.target.closest('a')
-      && !articulo.classList.contains('destacado')) {
+      && !articulo.classList.contains('destacado') && !articulo.classList.contains('comentario')) {
     location.hash = `#/p/${articulo.dataset.id}`;
   }
 });

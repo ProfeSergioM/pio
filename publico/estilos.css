@@ -517,6 +517,19 @@ a { color: inherit; text-decoration: none; }
   .huevo-barra { bottom: 84px; }
 }
 
+/* --- un pío recién llegado --------------------------------------------- */
+
+/* Un destello amarillo tenue que se apaga solo: dice "este es el tuyo" sin
+   quedarse pintado. */
+@keyframes recien {
+  from { background-color: color-mix(in srgb, var(--amarillo) 22%, transparent); }
+  to { background-color: transparent; }
+}
+.pio.recien { animation: recien 1.6s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .pio.recien { animation: none; }
+}
+
 /* --- la respuesta que se vino a ver ------------------------------------ */
 
 #cascada .pio.comentario.resaltado {

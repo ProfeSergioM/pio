@@ -840,6 +840,15 @@ async function vistaHilo(id) {
 
   // Se lleva la vista hasta la respuesta sólo al llegar: si se la llevara en
   // cada me gusta, la pantalla saltaría mientras uno lee otra cosa.
+  if (comentarioQueEntra) {
+    const nuevo = $('#cascada').querySelector(`.comentario[data-id="${CSS.escape(comentarioQueEntra)}"]`);
+    comentarioQueEntra = null;
+    if (nuevo) {
+      nuevo.classList.add('recien');
+      abrirDeAPoco(nuevo.closest('.comentario-rama'));
+    }
+  }
+
   const quieto = quedarseQuieto;
   quedarseQuieto = null;
   if (quieto !== null) window.scrollTo(0, quieto);
@@ -2302,12 +2311,107 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
     } else {
       avisar(T(borrador.respuestaA ? 'toast.respuesta' : 'toast.pio'));
     }
-    await pintar();
+    await mostrarPioNuevo(pio);
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
   }
 });
+
+// --- entrar y salir con suavidad ------------------------------------------------
+
+const sinMovimiento = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// El bloque crece desde alto cero hasta su alto real, y lo de abajo se corre
+// solo, porque el navegador lo acomoda en cada paso. Se anima una envoltura
+// sin relleno: la tarjeta tiene padding, y con alto cero igual se vería.
+function abrirDeAPoco(envoltura) {
+  if (sinMovimiento()) return;
+  const alto = envoltura.offsetHeight;
+  Object.assign(envoltura.style, { height: '0px', opacity: '0', overflow: 'hidden' });
+  envoltura.getBoundingClientRect();
+  envoltura.style.transition = 'height .38s cubic-bezier(.2, .8, .2, 1), opacity .45s ease';
+  Object.assign(envoltura.style, { height: `${alto}px`, opacity: '1' });
+  const listo = (ev) => {
+    if (ev.target !== envoltura || ev.propertyName !== 'height') return;
+    envoltura.removeEventListener('transitionend', listo);
+    envoltura.removeAttribute('style');
+  };
+  envoltura.addEventListener('transitionend', listo);
+  // Red por si la transición no corre —pestaña en segundo plano, ahorro de
+  // energía—: el bloque nunca queda aplastado en alto cero.
+  setTimeout(() => envoltura.removeAttribute('style'), 700);
+}
+
+function cerrarDeAPoco(elemento) {
+  return new Promise((listo) => {
+    if (sinMovimiento()) { elemento.remove(); listo(); return; }
+    Object.assign(elemento.style, { height: `${elemento.offsetHeight}px`, overflow: 'hidden' });
+    elemento.getBoundingClientRect();
+    elemento.style.transition = 'height .3s ease, opacity .25s ease';
+    Object.assign(elemento.style, { height: '0px', opacity: '0' });
+    setTimeout(() => { elemento.remove(); listo(); }, 320);
+  });
+}
+
+// Dónde va a parar un pío recién publicado, según la vista en la que se está.
+// Si no tiene lugar acá —por ejemplo, se pió desde un perfil ajeno—, no se
+// muestra: aparece donde corresponde cuando se vaya ahí.
+function lugarParaPioNuevo(pio) {
+  const { partes, params } = rutaActual();
+  const vista = partes[0] || 'nido';
+  const argumento = partes[1];
+  if (vista === 'nido') return { caja: $('#contenido') };
+  if (vista === 'plaza' && !pio.corral) return { caja: $('#contenido') };
+  if (vista === 'c' && pio.corral === argumento && params.get('ver') !== 'chat' && $('#abajo-corral')) {
+    return { caja: $('#abajo-corral'), opciones: { enCorral: true } };
+  }
+  if (vista === 'u' && argumento === estado.yo.usuario && (params.get('ver') || 'pios') === 'pios') {
+    return { caja: $('#contenido') };
+  }
+  if (vista === 'pregunta' && pio.pregunta) return { caja: $('#contenido'), opciones: { enPregunta: true } };
+  return null;
+}
+
+let comentarioQueEntra = null;
+
+async function mostrarPioNuevo(pio) {
+  const { partes } = rutaActual();
+
+  // En un hilo, la respuesta tiene que caer en su lugar del árbol: se vuelve a
+  // armar el árbol sin tocar la pantalla y la respuesta nueva crece ahí.
+  if (partes[0] === 'p') {
+    comentarioQueEntra = pio.id;
+    quedarseQuieto = window.scrollY;
+    await vistaHilo(partes[1]);
+    return;
+  }
+
+  const lugar = lugarParaPioNuevo(pio);
+  if (!lugar) return;
+  const vacio = lugar.caja.querySelector(':scope > .vacio');
+  if (vacio) vacio.remove();
+  // Arriba de todo lo que es lista, incluida la marca de "estás al día": lo
+  // propio nunca es novedad.
+  const primero = lugar.caja.querySelector(':scope > .pio, :scope > .al-dia, :scope > .pie-linea');
+  const envoltura = document.createElement('div');
+  envoltura.className = 'entrada';
+  envoltura.innerHTML = tarjetaPio(pio, lugar.opciones || {});
+  envoltura.firstElementChild.classList.add('recien');
+  lugar.caja.insertBefore(envoltura, primero);
+  abrirDeAPoco(envoltura);
+}
+
+async function sacarPio(id) {
+  const { partes } = rutaActual();
+  if (partes[0] === 'p') {
+    quedarseQuieto = window.scrollY;
+    await vistaHilo(partes[1]);
+    return;
+  }
+  const copias = [...copiasDe(id)];
+  await Promise.all(copias.map((copia) => cerrarDeAPoco(copia.closest('.entrada') || copia)));
+}
 
 // --- el huevo -------------------------------------------------------------
 
@@ -2365,7 +2469,7 @@ async function deshacerHuevo(id) {
   }
   borradores.delete(id);
   if (barraHuevo) { barraHuevo.remove(); barraHuevo = null; }
-  await pintar();
+  await sacarPio(id);
 
   // Vuelve al borrador tal como estaba: deshacer es para corregir, y
   // corregir sin el texto sería escribirlo de nuevo.

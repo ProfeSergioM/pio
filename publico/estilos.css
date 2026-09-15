@@ -797,6 +797,21 @@ a { color: inherit; text-decoration: none; }
   border-radius: 999px; background: var(--fondo); color: inherit; font: inherit;
 }
 
+/* --- las cuentas en el panel --------------------------------------------- */
+
+.fila-pollito { display: block; padding: 12px 4px; border-bottom: 1px solid var(--borde); }
+.fila-pollito:last-child { border-bottom: 0; }
+.fila-pollito-arriba { display: flex; align-items: flex-start; gap: 10px; }
+.fila-pollito-quien { flex: 1; min-width: 0; }
+/* Nada se corta: un nombre largo pasa al renglón siguiente. */
+.fila-pollito-quien b { display: block; overflow-wrap: anywhere; }
+.fila-pollito-quien span { display: block; font-size: 13px; color: var(--tenue); overflow-wrap: anywhere; }
+/* Sellos y botones debajo, alineados con el nombre y no con la foto. */
+.fila-pollito-sellos, .fila-pollito-botones { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 44px; }
+.fila-pollito-sellos { margin-top: 8px; }
+.fila-pollito-botones { margin-top: 10px; gap: 8px; }
+.fila-pollito-sellos:empty, .fila-pollito-botones:empty { display: none; }
+
 .sello {
   flex: 0 0 auto; font-size: 11px; padding: 2px 8px; border-radius: 999px;
   background: var(--panel-2); border: 1px solid var(--borde); color: var(--tenue);

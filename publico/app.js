@@ -3251,19 +3251,22 @@ async function panelPollitos(donde) {
         u.porGoogle ? T('admin.porGoogle') : '',
         !u.tieneClave && !u.porGoogle ? T('admin.sinClave') : '',
       ].filter(Boolean);
+      // Cada cuenta en varios renglones: quién es arriba, sus sellos debajo y
+      // los botones al final. En un solo renglón, con tres botones y dos
+      // sellos, el nombre quedaba reducido a unos puntos suspensivos.
       return `
-        <div class="sugerencia">
-          ${avatar(u.usuario, 'chico', u.avatar)}
-          <a class="crece" href="#/u/${escapar(u.usuario)}">
-            <b>${escapar(u.nombre)}</b>
-            <span>@${escapar(u.usuario)} · ${escapar(T('admin.cuentas', { pios: u.pios, seguidores: u.seguidores }))}</span>
-          </a>
-          ${u.oculto ? `<span class="sello" data-sello-oculto>${escapar(T('admin.ocultoSello'))}</span>` : ''}
-          ${sellos.map((s) => `<span class="sello">${escapar(s)}</span>`).join('')}
-          ${puedoTocar(u) && u.usuario !== estado.yo.usuario ? `<button class="boton fantasma chico" data-ocultar="${escapar(u.usuario)}"
-                  title="${escapar(T('admin.ocultarQue'))}">${escapar(T(u.oculto ? 'admin.mostrar' : 'admin.ocultar'))}</button>` : ''}
-          ${estado.rol === 'owner' && (!u.rol || u.nombrado) ? `<button class="boton fantasma chico" data-equipo="${escapar(u.usuario)}">${escapar(T(u.nombrado ? 'rol.sacar' : 'rol.nombrar'))}</button>` : ''}
-          ${estado.rol === 'owner' && u.rol !== 'owner' ? `<button class="boton peligro chico" data-borrar-pollito="${escapar(u.usuario)}">${escapar(T('admin.borrar'))}</button>` : ''}
+        <div class="sugerencia fila-pollito">
+          <div class="fila-pollito-arriba">
+            ${avatar(u.usuario, 'chico', u.avatar)}
+            <a class="fila-pollito-quien" href="#/u/${escapar(u.usuario)}">
+              <b>${escapar(u.nombre)}</b>
+              <span>@${escapar(u.usuario)}</span>
+              <span>${escapar(T('admin.cuentas', { pios: u.pios, seguidores: u.seguidores }))}</span>
+            </a>
+          </div>
+          <div class="fila-pollito-sellos">${u.oculto ? `<span class="sello" data-sello-oculto>${escapar(T('admin.ocultoSello'))}</span>` : ''}${sellos.map((s) => `<span class="sello">${escapar(s)}</span>`).join('')}</div>
+          <div class="fila-pollito-botones">${puedoTocar(u) && u.usuario !== estado.yo.usuario ? `<button class="boton fantasma chico" data-ocultar="${escapar(u.usuario)}"
+                  title="${escapar(T('admin.ocultarQue'))}">${escapar(T(u.oculto ? 'admin.mostrar' : 'admin.ocultar'))}</button>` : ''}${estado.rol === 'owner' && (!u.rol || u.nombrado) ? `<button class="boton fantasma chico" data-equipo="${escapar(u.usuario)}">${escapar(T(u.nombrado ? 'rol.sacar' : 'rol.nombrar'))}</button>` : ''}${estado.rol === 'owner' && u.rol !== 'owner' ? `<button class="boton peligro chico" data-borrar-pollito="${escapar(u.usuario)}">${escapar(T('admin.borrar'))}</button>` : ''}</div>
         </div>`;
     }).join('')
   }</div>`;
@@ -3278,7 +3281,7 @@ async function panelPollitos(donde) {
         const fila = boton.closest('.sugerencia');
         const sello = fila.querySelector('[data-sello-oculto]');
         if (oculto && !sello) {
-          fila.querySelector('.crece').insertAdjacentHTML('afterend', `<span class="sello" data-sello-oculto>${escapar(T('admin.ocultoSello'))}</span>`);
+          fila.querySelector('.fila-pollito-sellos').insertAdjacentHTML('afterbegin', `<span class="sello" data-sello-oculto>${escapar(T('admin.ocultoSello'))}</span>`);
         } else if (!oculto && sello) {
           sello.remove();
         }

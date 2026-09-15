@@ -691,7 +691,7 @@ function comentario(nodo) {
   // dispararía también las acciones del pío.
   return `
     <div class="comentario-rama">
-      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''} ${nodo.bloqueadoHasta ? 'borroso' : ''}" data-id="${nodo.id}">
+      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''} ${nodo.bloqueadoHasta ? 'borroso' : ''} ${nodo.id === hiloResaltado ? 'resaltado' : ''}" data-id="${nodo.id}">
         ${avisoBloqueo(nodo)}
         ${cascaronDe(nodo)}
         <div class="com-cabeza">
@@ -790,17 +790,56 @@ function vigilarRaiz() {
   vigiaRaiz.observe($('#contenido'));
 }
 
+// Los ids de los comentarios que hay que atravesar para llegar a `id`, o null
+// si no está en el árbol.
+function caminoHasta(nodos, id) {
+  for (const nodo of nodos || []) {
+    if (nodo.id === id) return [];
+    const debajo = caminoHasta(nodo.ramas, id);
+    if (debajo) return [nodo.id, ...debajo];
+  }
+  return null;
+}
+
+let hiloResaltado = null;
+let ultimoDestacadoVisto = null;
+
 async function vistaHilo(id) {
   cabecera(T('hilo.titulo'), T('hilo.sub'));
-  const datos = await api(`/pios/${encodeURIComponent(id)}/hilo`);
+  let datos = await api(`/pios/${encodeURIComponent(id)}/hilo`);
+  let camino = null;
+
+  // Una respuesta no se abre sola: se abre la conversación entera, desde el
+  // pío que la empezó, con esa respuesta destacada. Leer una respuesta sin lo
+  // que contesta es leer la mitad.
+  if (datos.antes.length) {
+    try {
+      const completo = await api(`/pios/${encodeURIComponent(datos.antes[0].id)}/hilo`);
+      camino = caminoHasta(completo.despues, id);
+      if (camino) datos = completo;
+    } catch { /* si el pío de arriba no se puede abrir, queda la vista de siempre */ }
+  }
+
   hiloEnPantalla = datos;
-  if (hiloAbierto !== id) plegadas.clear();
-  hiloAbierto = id;
+  hiloResaltado = camino ? id : null;
+  if (hiloAbierto !== datos.pio.id) plegadas.clear();
+  hiloAbierto = datos.pio.id;
+  // Lo plegado nunca esconde lo que se vino a ver.
+  if (camino) { plegadas.delete(datos.pio.id); camino.forEach((c) => plegadas.delete(c)); }
+
   $('#contenido').innerHTML =
     datos.antes.map((p) => tarjetaPio(p)).join('')
     + tarjetaPio(datos.pio, { destacado: true })
     + '<div id="cascada"></div>';
   pintarCascada();
+
+  // Se lleva la vista hasta la respuesta sólo al llegar: si se la llevara en
+  // cada me gusta, la pantalla saltaría mientras uno lee otra cosa.
+  if (hiloResaltado && ultimoDestacadoVisto !== hiloResaltado) {
+    const destino = $('#cascada').querySelector(`.comentario[data-id="${CSS.escape(hiloResaltado)}"]`);
+    if (destino) destino.scrollIntoView({ block: 'center' });
+  }
+  ultimoDestacadoVisto = hiloResaltado;
 }
 
 // --- avisos ---------------------------------------------------------------
@@ -2005,6 +2044,7 @@ const dialogo = $('#dialogo-piar');
 const areaTexto = $('#texto-pio');
 
 function abrirDialogo(respuestaA = null, pregunta = null) {
+  cerrarMenciones();
   estado.respondiendoA = respuestaA;
   estado.pregunta = respuestaA ? null : pregunta;
   $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta' : (estado.pregunta ? 'dialogo.pregunta' : 'dialogo.nuevo'));
@@ -2048,7 +2088,131 @@ $('#poner-spotify').addEventListener('click', () => {
   areaTexto.focus();
 });
 areaTexto.addEventListener('keydown', (ev) => {
+  if (manejarTeclaMencion(ev)) return;
   if ((ev.metaKey || ev.ctrlKey) && ev.key === 'Enter') $('#forma-piar').requestSubmit();
+});
+
+// --- etiquetar a otro pollito --------------------------------------------------
+
+// Al escribir @ y algunas letras aparecen las cuentas que coinciden; se elige
+// con el dedo, con las flechas o con Enter, y queda @usuario en el texto. La
+// mención es la de siempre: avisa a quien se nombra.
+const cajaMenciones = $('#menciones');
+let sugeridas = [];
+let elegida = 0;
+let pedidoMencion = 0;
+let esperaMencion = null;
+
+// La @ que se está escribiendo justo antes del cursor, si hay una.
+function mencionEnCurso() {
+  const antes = areaTexto.value.slice(0, areaTexto.selectionStart);
+  const m = /(^|[^\w@])@([a-zA-Z0-9_]{0,15})$/.exec(antes);
+  return m ? { desde: antes.length - m[2].length - 1, texto: m[2] } : null;
+}
+
+function cerrarMenciones() {
+  cajaMenciones.hidden = true;
+  cajaMenciones.innerHTML = '';
+  sugeridas = [];
+}
+
+function pintarMenciones(vacia) {
+  cajaMenciones.hidden = false;
+  if (!sugeridas.length) {
+    cajaMenciones.innerHTML = `<p class="chico">${escapar(T(vacia ? 'mencion.escribe' : 'mencion.nadie'))}</p>`;
+    return;
+  }
+  cajaMenciones.innerHTML = sugeridas.map((u, i) => `
+    <button type="button" class="mencion-opcion ${i === elegida ? 'elegida' : ''}" data-mencionar="${escapar(u.usuario)}">
+      ${avatar(u.usuario, 'mini', u.avatar)}
+      <b>${escapar(u.nombre)}</b><span>@${escapar(u.usuario)}</span>
+    </button>`).join('');
+}
+
+function buscarMenciones() {
+  const enCurso = mencionEnCurso();
+  if (!enCurso) { cerrarMenciones(); return; }
+  clearTimeout(esperaMencion);
+  if (!enCurso.texto) { sugeridas = []; pintarMenciones(true); return; }
+  // Sin preguntar por cada letra, y sin pintar una respuesta vieja encima de
+  // una nueva si llegan desordenadas.
+  esperaMencion = setTimeout(async () => {
+    const yo = ++pedidoMencion;
+    try {
+      const { usuarios } = await api(`/buscar?q=${encodeURIComponent(enCurso.texto)}`);
+      if (yo !== pedidoMencion || !mencionEnCurso()) return;
+      sugeridas = usuarios.filter((u) => !u.soyYo).slice(0, 5);
+      elegida = 0;
+      pintarMenciones(false);
+    } catch { cerrarMenciones(); }
+  }, 150);
+}
+
+function mencionar(usuario) {
+  const enCurso = mencionEnCurso();
+  if (!enCurso) return;
+  const antes = areaTexto.value.slice(0, enCurso.desde);
+  const despues = areaTexto.value.slice(areaTexto.selectionStart).replace(/^\S*/, '');
+  const puesto = `@${usuario} `;
+  areaTexto.value = antes + puesto + despues.replace(/^ /, '');
+  const cursor = antes.length + puesto.length;
+  areaTexto.setSelectionRange(cursor, cursor);
+  cerrarMenciones();
+  areaTexto.focus();
+  actualizarMedidor();
+}
+
+function manejarTeclaMencion(ev) {
+  if (cajaMenciones.hidden || !sugeridas.length) {
+    if (ev.key === 'Escape' && !cajaMenciones.hidden) { ev.preventDefault(); ev.stopPropagation(); cerrarMenciones(); return true; }
+    return false;
+  }
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    elegida = (elegida + (ev.key === 'ArrowDown' ? 1 : -1) + sugeridas.length) % sugeridas.length;
+    pintarMenciones(false);
+    return true;
+  }
+  if ((ev.key === 'Enter' && !ev.ctrlKey && !ev.metaKey) || ev.key === 'Tab') {
+    ev.preventDefault();
+    mencionar(sugeridas[elegida].usuario);
+    return true;
+  }
+  if (ev.key === 'Escape') {
+    // Cierra la lista, no el diálogo entero.
+    ev.preventDefault();
+    ev.stopPropagation();
+    cerrarMenciones();
+    return true;
+  }
+  return false;
+}
+
+areaTexto.addEventListener('input', buscarMenciones);
+areaTexto.addEventListener('click', buscarMenciones);
+cajaMenciones.addEventListener('mousedown', (ev) => {
+  // mousedown y no click: con click, el textarea pierde el foco primero y la
+  // lista se cierra antes de que llegue el toque.
+  const opcion = ev.target.closest('[data-mencionar]');
+  if (!opcion) return;
+  ev.preventDefault();
+  mencionar(opcion.dataset.mencionar);
+});
+areaTexto.addEventListener('blur', () => setTimeout(() => {
+  if (document.activeElement !== areaTexto) cerrarMenciones();
+}, 150));
+
+// El botón @ pone la arroba donde está el cursor y abre la lista.
+$('#poner-mencion').addEventListener('click', () => {
+  const inicio = areaTexto.selectionStart ?? areaTexto.value.length;
+  const antes = areaTexto.value.slice(0, inicio);
+  const hueco = antes && !/\s$/.test(antes) ? ' ' : '';
+  areaTexto.value = antes + hueco + '@' + areaTexto.value.slice(inicio);
+  const cursor = antes.length + hueco.length + 1;
+  areaTexto.focus();
+  areaTexto.setSelectionRange(cursor, cursor);
+  actualizarMedidor();
+  buscarMenciones();
 });
 
 $('#cerrar-dialogo').addEventListener('click', () => dialogo.close());

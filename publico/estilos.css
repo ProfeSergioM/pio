@@ -517,6 +517,31 @@ a { color: inherit; text-decoration: none; }
   .huevo-barra { bottom: 84px; }
 }
 
+/* --- la respuesta que se vino a ver ------------------------------------ */
+
+#cascada .pio.comentario.resaltado {
+  background: color-mix(in srgb, var(--amarillo) 13%, transparent);
+  border-radius: 12px;
+  box-shadow: inset 3px 0 0 var(--amarillo);
+}
+#cascada .pio.comentario.resaltado:hover { background: color-mix(in srgb, var(--amarillo) 13%, transparent); }
+
+/* --- etiquetar a otro pollito ------------------------------------------ */
+
+.menciones {
+  display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; padding: 6px;
+  border: 1px solid var(--borde); border-radius: 12px; background: var(--panel-2);
+}
+.menciones p { margin: 4px 8px; }
+.mencion-opcion {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--texto);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.mencion-opcion span { color: var(--tenue); font-size: 13px; }
+.mencion-opcion:hover, .mencion-opcion.elegida { background: color-mix(in srgb, var(--amarillo) 18%, transparent); }
+.icono.arroba { font-weight: 800; font-size: 17px; }
+
 /* --- bloqueo suave ----------------------------------------------------- */
 
 /* Se ve que hay un pío, y de quién, pero no se lee. Tampoco se puede tocar lo

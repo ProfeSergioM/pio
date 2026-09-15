@@ -164,6 +164,12 @@ function avatar(usuario, clase = '', url = null) {
 let temporizadorAviso = null;
 function avisar(mensaje) {
   const caja = $('#aviso');
+  // Una ventana abierta vive en una capa por encima de todo, con el fondo
+  // borroso: un aviso afuera queda detrás, difuminado. Por eso se muda adentro
+  // de la ventana mientras esté abierta, y vuelve a la página cuando no.
+  const abierta = [...document.querySelectorAll('dialog[open]')].pop();
+  const casa = abierta || document.body;
+  if (caja.parentElement !== casa) casa.appendChild(caja);
   caja.textContent = mensaje;
   caja.hidden = false;
   clearTimeout(temporizadorAviso);
@@ -251,6 +257,7 @@ function cerrarSesion(porExpiracion) {
   api('/sesion', { metodo: 'DELETE' }).catch(() => {});
   estado.token = null;
   estado.yo = null;
+  estado.soyAdmin = false;
   localStorage.removeItem('pio.token');
   $('#app').hidden = true;
   $('#portada').hidden = false;
@@ -1049,7 +1056,11 @@ function tarjetaPio(pio, opciones = {}) {
           <button class="accion ${pio.yoMeGusta ? 'activa' : ''}" data-accion="megusta" title="${escapar(T('accion.megusta'))}">${pio.yoMeGusta ? '❤️' : '🤍'} <span>${pio.meGusta ? pio.meGusta : ''}</span></button>
           <button class="accion" data-accion="compartir" title="${escapar(T('accion.compartir'))}"
                   data-autor="${escapar(pio.autor.usuario)}" data-texto="${escapar(pio.texto || '')}">📤</button>
-          ${pio.mio ? `<button class="accion borrar" data-accion="borrar" title="${escapar(T('accion.borrar'))}">🗑️</button>` : ''}
+          ${pio.mio
+            ? `<button class="accion borrar" data-accion="borrar" title="${escapar(T('accion.borrar'))}">🗑️</button>`
+            : (estado.soyAdmin
+              ? `<button class="accion borrar como-admin" data-accion="borrar" data-como-admin title="${escapar(T('accion.borrarAdmin'))}">🗑️</button>`
+              : '')}
         </div>
       </div>
     </article>`;
@@ -1265,9 +1276,12 @@ document.body.addEventListener('click', async (ev) => {
       else if (accion.dataset.accion === 'repio') await api(`/pios/${id}/repio`, { metodo: 'POST' });
       else if (accion.dataset.accion === 'responder') { abrirDialogo(id); return; }
       else if (accion.dataset.accion === 'borrar') {
-        if (!confirm(T('confirmar.borrar'))) return;
-        await api(`/pios/${id}`, { metodo: 'DELETE' });
+        const comoAdmin = 'comoAdmin' in accion.dataset;
+        if (!confirm(T(comoAdmin ? 'admin.seguro.pio' : 'confirmar.borrar'))) return;
+        await api(comoAdmin ? `/admin/pios/${encodeURIComponent(id)}` : `/pios/${id}`, { metodo: 'DELETE' });
         avisar(T('toast.borrado'));
+        // Si se borró el pío que se estaba mirando, no queda nada que mirar.
+        if (location.hash.startsWith(`#/p/${id}`)) { history.back(); return; }
       }
       await pintar();
     } catch (err) { avisar(err.message); }
@@ -2317,6 +2331,7 @@ async function cargarEmojis() {
 async function cargarConfig() {
   try {
     const config = await api('/config');
+    estado.soyAdmin = !!config.soyAdmin;
     $('#nav-admin').hidden = !config.soyAdmin;
     $('#acortar-enlaces').hidden = !config.acortador;
     $('#poner-imagen').hidden = !config.imagenes;
@@ -2328,10 +2343,10 @@ async function cargarConfig() {
   }
 }
 
-function mostrarApp() {
+async function mostrarApp() {
   $('#portada').hidden = true;
   $('#app').hidden = false;
-  cargarConfig();
+  await cargarConfig();
   cargarEmojis();
   codigoSiFalta();
   pintarYoLateral();

@@ -208,7 +208,7 @@ function avatar(usuario, clase = '', url = null) {
 }
 
 let temporizadorAviso = null;
-function avisar(mensaje) {
+function avisar(mensaje, duracion = 2600) {
   const caja = $('#aviso');
   // Una ventana abierta vive en una capa por encima de todo, con el fondo
   // borroso: un aviso afuera queda detrás, difuminado. Por eso se muda adentro
@@ -219,7 +219,7 @@ function avisar(mensaje) {
   caja.textContent = mensaje;
   caja.hidden = false;
   clearTimeout(temporizadorAviso);
-  temporizadorAviso = setTimeout(() => { caja.hidden = true; }, 2600);
+  temporizadorAviso = setTimeout(() => { caja.hidden = true; }, duracion);
 }
 
 // --- acceso ---------------------------------------------------------------
@@ -3004,6 +3004,71 @@ async function mostrarApp() {
   if (!location.hash) location.hash = '#/nido';
   else pintar();
 }
+
+// --- como app ---------------------------------------------------------------------
+
+// El trabajador que deja instalar Pío y abrirlo sin red. Se registra después
+// de cargar, para no competir con lo que se ve primero.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* sin trabajador, el sitio anda igual */ });
+  });
+}
+
+const yaInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const esIphone = () => /iphone|ipad|ipod/i.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+// Chrome y Edge avisan cuando Pío se puede instalar: se guarda ese aviso y se
+// muestra el botón. Sin ese aviso no se ofrece nada, porque el botón no haría
+// nada. El iPhone no avisa nunca, pero ahí se instala a mano desde Compartir:
+// el botón explica cómo.
+let pedidoDeInstalar = null;
+
+function mostrarBotonesInstalar(mostrar) {
+  $('#instalar-barra').hidden = !mostrar;
+  $('#instalar-lateral').hidden = !mostrar;
+}
+
+window.addEventListener('beforeinstallprompt', (ev) => {
+  ev.preventDefault();
+  pedidoDeInstalar = ev;
+  mostrarBotonesInstalar(true);
+});
+
+window.addEventListener('appinstalled', () => {
+  pedidoDeInstalar = null;
+  mostrarBotonesInstalar(false);
+  avisar(T('instalar.listo'));
+});
+
+if (esIphone() && !yaInstalada()) mostrarBotonesInstalar(true);
+
+async function instalar() {
+  if (pedidoDeInstalar) {
+    pedidoDeInstalar.prompt();
+    const { outcome } = await pedidoDeInstalar.userChoice;
+    pedidoDeInstalar = null;
+    if (outcome === 'accepted') mostrarBotonesInstalar(false);
+    return;
+  }
+  if (esIphone()) avisar(T('instalar.iphone'), 7000);
+}
+
+$('#instalar-barra').addEventListener('click', instalar);
+$('#instalar-lateral').addEventListener('click', instalar);
+
+// Sin conexión se dice arriba, y no con un error por cada cosa que falle.
+function pintarConexion() {
+  $('#sin-conexion').hidden = navigator.onLine;
+}
+window.addEventListener('offline', pintarConexion);
+window.addEventListener('online', () => {
+  pintarConexion();
+  avisar(T('red.volvio'));
+  if (estado.yo) cargarAvisos();
+});
+pintarConexion();
 
 (async function arrancar() {
   aplicarDiseno(disenoActual());

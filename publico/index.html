@@ -6,6 +6,14 @@
 <title>Pío — 100 caracteres y listo</title>
 <meta name="description" content="Pío: una red social donde cada mensaje entra en 100 caracteres.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐤</text></svg>">
+<!-- Para instalarse como app: el manifiesto, el color de la barra y el ícono
+     que usa el iPhone al "Agregar a inicio". -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f2b705">
+<link rel="apple-touch-icon" href="/iconos/apple-180.png">
+<meta name="apple-mobile-web-app-title" content="Pío">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="estilos.css">
 <link rel="stylesheet" id="hoja-diseno" href="">
 </head>
@@ -77,6 +85,7 @@
     <button class="icono solo-movil" id="atras" data-t-titulo="barra.volver" hidden>←</button>
     <h1 class="marca chica"><span class="marca-pollito">🐤</span> Pío</h1>
     <div class="barra-acciones">
+      <button class="icono" id="instalar-barra" data-t-titulo="nav.instalar" hidden>📲</button>
       <button class="icono" id="idioma" data-t-titulo="barra.idioma">🌐</button>
       <button class="icono" id="tema" data-t-titulo="barra.tema">◐</button>
     </div>
@@ -96,6 +105,7 @@
     <a class="nav" href="#/admin" data-nav="admin" id="nav-admin" hidden><span>🎛️</span><em data-t="nav.admin"></em></a>
     <button class="nav oculto-movil" id="idioma-lateral" type="button"><span>🌐</span><em data-t="nav.idioma"></em></button>
     <button class="nav oculto-movil" id="tema-lateral" type="button"><span>◐</span><em data-t="nav.tema"></em></button>
+    <button class="nav oculto-movil" id="instalar-lateral" type="button" hidden><span>📲</span><em data-t="nav.instalar"></em></button>
     <button class="boton principal ancho solo-escritorio" id="piar-lateral" data-t="boton.piar"></button>
     <div class="yo-lateral solo-escritorio" id="yo-lateral"></div>
   </nav>
@@ -276,6 +286,7 @@
 </dialog>
 
 <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+<div id="sin-conexion" class="sin-conexion" role="status" aria-live="polite" data-t="red.sin" hidden></div>
 
 <script src="idiomas.js"></script>
 <script src="app.js"></script>

@@ -64,16 +64,27 @@ const poligono = (puntos) => ({
   },
 });
 
-// En orden: lo de abajo primero.
-function figuras() {
+// El pollito, en las coordenadas de la imagen de 1200 por 630. Los íconos
+// usan el mismo, achicado: un solo dibujo, así nunca quedan distintos.
+function pollito() {
   return [
-    // El pollito.
     [rectangulo(300, 505, 322, 570), COLOR.pico],
     [rectangulo(398, 505, 420, 570), COLOR.pico],
     [circulo(360, 330, 195), COLOR.cuerpo],
     [elipse(300, 380, 88, 58), COLOR.ala],
     [poligono([[530, 300], [612, 335], [530, 370]]), COLOR.pico],
     [circulo(440, 270, 20), COLOR.ojo],
+  ];
+}
+
+// Lo que ocupa el pollito de punta a punta: del ala a la punta del pico, de
+// la coronilla a las patas.
+const CAJA_POLLITO = { x0: 165, y0: 135, x1: 612, y1: 570 };
+
+// En orden: lo de abajo primero.
+function figuras() {
+  return [
+    ...pollito(),
 
     // "Pío", en letras hechas de figuras.
     [rectangulo(660, 195, 708, 430), COLOR.letra],
@@ -84,19 +95,32 @@ function figuras() {
   ];
 }
 
-function dibujar() {
-  const pixeles = Buffer.alloc(ANCHO * ALTO * 3);
-  for (let i = 0; i < ANCHO * ALTO; i += 1) pixeles.set(COLOR.fondo, i * 3);
+// La misma figura, achicada `k` veces y con su punto (cx, cy) llevado a (ox, oy).
+function escalada(figura, k, cx, cy, ox, oy) {
+  const [x0, y0, x1, y1] = figura.caja;
+  return {
+    caja: [(x0 - cx) * k + ox, (y0 - cy) * k + oy, (x1 - cx) * k + ox, (y1 - cy) * k + oy],
+    dentro: (x, y) => figura.dentro((x - ox) / k + cx, (y - oy) / k + cy),
+  };
+}
 
-  for (const [figura, color] of figuras()) {
+function dibujar() {
+  return pintarLienzo(ANCHO, ALTO, figuras());
+}
+
+function pintarLienzo(ancho, alto, lista) {
+  const pixeles = Buffer.alloc(ancho * alto * 3);
+  for (let i = 0; i < ancho * alto; i += 1) pixeles.set(COLOR.fondo, i * 3);
+
+  for (const [figura, color] of lista) {
     const [x0, y0, x1, y1] = figura.caja;
-    for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(ALTO - 1, Math.ceil(y1)); y += 1) {
-      for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(ANCHO - 1, Math.ceil(x1)); x += 1) {
+    for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(alto - 1, Math.ceil(y1)); y += 1) {
+      for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(ancho - 1, Math.ceil(x1)); x += 1) {
         let cubre = 0;
         for (const [dx, dy] of MUESTRAS) if (figura.dentro(x + dx, y + dy)) cubre += 1;
         if (!cubre) continue;
         const k = cubre / MUESTRAS.length;
-        const i = (y * ANCHO + x) * 3;
+        const i = (y * ancho + x) * 3;
         for (let c = 0; c < 3; c += 1) {
           pixeles[i + c] = Math.round(pixeles[i + c] * (1 - k) + color[c] * k);
         }
@@ -159,4 +183,34 @@ function imagenParaCompartir() {
   return guardada;
 }
 
-module.exports = { imagenParaCompartir, ANCHO, ALTO };
+// --- íconos de la app ----------------------------------------------------------
+
+// Los que piden Android e iPhone para instalar Pío. El "enmascarable" deja más
+// aire alrededor: cada Android lo recorta con su forma —círculo, gota,
+// cuadrado redondeado— y sólo respeta el centro.
+const ICONOS = {
+  'pio-192.png': { lado: 192, ocupa: 0.72 },
+  'pio-512.png': { lado: 512, ocupa: 0.72 },
+  'pio-mascara-512.png': { lado: 512, ocupa: 0.56 },
+  'apple-180.png': { lado: 180, ocupa: 0.68 },
+};
+
+const iconosGuardados = new Map();
+
+function icono(nombre) {
+  const pedido = ICONOS[nombre];
+  if (!pedido) return null;
+  if (!iconosGuardados.has(nombre)) {
+    const { lado, ocupa } = pedido;
+    const ancho = CAJA_POLLITO.x1 - CAJA_POLLITO.x0;
+    const alto = CAJA_POLLITO.y1 - CAJA_POLLITO.y0;
+    const k = (lado * ocupa) / Math.max(ancho, alto);
+    const cx = (CAJA_POLLITO.x0 + CAJA_POLLITO.x1) / 2;
+    const cy = (CAJA_POLLITO.y0 + CAJA_POLLITO.y1) / 2;
+    const lista = pollito().map(([figura, color]) => [escalada(figura, k, cx, cy, lado / 2, lado / 2), color]);
+    iconosGuardados.set(nombre, comoPng(pintarLienzo(lado, lado, lista), lado, lado));
+  }
+  return iconosGuardados.get(nombre);
+}
+
+module.exports = { imagenParaCompartir, icono, ICONOS, ANCHO, ALTO };

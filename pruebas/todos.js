@@ -2679,6 +2679,59 @@ async function main() {
   await new Promise((listo) => conBlo.close(listo));
   fs.rmSync(carpetaBlo, { recursive: true, force: true });
 
+  // --- como app ---------------------------------------------------------------
+
+  grupo('Como app');
+
+  const carpetaApp = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-app-'));
+  const conApp = crearServidor({ datos: carpetaApp, api: { altas: 100 } });
+  await new Promise((listo) => conApp.listen(0, '127.0.0.1', listo));
+  const baseApp = `http://127.0.0.1:${conApp.address().port}`;
+
+  const manifiesto = await fetch(`${baseApp}/manifest.webmanifest`);
+  const datosManifiesto = await manifiesto.json();
+  probar('el manifiesto se sirve con su tipo', manifiesto.headers.get('content-type').startsWith('application/manifest+json'));
+  probar('abre como app, sin barra del navegador', datosManifiesto.display === 'standalone' && datosManifiesto.start_url.startsWith('/'));
+  // Lo que Chrome exige para ofrecer instalarla.
+  probar('trae íconos de 192 y 512', ['192x192', '512x512'].every((t) => datosManifiesto.icons.some((i) => i.sizes === t)));
+  probar('y uno enmascarable para Android', datosManifiesto.icons.some((i) => i.purpose === 'maskable'));
+
+  for (const i of datosManifiesto.icons) {
+    const r = await fetch(`${baseApp}${i.src}`);
+    const bytes = Buffer.from(await r.arrayBuffer());
+    const [ancho, alto] = i.sizes.split('x').map(Number);
+    probar(`el ícono ${i.src} existe y mide ${i.sizes}`, r.status === 200 && r.headers.get('content-type') === 'image/png'
+      && bytes.readUInt32BE(16) === ancho && bytes.readUInt32BE(20) === alto);
+  }
+  const apple = Buffer.from(await (await fetch(`${baseApp}/iconos/apple-180.png`)).arrayBuffer());
+  probar('el del iPhone mide 180', apple.readUInt32BE(16) === 180);
+  // Si no, un ícono inventado devolvería la página entera con 200.
+  probar('un ícono que no existe da 404', (await fetch(`${baseApp}/iconos/nada.png`)).status === 404);
+
+  const trabajador = await fetch(`${baseApp}/sw.js`);
+  const codigoSw = await trabajador.text();
+  probar('el trabajador se sirve como JavaScript', trabajador.headers.get('content-type').startsWith('text/javascript'));
+  probar('y nunca guarda la API', codigoSw.includes("startsWith('/api/')"));
+  // Todo lo que guarda para abrir sin red tiene que existir de verdad: si uno
+  // falla, la instalación del trabajador falla entera.
+  const cascara = JSON.parse(codigoSw.match(/const CASCARA = (\[[\s\S]*?\]);/)[1].replace(/'/g, '"').replace(/,\s*\]/, ']'));
+  let cascaraSana = true;
+  for (const ruta of cascara) {
+    const r = await fetch(`${baseApp}${ruta}`);
+    const tipo = r.headers.get('content-type') || '';
+    const esperado = ruta === '/' ? 'text/html' : ruta.endsWith('.css') ? 'text/css' : ruta.endsWith('.js') ? 'text/javascript'
+      : ruta.endsWith('.png') ? 'image/png' : 'application/manifest+json';
+    if (r.status !== 200 || !tipo.startsWith(esperado)) { cascaraSana = false; console.log('     falta:', ruta, r.status, tipo); }
+  }
+  probar('todo lo que guarda para abrir sin red existe', cascaraSana);
+
+  const pagina = await (await fetch(`${baseApp}/`)).text();
+  probar('la página enlaza el manifiesto', pagina.includes('rel="manifest"'));
+  probar('y el ícono del iPhone', pagina.includes('rel="apple-touch-icon"'));
+
+  await new Promise((listo) => conApp.close(listo));
+  fs.rmSync(carpetaApp, { recursive: true, force: true });
+
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

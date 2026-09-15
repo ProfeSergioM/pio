@@ -513,6 +513,32 @@ Sin `PIO_LATIDO_CLAVE` la puerta devuelve 404, que es el estado seguro: una
 puerta que despierta el servicio y publica es justo la que no conviene dejar
 abierta.
 
+## Como app
+
+Pío se puede instalar en el teléfono o la computadora como una app: abre a
+pantalla completa, con su ícono, y sin barra del navegador. No pasa por ninguna
+tienda y cada cambio que se sube llega solo.
+
+- **Android y computadora (Chrome, Edge):** cuando el navegador decide que se
+  puede instalar, aparece 📲 "Instalar app" en el menú.
+- **iPhone:** Safari no avisa, así que el botón explica cómo: Compartir →
+  "Agregar a inicio".
+
+Lo que lo hace posible:
+
+- [`publico/manifest.webmanifest`](publico/manifest.webmanifest): nombre, colores, cómo abre.
+- [`publico/sw.js`](publico/sw.js): el trabajador. **Primero la red**, siempre: lo
+  guardado sólo se usa si no hay conexión, para que la app abra y diga que no
+  hay red. Nunca guarda la API ni las páginas para compartir: mostrar píos
+  viejos como si fueran de ahora sería peor que no mostrar nada.
+- Los íconos (`/iconos/*.png`) se dibujan con el mismo pollito que la imagen
+  para compartir, en [`src/portada.js`](src/portada.js). El "enmascarable" deja
+  más aire, porque cada Android lo recorta con su forma.
+
+Si alguna vez hace falta obligar a todos a tirar lo guardado, se cambia
+`VERSION` en `sw.js`.
+
+
 ## Lo que todavía no está
 
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.

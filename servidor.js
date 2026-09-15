@@ -7,7 +7,7 @@ const { Almacen } = require('./src/almacen');
 const { crearApi } = require('./src/api');
 const { leerAjustes } = require('./src/ajustes');
 const { paginaParaCompartir } = require('./src/compartir');
-const { imagenParaCompartir } = require('./src/portada');
+const { imagenParaCompartir, icono } = require('./src/portada');
 
 // De dónde vino el pedido, para armar direcciones completas. Detrás del
 // balanceador de Render el pedido llega por http; la cabecera dice cómo
@@ -28,6 +28,7 @@ const TIPOS = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.png': 'image/png',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 function crearServidor(opciones = {}) {
@@ -42,6 +43,16 @@ function crearServidor(opciones = {}) {
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (await api(req, res, url)) return;
+
+    // Los íconos de la app se dibujan igual que la imagen para compartir.
+    const pedidoIcono = req.method === 'GET' && url.pathname.match(/^\/iconos\/([a-z0-9-]+\.png)$/);
+    if (pedidoIcono) {
+      const png = icono(pedidoIcono[1]);
+      if (!png) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('No encontrado'); return; }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=604800' });
+      res.end(png);
+      return;
+    }
 
     if (req.method === 'GET' && url.pathname === '/compartir.png') {
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });

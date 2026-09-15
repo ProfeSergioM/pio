@@ -1,0 +1,16 @@
+{
+  "name": "Pío",
+  "short_name": "Pío",
+  "description": "Una red social donde cada mensaje entra en 100 caracteres.",
+  "lang": "es",
+  "start_url": "/#/nido",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff4d1",
+  "theme_color": "#f2b705",
+  "icons": [
+    { "src": "/iconos/pio-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/iconos/pio-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/iconos/pio-mascara-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

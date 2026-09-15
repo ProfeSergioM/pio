@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const D = require('./descanso');
 
 // Notificaciones en el teléfono, con el estándar de la web (Web Push) y sin
 // dependencias.
@@ -172,6 +173,9 @@ function crearPush(almacen, opciones = {}) {
   // Se puede cambiar por otro en las pruebas: nadie quiere que una prueba le
   // escriba a Google.
   const pedir = opciones.pedirPush || ((url, init) => fetch(url, Object.assign({ signal: AbortSignal.timeout(10000) }, init)));
+  // El reloj del horario de silencio. Las pruebas lo fijan: si no, pasarían de
+  // día y fallarían de noche.
+  const ahora = opciones.relojPush || Date.now;
 
   // Primero las del despliegue; si no hay, las guardadas; si tampoco, se
   // arman unas y se guardan, así funciona sin configurar nada.
@@ -220,6 +224,10 @@ function crearPush(almacen, opciones = {}) {
     if (pio && almacen.esHuevo(pio)) { programarEntrega(aviso, pio.nace - Date.now()); return; }
     if (aviso.pio && (!pio || almacen.explotado(pio))) return;
     if (almacen.bloqueoVigente(cuenta, aviso.de)) return;
+    // La granja duerme: de noche el aviso queda en la campana y el teléfono no
+    // suena. No se guarda para la mañana: a las siete nadie quiere diez avisos
+    // de golpe, y la campana ya los tiene.
+    if (D.durmiendo(D.deCuenta(cuenta), almacen.zonaDelSitio, ahora())) return;
     if ((cuenta.silenciados || []).includes(aviso.de) || (almacen.datos.ocultos || []).includes(aviso.de)) return;
 
     const de = almacen.buscarUsuario(aviso.de);

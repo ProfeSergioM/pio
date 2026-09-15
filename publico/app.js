@@ -915,11 +915,14 @@ async function vistaAvisos() {
   cabecera(T('avisos.titulo'), T('avisos.sub'),
     `<button class="boton fantasma chico" id="boton-notificaciones" type="button" hidden></button>`);
   pintarBotonNotificaciones();
-  const { notificaciones } = await api('/notificaciones');
+  const [{ notificaciones }, { yo }] = await Promise.all([api('/notificaciones'), api('/yo')]);
+  estado.yo = yo;
+  anotarDiaDePios();
 
-  $('#contenido').innerHTML = notificaciones.length
+  $('#contenido').innerHTML = cajaDescanso(yo.descanso) + (notificaciones.length
     ? notificaciones.map(filaAviso).join('')
-    : `<div class="vacio"><span class="emoji">🔕</span>${escapar(T('avisos.vacio'))}</div>`;
+    : `<div class="vacio"><span class="emoji">🔕</span>${escapar(T('avisos.vacio'))}</div>`);
+  engancharDescanso();
 
   // Entrar a la vista es haberlos leído; no hace falta un botón para eso.
   if (notificaciones.some((n) => !n.leida)) {
@@ -928,6 +931,113 @@ async function vistaAvisos() {
       pintarInsignia(0);
     } catch { /* si falla, quedan sin leer y se reintenta la próxima */ }
   }
+}
+
+// --- la granja duerme ---------------------------------------------------------
+
+const TOPES_DE_PIOS = [0, 5, 10, 20];
+const dosCifras = (h) => `${String(h).padStart(2, '0')}:00`;
+const hoyAqui = () => new Date().toLocaleDateString('en-CA');
+
+// Arriba de los avisos, plegado: casi nadie lo toca, y el resumen ya dice cómo
+// está sin tener que abrirlo.
+function cajaDescanso(d) {
+  const horas = (elegida) => Array.from({ length: 24 }, (_, h) =>
+    `<option value="${h}" ${h === elegida ? 'selected' : ''}>${dosCifras(h)}</option>`).join('');
+  const resumen = [
+    d.silencio ? T('descanso.resumenSilencio', { desde: dosCifras(d.desde), hasta: dosCifras(d.hasta) }) : T('descanso.resumenSinSilencio'),
+    d.tope ? T('descanso.resumenTope', { n: d.tope }) : '',
+  ].filter(Boolean).join(' · ');
+  return `
+    <details class="descanso" id="descanso">
+      <summary><b>🌙 ${escapar(T('descanso.titulo'))}</b> <span data-resumen>${escapar(resumen)}</span></summary>
+      <label class="descanso-fila">
+        <input type="checkbox" data-descanso="silencio" ${d.silencio ? 'checked' : ''}>
+        <span>${escapar(T('descanso.silencio'))}</span>
+      </label>
+      <div class="descanso-fila descanso-horas">
+        <span>${escapar(T('descanso.desde'))}</span>
+        <select data-descanso="desde" ${d.silencio ? '' : 'disabled'}>${horas(d.desde)}</select>
+        <span>${escapar(T('descanso.hasta'))}</span>
+        <select data-descanso="hasta" ${d.silencio ? '' : 'disabled'}>${horas(d.hasta)}</select>
+      </div>
+      <p class="descanso-explica">${escapar(T('descanso.explicaSilencio'))}</p>
+      <label class="descanso-fila">
+        <span>${escapar(T('descanso.tope'))}</span>
+        <select data-descanso="tope">
+          ${TOPES_DE_PIOS.map((n) => `<option value="${n}" ${n === d.tope ? 'selected' : ''}>${escapar(n ? T('descanso.topeN', { n }) : T('descanso.sinTope'))}</option>`).join('')}
+        </select>
+      </label>
+      <p class="descanso-explica">${escapar(T('descanso.explicaTope'))}</p>
+    </details>`;
+}
+
+function engancharDescanso() {
+  const caja = $('#descanso');
+  if (!caja) return;
+  caja.addEventListener('change', async (ev) => {
+    const campo = ev.target.dataset.descanso;
+    if (!campo) return;
+    const valor = campo === 'silencio' ? ev.target.checked : Number(ev.target.value);
+    try {
+      // La zona va siempre: el horario es el del reloj de quien lo pone.
+      const { yo } = await api('/yo', { metodo: 'PATCH', cuerpo: { descanso: { [campo]: valor, zona: zonaDeAqui() } } });
+      estado.yo = yo;
+      anotarDiaDePios();
+      const abierta = caja.open;
+      caja.outerHTML = cajaDescanso(yo.descanso);
+      $('#descanso').open = abierta;
+      engancharDescanso();
+      avisar(T('descanso.guardado'));
+    } catch (err) {
+      avisar(err.message);
+      caja.outerHTML = cajaDescanso(estado.yo.descanso);
+      $('#descanso').open = true;
+      engancharDescanso();
+    }
+  });
+}
+
+function zonaDeAqui() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch (err) { return null; }
+}
+
+// Quien nunca dijo dónde vive duerme en la hora del sitio. Al entrar se le
+// anota la de su navegador, una sola vez, sin preguntarle.
+function anotarZona() {
+  const zona = zonaDeAqui();
+  if (!estado.yo || !estado.yo.descanso || estado.yo.descanso.zona || !zona) return;
+  api('/yo', { metodo: 'PATCH', cuerpo: { descanso: { zona } } })
+    .then(({ yo }) => { estado.yo = yo; anotarDiaDePios(); })
+    .catch(() => { /* se reintenta la próxima vez que entre */ });
+}
+
+// La cuenta de píos de hoy viene del servidor al entrar. Si la pestaña queda
+// abierta de un día para otro, a la mañana vuelve a cero.
+// Va aparte del perfil: cada vez que el servidor devuelve el perfil entero,
+// trae la cuenta de hoy y se anota el día de nuevo.
+function anotarDiaDePios() {
+  estado.diaDePios = hoyAqui();
+}
+function piosDeHoyAqui() {
+  if (!estado.yo || estado.diaDePios !== hoyAqui()) return 0;
+  return estado.yo.piosHoy || 0;
+}
+function sumarPioDeHoy(cuanto) {
+  if (!estado.yo) return;
+  if (estado.diaDePios !== hoyAqui()) { estado.yo.piosHoy = 0; anotarDiaDePios(); }
+  estado.yo.piosHoy = Math.max(0, (estado.yo.piosHoy || 0) + cuanto);
+}
+
+// El tope es suave: no se prohíbe nada, se pregunta. El botón pasa a decir
+// "Piar igual", y con eso ya se eligió.
+function pintarTope() {
+  const tope = estado.yo && estado.yo.descanso ? estado.yo.descanso.tope : 0;
+  const pasado = !!tope && piosDeHoyAqui() >= tope;
+  const aviso = $('#aviso-tope');
+  aviso.hidden = !pasado;
+  aviso.textContent = pasado ? T('descanso.topeAviso', { n: piosDeHoyAqui() }) : '';
+  $('#enviar-pio').textContent = T(pasado ? 'descanso.piarIgual' : 'boton.piar');
 }
 
 function filaAviso(aviso) {
@@ -2161,6 +2271,7 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
   try {
     const { yo } = await api('/yo', { metodo: 'PATCH', cuerpo });
     estado.yo = yo;
+    anotarDiaDePios();
     $('#dialogo-perfil').close();
     avisar(T('perfil.guardado'));
     pintarYoLateral();
@@ -2201,6 +2312,7 @@ function abrirDialogo(respuestaA = null, pregunta = null) {
   armarBomba(estado.bombaHeredada);
   estado.aMano = true;
   pintarSelloMano();
+  pintarTope();
   $('#tablero-gif').hidden = true;
   $('#error-pio').hidden = true;
   actualizarMedidor();
@@ -2433,6 +2545,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta }),
     });
     dialogo.close();
+    sumarPioDeHoy(1);
     if (pio.huevo) {
       borradores.set(pio.id, borrador);
       mostrarHuevo(pio);
@@ -2650,6 +2763,8 @@ async function deshacerHuevo(id) {
     return;
   }
   borradores.delete(id);
+  // Lo deshecho no cuenta para el tope: nunca llegó a piarse.
+  sumarPioDeHoy(-1);
   if (barraHuevo) { barraHuevo.remove(); barraHuevo = null; }
   await sacarPio(id);
 
@@ -3087,6 +3202,8 @@ async function mostrarApp() {
   $('#app').hidden = false;
   await cargarConfig();
   sincronizarNotificaciones();
+  anotarDiaDePios();
+  anotarZona();
   cargarEmojis();
   codigoSiFalta();
   pintarYoLateral();

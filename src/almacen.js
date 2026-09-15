@@ -7,6 +7,7 @@ const E = require('./emojis');
 const R = require('./recuperacion');
 const C = require('./corrales');
 const MSG = require('./mensajes');
+const D = require('./descanso');
 const { esReservado } = require('./reservados');
 
 // Cada cambio dice qué registro tocar. El depósito de archivo los ignora y
@@ -357,6 +358,12 @@ class Almacen {
 
     revisar(cambios.nombre, M.validarNombre);
     revisar(cambios.bio, M.validarBio);
+    let descanso = null;
+    if (cambios.descanso !== undefined) {
+      const hecho = D.combinar(cuenta.descanso, cambios.descanso);
+      if (hecho.error) throw new ErrorPio(400, D.mensaje(hecho.error), hecho.error.clave);
+      descanso = hecho.descanso;
+    }
 
     const nuevoUsuario = cambios.usuario === undefined
       ? null
@@ -367,6 +374,7 @@ class Almacen {
     if (cambios.bio !== undefined) cuenta.bio = M.normalizarTexto(cambios.bio);
     // Ya viene revisado de la API: sólo direcciones de los servicios de imágenes.
     if (cambios.avatar !== undefined) cuenta.avatar = cambios.avatar || null;
+    if (descanso) cuenta.descanso = descanso;
 
     const lista = nuevoUsuario
       ? this.aplicarCambioDeUsuario(cuenta, nuevoUsuario)

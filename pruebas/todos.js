@@ -2495,6 +2495,55 @@ async function main() {
     (await idsBom('/pios?tipo=usuario&usuario=caligrafa&mano=1')).length === 2);
   probar('el sello se guarda', conBom.almacen.buscarPio(aMano.id).aMano === true);
 
+  // --- la granja duerme ------------------------------------------------------
+
+  grupo('La granja duerme');
+  const D = require('../src/descanso');
+
+  const deFabrica = D.deCuenta({});
+  probar('el silencio viene encendido de once a siete', deFabrica.silencio && deFabrica.desde === 23 && deFabrica.hasta === 7);
+  probar('y sin tope de píos', deFabrica.tope === 0);
+  // Septiembre de 2026: Santiago en UTC-3.
+  const aLas = (h) => Date.UTC(2026, 8, 15, (h + 3) % 24, 30);
+  const noche = { silencio: true, desde: 23, hasta: 7, zona: 'America/Santiago' };
+  probar('a las 23:30 se duerme', D.durmiendo(noche, null, aLas(23)));
+  probar('a las 3:30 también', D.durmiendo(noche, null, aLas(3)));
+  probar('a las 7:30 ya no', !D.durmiendo(noche, null, aLas(7)));
+  probar('a las 22:30 todavía no', !D.durmiendo(noche, null, aLas(22)));
+  const siesta = Object.assign({}, noche, { desde: 14, hasta: 16 });
+  probar('un horario que no cruza la medianoche también sirve',
+    D.durmiendo(siesta, null, aLas(15)) && !D.durmiendo(siesta, null, aLas(16)) && !D.durmiendo(siesta, null, aLas(3)));
+  probar('apagado no duerme nunca', !D.durmiendo(Object.assign({}, noche, { silencio: false }), null, aLas(3)));
+  probar('sin zona propia, se cuenta en la del sitio',
+    D.durmiendo(Object.assign({}, noche, { zona: null }), 'America/Santiago', aLas(3)));
+
+  const perfilDescanso = async (token) => (await pedirBom('/yo', { token })).datos.yo;
+  probar('el perfil propio trae el descanso', (await perfilDescanso(manoT)).descanso.silencio === true);
+  probar('y cuántos píos van hoy', (await perfilDescanso(manoT)).piosHoy === 5, String((await perfilDescanso(manoT)).piosHoy));
+  probar('el perfil ajeno no', (await pedirBom('/usuarios/caligrafa', { token: artificieraT })).datos.perfil.descanso === undefined);
+
+  const ajustar = (descanso) => pedirBom('/yo', { metodo: 'PATCH', token: manoT, cuerpo: { descanso } });
+  const ajustado = await ajustar({ desde: 22, hasta: 6, tope: 5, zona: 'Europe/Madrid' });
+  probar('el horario, la zona y el tope se cambian', ajustado.estado === 200
+    && ajustado.datos.yo.descanso.desde === 22 && ajustado.datos.yo.descanso.tope === 5
+    && ajustado.datos.yo.descanso.zona === 'Europe/Madrid');
+  probar('cambiar una parte no toca el resto', (await ajustar({ silencio: false })).datos.yo.descanso.desde === 22);
+  probar('una hora fuera de rango no', (await ajustar({ desde: 24 })).datos.clave === 'descanso.hora');
+  probar('ni con decimales', (await ajustar({ hasta: 6.5 })).estado === 400);
+  probar('empezar y terminar a la misma hora no', (await ajustar({ desde: 6 })).datos.clave === 'descanso.igual');
+  probar('una zona inventada no', (await ajustar({ zona: 'Marte/Olympus' })).datos.clave === 'descanso.zona');
+  probar('un tope que no se ofrece no', (await ajustar({ tope: 7 })).datos.clave === 'descanso.tope');
+  probar('lo rechazado no deja nada a medias', (await perfilDescanso(manoT)).descanso.tope === 5);
+  // El día de cada uno: un pío de ayer a la noche no cuenta para hoy.
+  const hoyD = Date.UTC(2026, 8, 15, 15, 0);
+  const piosD = [
+    { autor: 'x', creado: Date.UTC(2026, 8, 15, 4, 0) }, // 01:00 del 15 en Santiago
+    { autor: 'x', creado: Date.UTC(2026, 8, 15, 2, 0) }, // 23:00 del 14 en Santiago
+    { autor: 'otro', creado: hoyD },
+  ];
+  probar('los píos de hoy se cuentan en el día de quien pía',
+    D.piosDeHoy(piosD, 'x', 'America/Santiago', hoyD) === 1 && D.piosDeHoy(piosD, 'x', 'UTC', hoyD) === 2);
+
   await new Promise((listo) => conBom.close(listo));
   fs.rmSync(carpetaBom, { recursive: true, force: true });
 
@@ -2949,10 +2998,13 @@ async function main() {
   const enviados = [];
   let respuestaDelServicio = 201;
   const carpetaPush = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-push-'));
+  // Mediodía en Santiago: lejos del horario de silencio de fábrica.
+  const MEDIODIA = Date.UTC(2026, 8, 15, 16, 0);
+  let relojPush = MEDIODIA;
   const armarServidorPush = (extra = {}) => crearServidor({
     datos: carpetaPush,
     api: Object.assign({
-      altas: 100, demoraPush: 20, vapidContacto: 'mailto:prueba@pio.test',
+      altas: 100, demoraPush: 20, vapidContacto: 'mailto:prueba@pio.test', relojPush: () => relojPush,
       pedirPush: async (url, init) => { enviados.push({ url, init }); return { status: respuestaDelServicio }; },
     }, extra),
   });
@@ -3021,6 +3073,28 @@ async function main() {
   await esperarEnvios();
   probar('ni de una silenciada', enviados.length === 0);
   await pedirPush('/usuarios/avisador/silenciar', { metodo: 'POST', token: receptoraT });
+
+  // La granja duerme: de noche el aviso queda en la campana y el teléfono calla.
+  relojPush = Date.UTC(2026, 8, 15, 6, 0); // las 3 de la mañana en Santiago
+  enviados.length = 0;
+  await pedirPush('/pios', { metodo: 'POST', token: avisadorT, cuerpo: { texto: 'de madrugada @receptora' } });
+  await esperarEnvios();
+  probar('de noche el teléfono no suena', enviados.length === 0);
+  probar('pero el aviso está en la campana', (await pedirPush('/notificaciones', { token: receptoraT })).datos.notificaciones
+    .some((n) => n.pio && n.pio.texto === 'de madrugada @receptora'));
+  // Quien vive en otra zona duerme a otra hora: las 3 de Santiago son las 8 en Madrid.
+  await pedirPush('/yo', { metodo: 'PATCH', token: receptoraT, cuerpo: { descanso: { zona: 'Europe/Madrid' } } });
+  enviados.length = 0;
+  await pedirPush('/pios', { metodo: 'POST', token: avisadorT, cuerpo: { texto: 'buen día en Madrid @receptora' } });
+  await esperarEnvios();
+  probar('el horario se cuenta en la zona de quien duerme', enviados.length === 1);
+  await pedirPush('/yo', { metodo: 'PATCH', token: receptoraT, cuerpo: { descanso: { zona: 'America/Santiago', silencio: false } } });
+  enviados.length = 0;
+  await pedirPush('/pios', { metodo: 'POST', token: avisadorT, cuerpo: { texto: 'insomne @receptora' } });
+  await esperarEnvios();
+  probar('con el silencio apagado, suena igual de noche', enviados.length === 1);
+  await pedirPush('/yo', { metodo: 'PATCH', token: receptoraT, cuerpo: { descanso: { silencio: true } } });
+  relojPush = MEDIODIA;
 
   // El mismo teléfono con otra cuenta: deja de recibir las de la primera.
   await pedirPush('/push/suscribir', { metodo: 'POST', token: otraPushT, cuerpo: telefono.suscripcion('tel') });

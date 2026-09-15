@@ -26,9 +26,9 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 651 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 676 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
-persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano,
+persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
 tokens de Google. Ninguna sale a internet: los servicios externos se inyectan
 falseados.
@@ -107,6 +107,7 @@ queda apagada y lo dice.
 | [`publico/`](publico) | El cliente (una sola página, ruteo por `#`) |
 | [`publico/idiomas.js`](publico/idiomas.js) | Español e inglés, en un solo archivo |
 | [`src/reservados.js`](src/reservados.js) | Nombres de usuario que nadie puede tomar |
+| [`src/descanso.js`](src/descanso.js) | La granja duerme: horario de silencio y tope de píos |
 | [`pruebas/`](pruebas) | La batería de pruebas |
 
 ## Decisiones que vale la pena conocer
@@ -137,6 +138,20 @@ filtro `mano=1` sirve en cualquier línea de la API.
 Como el 💯, es un guiño y no un control: lo avisa el cliente y desde la consola
 se engaña en un segundo. No hay forma honesta de comprobarlo en el servidor, y
 fingir que sí sería peor que decirlo.
+
+**🌙 La granja duerme.** Arriba de Avisos, plegado, hay dos ajustes de cada
+cuenta ([`src/descanso.js`](src/descanso.js)):
+
+- **Silencio de noche**, encendido de fábrica de 23:00 a 07:00. En ese horario
+  los avisos siguen llegando a la campana, pero el teléfono no suena. No se
+  guardan para la mañana: a las siete nadie quiere diez notificaciones de golpe,
+  y la campana ya las tiene. Se cuenta en la hora de quien duerme: al entrar, la
+  app anota una sola vez la zona horaria del navegador, y quien no la tiene usa
+  la del sitio. Sirve también para una siesta, de 14 a 16.
+- **Tope suave de píos por día**: 5, 10, 20 o ninguno, que es lo de fábrica.
+  Al llegar, el diálogo de piar dice "Hoy ya piaste 5 veces, tu tope. ¿Seguimos
+  mañana?" y el botón pasa a "Piar igual". No se prohíbe nada; el servidor ni
+  siquiera lo mira. Lo que se deshace mientras es huevo no cuenta.
 
 **Bloquear es suave y por tiempo.** Desde el perfil de alguien se elige una hora,
 un día, una semana o un mes. Mientras dura, sus píos se ven borrosos —con un
@@ -411,7 +426,7 @@ POST   /api/sesion/google {credencial}             ->     {token, yo}
 POST   /api/sesion       {usuario, clave}          ->     {token, yo}
 DELETE /api/sesion       cierra la sesión          ->     {ok}
 GET    /api/yo           tu perfil                 ->     {yo}
-PATCH  /api/yo           {nombre?, bio?}           ->     {yo}
+PATCH  /api/yo           {nombre?, bio?, descanso?} ->    {yo}
 
 GET    /api/pios?tipo=plaza[&mano=1]              ->     {tipo, pios, hayMas}
 GET    /api/pios?tipo=nido                               (pide sesión)
@@ -597,7 +612,8 @@ ejemplo del propio estándar.
   Si no, cualquiera podría hacer que el servidor le pegue a la dirección que quiera.
 - **Respeta lo de siempre:** nada de cuentas bloqueadas, silenciadas u ocultas; lo
   que es huevo espera a nacer, y lo que se deshace no suena nunca. Los me gusta de
-  un mismo pío se reemplazan entre sí.
+  un mismo pío se reemplazan entre sí. Y de noche, dentro del horario de
+  silencio de cada cuenta, no suena nada.
 - Un navegador queda con una sola cuenta, cerrar sesión lo da de baja, y los que
   el servicio declara muertos se borran solos.
 

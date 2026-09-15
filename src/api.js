@@ -13,6 +13,7 @@ const E = require('./emojis');
 const { crearLatido } = require('./latido');
 const PUSH = require('./push');
 const PR = require('./preguntas');
+const D = require('./descanso');
 
 // Dónde vive el sitio si nadie dice otra cosa. Pío nació en Chile.
 const ZONA_POR_DEFECTO = 'America/Santiago';
@@ -70,6 +71,10 @@ function crearApi(almacen, opciones = {}) {
     gifs: crearGifs(opciones, opciones.gifs),
     enlaces: crearAcortador(opciones, opciones.enlaces),
   };
+
+  // Para quien no dijo dónde duerme: el horario de silencio se cuenta en la
+  // hora del sitio.
+  almacen.zonaDelSitio = servicios.zona;
 
   // Cada aviso que se anota sale también al teléfono de quien lo recibe.
   almacen.alAvisar = (aviso) => servicios.push.programar(aviso);
@@ -897,6 +902,11 @@ function perfil(almacen, cuenta, yo) {
     // les interesa, y es información de más sobre otra persona.
     proxima: propio ? faltanPara(seguidores) : undefined,
     pios: almacen.datos.pios.filter((p) => p.autor === cuenta.usuario).length,
+    // La granja duerme: el horario y el tope son asunto de cada uno.
+    descanso: propio ? D.deCuenta(cuenta) : undefined,
+    piosHoy: propio
+      ? D.piosDeHoy(almacen.datos.pios, cuenta.usuario, D.deCuenta(cuenta).zona || almacen.zonaDelSitio)
+      : undefined,
     loSigo: !!yo && yo.siguiendo.includes(cuenta.usuario),
     loSilencio: silenciado(yo, cuenta.usuario),
     bloqueadoHasta: almacen.bloqueoVigente(yo, cuenta.usuario),

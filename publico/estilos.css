@@ -336,14 +336,16 @@ a { color: inherit; text-decoration: none; }
 }
 
 .comentario-rama { position: relative; }
-.com-hijos { position: relative; margin-left: 11px; padding-left: var(--sangria); }
+/* 15 = los 4 de margen del comentario + los 11 hasta el centro de su avatar: la
+   línea de los hijos sigue exactamente a la que baja por el texto del padre. */
+.com-hijos { position: relative; margin-left: 15px; padding-left: var(--sangria); }
 
 /* Cada respuesta recibe un codo: baja por la línea del padre y dobla hasta
    su avatar. Las que no son la última siguen la línea hacia abajo; en la
    última, la línea termina en su codo, como en un árbol. */
 .com-hijos > .comentario-rama::before {
   content: ''; position: absolute; top: 0; left: calc(-1 * var(--sangria));
-  width: calc(var(--sangria) + 2px); height: 20px;
+  width: calc(var(--sangria) + 4px); height: 20px;
   border-left: 2px solid var(--linea); border-bottom: 2px solid var(--linea);
   border-bottom-left-radius: 12px; pointer-events: none;
 }
@@ -514,6 +516,20 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 700px) {
   .huevo-barra { bottom: 84px; }
 }
+
+/* --- bloqueo suave ----------------------------------------------------- */
+
+/* Se ve que hay un pío, y de quién, pero no se lee. Tampoco se puede tocar lo
+   de adentro por error: un me gusta a ciegas a alguien bloqueado sería raro. */
+.pio.borroso > :not(.bloqueo-aviso) {
+  filter: blur(7px); opacity: .7; user-select: none; pointer-events: none;
+}
+.bloqueo-aviso { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+.menu-bloqueo { min-width: 220px; max-width: 280px; }
+.menu-titulo { margin: 4px 12px 6px; font-size: 12px; font-weight: 700; color: var(--tenue); }
+.menu-pie { margin: 6px 12px 4px; font-size: 12px; color: var(--tenue); line-height: 1.35; }
+.menu-bloqueo .quitar-bloqueo { color: var(--rojo); }
 
 /* --- compartir --------------------------------------------------------- */
 

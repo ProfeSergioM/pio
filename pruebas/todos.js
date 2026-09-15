@@ -2609,6 +2609,76 @@ async function main() {
   await new Promise((listo) => conEti.close(listo));
   fs.rmSync(carpetaEti, { recursive: true, force: true });
 
+  // --- bloqueo suave --------------------------------------------------------
+
+  grupo('Bloqueo suave');
+
+  const carpetaBlo = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-blo-'));
+  const conBlo = crearServidor({ datos: carpetaBlo, api: { altas: 100 } });
+  await new Promise((listo) => conBlo.listen(0, '127.0.0.1', listo));
+  const baseBlo = `http://127.0.0.1:${conBlo.address().port}`;
+  const pedirBlo = async (ruta, o = {}) => {
+    const r = await fetch(`${baseBlo}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceBlo = async (usuario) => (await pedirBlo('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+  const tranquilaT = await naceBlo('tranquila');
+  const molestoT = await naceBlo('molesto');
+  const terceraT = await naceBlo('tercera');
+  await pedirBlo('/pios', { metodo: 'POST', token: molestoT, cuerpo: { texto: 'algo que no quiero leer' } });
+
+  const bloqueoPuesto = await pedirBlo('/usuarios/molesto/bloquear', { metodo: 'POST', token: tranquilaT, cuerpo: { minutos: 1440 } });
+  const hastaBlo = bloqueoPuesto.datos.perfil && bloqueoPuesto.datos.perfil.bloqueadoHasta;
+  probar('se bloquea por un día', bloqueoPuesto.estado === 200
+    && Math.abs(hastaBlo - (Date.now() + 24 * 60 * 60 * 1000)) < 5000, JSON.stringify(bloqueoPuesto.datos));
+
+  const plazaBlo = (await pedirBlo('/pios?tipo=plaza', { token: tranquilaT })).datos.pios;
+  // Es un bloqueo suave: los píos siguen ahí, pero marcados para verse borrosos.
+  probar('sus píos se siguen viendo', plazaBlo.some((p) => p.autor.usuario === 'molesto'));
+  probar('pero marcados para salir borrosos', plazaBlo.find((p) => p.autor.usuario === 'molesto').bloqueadoHasta === hastaBlo);
+  probar('para los demás no cambia nada',
+    (await pedirBlo('/pios?tipo=plaza', { token: terceraT })).datos.pios.every((p) => !p.bloqueadoHasta));
+
+  await pedirBlo('/pios', { metodo: 'POST', token: molestoT, cuerpo: { texto: 'hola @tranquila' } });
+  const avisosBlo = await pedirBlo('/notificaciones', { token: tranquilaT });
+  probar('sus avisos no llegan mientras dura', avisosBlo.datos.notificaciones.length === 0 && avisosBlo.datos.sinLeer === 0);
+  probar('ni en la cuenta liviana', (await pedirBlo('/notificaciones/cuenta', { token: tranquilaT })).datos.sinLeer === 0);
+  probar('y quien fue bloqueado no se entera',
+    (await pedirBlo('/notificaciones', { token: molestoT })).datos.notificaciones.length === 0);
+
+  probar('un plazo inventado se rechaza',
+    (await pedirBlo('/usuarios/molesto/bloquear', { metodo: 'POST', token: tranquilaT, cuerpo: { minutos: 999999 } })).estado === 400);
+  probar('no se puede bloquear a sí misma',
+    (await pedirBlo('/usuarios/tranquila/bloquear', { metodo: 'POST', token: tranquilaT, cuerpo: { minutos: 60 } })).estado === 400);
+  probar('bloquear pide sesión',
+    (await pedirBlo('/usuarios/molesto/bloquear', { metodo: 'POST', cuerpo: { minutos: 60 } })).estado === 401);
+
+  // Vence solo: se adelanta el reloj de la cuenta.
+  conBlo.almacen.buscarUsuario('tranquila').bloqueados.molesto = Date.now() - 1;
+  probar('al vencer, los píos se ven normales',
+    (await pedirBlo('/pios?tipo=plaza', { token: tranquilaT })).datos.pios.every((p) => !p.bloqueadoHasta));
+  probar('y los avisos vuelven', (await pedirBlo('/notificaciones', { token: tranquilaT })).datos.sinLeer === 1);
+
+  await pedirBlo('/usuarios/molesto/bloquear', { metodo: 'POST', token: tranquilaT, cuerpo: { minutos: 60 } });
+  const bloqueoQuitado = await pedirBlo('/usuarios/molesto/bloquear', { metodo: 'POST', token: tranquilaT, cuerpo: { minutos: 0 } });
+  probar('se desbloquea antes de tiempo', bloqueoQuitado.datos.perfil.bloqueadoHasta === null);
+  probar('y los vencidos se barren', Object.keys(conBlo.almacen.buscarUsuario('tranquila').bloqueados).length === 0);
+
+  await pedirBlo('/usuarios/molesto/bloquear', { metodo: 'POST', token: tranquilaT, cuerpo: { minutos: 10080 } });
+  await pedirBlo('/yo', { metodo: 'PATCH', token: molestoT, cuerpo: { usuario: 'molesto_nuevo' } });
+  probar('cambiarse el nombre no saca del bloqueo',
+    !!conBlo.almacen.bloqueoVigente(conBlo.almacen.buscarUsuario('tranquila'), 'molesto_nuevo'));
+
+  await new Promise((listo) => conBlo.close(listo));
+  fs.rmSync(carpetaBlo, { recursive: true, force: true });
+
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

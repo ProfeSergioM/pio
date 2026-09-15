@@ -125,6 +125,12 @@ el pío; los demás ven si ellos dieron el suyo.
 **💯 Cien justos.** Un pío de exactamente cien caracteres lleva la marca. Es un
 guiño, no un puntaje.
 
+**Bloquear es suave y por tiempo.** Desde el perfil de alguien se elige una hora,
+un día, una semana o un mes. Mientras dura, sus píos se ven borrosos —con un
+"Ver igual" por si se quiere leer uno— y sus avisos no llegan. No se le avisa a
+quien fue bloqueado, y vence solo. Silenciar, en cambio, esconde del todo y
+no vence.
+
 **Todo pío nace como huevo.** Durante 10 segundos sólo lo ve quien lo escribió,
 con un "Deshacer" que lo borra y devuelve el texto al borrador para corregirlo.
 Nadie más lo ve: ni en las líneas, ni en la búsqueda, ni en las tendencias, y

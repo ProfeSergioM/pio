@@ -611,6 +611,10 @@ async function vistaPerfil(usuario, solapa) {
          <button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>
        </div>`
     : `<div class="perfil-botones">
+         <button class="boton fantasma" data-bloquear="${escapar(perfil.usuario)}"
+                 data-hasta="${perfil.bloqueadoHasta || ''}">
+           ⛔ ${escapar(perfil.bloqueadoHasta ? T('bloqueo.hasta', { fecha: fechaBloqueo(perfil.bloqueadoHasta) }) : T('bloqueo.boton'))}
+         </button>
          <button class="boton fantasma" data-silenciar="${escapar(perfil.usuario)}"
                  title="${escapar(T(perfil.loSilencio ? 'perfil.quitarSilencio' : 'perfil.silenciar'))}">
            ${perfil.loSilencio ? '🔇' : '🔈'} ${escapar(T(perfil.loSilencio ? 'perfil.silenciado' : 'perfil.silenciar'))}
@@ -687,7 +691,8 @@ function comentario(nodo) {
   // dispararía también las acciones del pío.
   return `
     <div class="comentario-rama">
-      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''}" data-id="${nodo.id}">
+      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''} ${nodo.bloqueadoHasta ? 'borroso' : ''}" data-id="${nodo.id}">
+        ${avisoBloqueo(nodo)}
         ${cascaronDe(nodo)}
         <div class="com-cabeza">
           ${avatar(nodo.autor.usuario, 'mini', nodo.autor.avatar)}
@@ -1159,7 +1164,8 @@ function tarjetaPio(pio, opciones = {}) {
   const cascaron = cascaronDe(pio);
 
   return `
-    <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''}" data-id="${pio.id}">
+    <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''} ${pio.bloqueadoHasta ? 'borroso' : ''}" data-id="${pio.id}">
+      ${avisoBloqueo(pio)}
       ${cascaron}
       ${contexto}
       ${avatar(pio.autor.usuario, '', pio.autor.avatar)}
@@ -1175,6 +1181,75 @@ function tarjetaPio(pio, opciones = {}) {
         ${accionesDePio(pio)}
       </div>
     </article>`;
+}
+
+// --- bloqueo suave -------------------------------------------------------------
+
+function fechaBloqueo(ms) {
+  return new Date(ms).toLocaleString(diccionario().fechas, {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// Encima del pío borroso: de quién es el bloqueo, hasta cuándo, y la opción de
+// verlo igual. Bloquear es por tiempo, no para siempre, y a veces uno quiere
+// leer justo ese pío.
+function avisoBloqueo(pio) {
+  if (!pio.bloqueadoHasta) return '';
+  return `
+    <div class="contexto bloqueo-aviso">
+      <span>${escapar(T('bloqueo.aviso', { usuario: pio.autor.usuario, fecha: fechaBloqueo(pio.bloqueadoHasta) }))}</span>
+      <button type="button" class="enlace-boton" data-ver-bloqueado>${escapar(T('bloqueo.ver'))}</button>
+    </div>`;
+}
+
+let menuBloqueo = null;
+function cerrarMenuBloqueo() {
+  if (menuBloqueo) menuBloqueo.remove();
+  menuBloqueo = null;
+}
+document.addEventListener('click', (ev) => {
+  if (menuBloqueo && !menuBloqueo.contains(ev.target) && !ev.target.closest('[data-bloquear]')) cerrarMenuBloqueo();
+});
+window.addEventListener('hashchange', cerrarMenuBloqueo);
+
+const PLAZOS_DE_BLOQUEO = [[60, 'bloqueo.hora'], [1440, 'bloqueo.dia'], [10080, 'bloqueo.semana'], [43200, 'bloqueo.mes']];
+
+function abrirMenuBloqueo(boton) {
+  cerrarMenuBloqueo();
+  const usuario = boton.dataset.bloquear;
+  const vigente = !!boton.dataset.hasta;
+  menuBloqueo = document.createElement('div');
+  menuBloqueo.className = 'menu-compartir menu-bloqueo';
+  menuBloqueo.setAttribute('role', 'menu');
+  menuBloqueo.innerHTML = `
+    <p class="menu-titulo">${escapar(T(vigente ? 'bloqueo.cambiar' : 'bloqueo.cuanto'))}</p>
+    ${PLAZOS_DE_BLOQUEO.map(([min, clave]) => `<button role="menuitem" type="button" data-plazo="${min}">${escapar(T(clave))}</button>`).join('')}
+    ${vigente ? `<button role="menuitem" type="button" class="quitar-bloqueo" data-plazo="0">${escapar(T('bloqueo.quitar'))}</button>` : ''}
+    <p class="menu-pie">${escapar(T('bloqueo.explica'))}</p>`;
+  document.body.appendChild(menuBloqueo);
+
+  const r = boton.getBoundingClientRect();
+  const ancho = menuBloqueo.offsetWidth;
+  const maximo = window.scrollX + document.documentElement.clientWidth - ancho - 8;
+  menuBloqueo.style.top = `${window.scrollY + r.bottom + 4}px`;
+  menuBloqueo.style.left = `${Math.max(8, Math.min(window.scrollX + r.left, maximo))}px`;
+
+  menuBloqueo.addEventListener('click', async (ev) => {
+    const opcion = ev.target.closest('[data-plazo]');
+    if (!opcion) return;
+    const minutos = Number(opcion.dataset.plazo);
+    cerrarMenuBloqueo();
+    try {
+      const { perfil } = await api(`/usuarios/${encodeURIComponent(usuario)}/bloquear`, { metodo: 'POST', cuerpo: { minutos } });
+      avisar(perfil.bloqueadoHasta
+        ? T('bloqueo.puesto', { usuario: perfil.usuario, fecha: fechaBloqueo(perfil.bloqueadoHasta) })
+        : T('bloqueo.quitado', { usuario: perfil.usuario }));
+      await pintar();
+    } catch (err) {
+      avisar(err.message);
+    }
+  });
 }
 
 function cascaronDe(pio) {
@@ -1379,6 +1454,26 @@ document.body.addEventListener('click', async (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
     verEtiquetas.closest('.marco').classList.toggle('con-etiquetas');
+    return;
+  }
+
+  const bloquear = ev.target.closest('[data-bloquear]');
+  if (bloquear) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (menuBloqueo) cerrarMenuBloqueo();
+    else abrirMenuBloqueo(bloquear);
+    return;
+  }
+
+  // "Ver igual": se aclara sólo ese pío, sólo mientras está en pantalla.
+  const verBloqueado = ev.target.closest('[data-ver-bloqueado]');
+  if (verBloqueado) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const articulo = verBloqueado.closest('.pio');
+    articulo.classList.remove('borroso');
+    verBloqueado.closest('.bloqueo-aviso').remove();
     return;
   }
 

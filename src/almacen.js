@@ -37,6 +37,10 @@ const ESPERA_CAMBIO = 30 * 24 * 60 * 60 * 1000;
 // escribe en caliente, sin necesidad de un botón de editar.
 const INCUBACION = 10 * 1000;
 
+// Los plazos que se ofrecen para un bloqueo, en minutos: una hora, un día, una
+// semana y un mes. Pocos y claros; un campo libre invita a poner "999999".
+const DURACIONES_DE_BLOQUEO = [60, 24 * 60, 7 * 24 * 60, 30 * 24 * 60];
+
 // Cuanto vale una sesion, contado desde que se abrio. Es absoluto y no
 // deslizante a proposito: renovarlo con cada uso obligaria a escribir en la
 // base en cada peticion, o a agregar una columna. Dos meses es bastante mas de
@@ -378,6 +382,34 @@ class Almacen {
   // Silenciar es dejar de ver sin que el otro se entere: no hay aviso, y sus
   // pios siguen llegando a la base. Solo cambia lo que se le muestra a quien
   // silencio.
+  // El bloqueo suave: por un tiempo que elige quien bloquea, los píos de la
+  // otra cuenta se le muestran borrosos y sus avisos no le llegan. Vence solo.
+  // Se guarda como { usuario: hasta }, así no hace falta nada que lo quite.
+  async bloquear(cuenta, objetivoUsuario, minutos) {
+    const objetivo = this.buscarUsuario(objetivoUsuario);
+    if (!objetivo) throw new ErrorPio(404, 'No existe ese pollito.', 'pollito.noexiste');
+    if (objetivo.usuario === cuenta.usuario) {
+      throw new ErrorPio(400, 'No puedes bloquearte a ti mismo.', 'bloqueo.vosmismo');
+    }
+    const cuanto = Number(minutos);
+    if (cuanto !== 0 && !DURACIONES_DE_BLOQUEO.includes(cuanto)) {
+      throw new ErrorPio(400, 'Ese plazo de bloqueo no está entre los que se ofrecen.', 'bloqueo.plazo');
+    }
+    const ahora = Date.now();
+    // De paso se barren los vencidos: si no, la lista crece para siempre.
+    const vigentes = Object.entries(cuenta.bloqueados || {}).filter(([, hasta]) => hasta > ahora);
+    cuenta.bloqueados = Object.fromEntries(vigentes);
+    if (cuanto === 0) delete cuenta.bloqueados[objetivo.usuario];
+    else cuenta.bloqueados[objetivo.usuario] = ahora + cuanto * 60 * 1000;
+    await this.guardar([cambioUsuario(cuenta)]);
+    return cuenta.bloqueados[objetivo.usuario] || null;
+  }
+
+  bloqueoVigente(cuenta, usuario, ahora = Date.now()) {
+    const hasta = cuenta && usuario && cuenta.bloqueados && cuenta.bloqueados[usuario];
+    return hasta && hasta > ahora ? hasta : null;
+  }
+
   async alternarSilencio(cuenta, objetivoUsuario) {
     const objetivo = this.buscarUsuario(objetivoUsuario);
     if (!objetivo) throw new ErrorPio(404, 'No existe ese pollito.', 'pollito.noexiste');
@@ -485,6 +517,12 @@ class Almacen {
       // Un renombre no puede ser la forma de salir del silencio de alguien.
       const j = (otro.silenciados || []).indexOf(viejo);
       if (j !== -1) { otro.silenciados[j] = nuevo; tocado = true; }
+      // Ni de un bloqueo.
+      if (otro.bloqueados && otro.bloqueados[viejo]) {
+        otro.bloqueados[nuevo] = otro.bloqueados[viejo];
+        delete otro.bloqueados[viejo];
+        tocado = true;
+      }
       if (tocado && otro !== cuenta) cambios.push(cambioUsuario(otro));
     }
 
@@ -645,6 +683,7 @@ class Almacen {
       if (i !== -1) { otro.siguiendo.splice(i, 1); tocado = true; }
       const j = (otro.silenciados || []).indexOf(quien);
       if (j !== -1) { otro.silenciados.splice(j, 1); tocado = true; }
+      if (otro.bloqueados && otro.bloqueados[quien]) { delete otro.bloqueados[quien]; tocado = true; }
       if (tocado) cambios.push(cambioUsuario(otro));
     }
     const k = (this.datos.ocultos || []).indexOf(quien);
@@ -872,7 +911,8 @@ class Almacen {
     // insignia con un número que no lleva a nada es peor que ninguna.
     const callados = new Set([...(cuenta.silenciados || []), ...(this.datos.ocultos || [])]);
     return this.datos.notificaciones
-      .filter((n) => n.para === cuenta.usuario && !n.leida && !callados.has(n.de) && this.avisoListo(n))
+      .filter((n) => n.para === cuenta.usuario && !n.leida && !callados.has(n.de) && this.avisoListo(n)
+        && !this.bloqueoVigente(cuenta, n.de))
       .length;
   }
 
@@ -923,4 +963,4 @@ class ErrorPio extends Error {
   }
 }
 
-module.exports = { Almacen, ErrorPio };
+module.exports = { Almacen, ErrorPio, DURACIONES_DE_BLOQUEO };

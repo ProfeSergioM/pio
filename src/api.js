@@ -344,6 +344,11 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       await almacen.alternarSeguir(yo, id);
       return { datos: { perfil: perfil(almacen, cuenta, yo) } };
     }
+    if (metodo === 'POST' && accion === 'bloquear') {
+      exigir(yo);
+      await almacen.bloquear(yo, id, cuerpo.minutos);
+      return { datos: { perfil: perfil(almacen, cuenta, yo) } };
+    }
     if (metodo === 'POST' && accion === 'silenciar') {
       exigir(yo);
       await almacen.alternarSilencio(yo, id);
@@ -594,7 +599,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       return {
         datos: {
           notificaciones: almacen.avisosDe(yo)
-            .filter((n) => !callado(almacen, yo, n.de))
+            .filter((n) => !callado(almacen, yo, n.de) && !almacen.bloqueoVigente(yo, n.de))
             .map((n) => serializarAviso(almacen, n, yo)),
           sinLeer: almacen.sinLeer(yo),
         },
@@ -788,6 +793,8 @@ function serializar(almacen, pio, yo) {
     adjunto: adjuntoPublico(almacen, pio.adjunto),
     corral: pio.corral || null,
     pregunta: pio.pregunta || null,
+    // Sólo le importa a quien bloqueó: con esto la tarjeta sale borrosa.
+    bloqueadoHasta: almacen.bloqueoVigente(yo, pio.autor),
     mio: !!yo && pio.autor === yo.usuario,
   };
 }
@@ -860,6 +867,7 @@ function perfil(almacen, cuenta, yo) {
     pios: almacen.datos.pios.filter((p) => p.autor === cuenta.usuario).length,
     loSigo: !!yo && yo.siguiendo.includes(cuenta.usuario),
     loSilencio: silenciado(yo, cuenta.usuario),
+    bloqueadoHasta: almacen.bloqueoVigente(yo, cuenta.usuario),
     soyYo: !!yo && yo.usuario === cuenta.usuario,
   };
 }

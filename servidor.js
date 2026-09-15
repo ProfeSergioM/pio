@@ -8,6 +8,7 @@ const { crearApi } = require('./src/api');
 const { leerAjustes } = require('./src/ajustes');
 const { paginaParaCompartir } = require('./src/compartir');
 const { imagenParaCompartir, icono } = require('./src/portada');
+const { svgDelLogo } = require('./src/logo');
 
 // De dónde vino el pedido, para armar direcciones completas. Detrás del
 // balanceador de Render el pedido llega por http; la cabecera dice cómo
@@ -43,6 +44,13 @@ function crearServidor(opciones = {}) {
   const servidor = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     if (await api(req, res, url)) return;
+
+    // El logo sale de src/logo.js, el mismo lugar del que salen los PNG.
+    if (req.method === 'GET' && url.pathname === '/logo.svg') {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(svgDelLogo());
+      return;
+    }
 
     // Los íconos de la app se dibujan igual que la imagen para compartir.
     const pedidoIcono = req.method === 'GET' && url.pathname.match(/^\/iconos\/([a-z0-9-]+\.png)$/);

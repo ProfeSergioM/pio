@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pío — 100 caracteres y listo</title>
 <meta name="description" content="Pío: una red social donde cada mensaje entra en 100 caracteres.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐤</text></svg>">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <!-- Para instalarse como app: el manifiesto, el color de la barra y el ícono
      que usa el iPhone al "Agregar a inicio". -->
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#f2b705">
-<link rel="apple-touch-icon" href="/iconos/apple-180.png">
+<meta name="theme-color" content="#f07c1f">
+<link rel="apple-touch-icon" href="/iconos/apple-180.png?v=2">
 <meta name="apple-mobile-web-app-title" content="Pío">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -21,12 +21,12 @@
 
 <div id="portada" class="portada" hidden>
   <div class="portada-arte" aria-hidden="true">
-    <div class="pollito">🐤</div>
+    <img class="pollito" src="/logo.svg" alt="">
     <div class="globo">¡pío!</div>
   </div>
   <div class="portada-caja">
     <div class="portada-cabecera">
-      <h1 class="marca"><span class="marca-pollito">🐤</span> Pío</h1>
+      <h1 class="marca"><img class="marca-pollito" src="/logo.svg" alt=""> Pío</h1>
       <div class="idiomas" id="idiomas-portada" role="group"></div>
     </div>
     <p class="lema"><span data-t="portada.lema1"></span><br><span data-t="portada.lema2"></span></p>
@@ -83,7 +83,7 @@
 
   <header class="barra-superior">
     <button class="icono solo-movil" id="atras" data-t-titulo="barra.volver" hidden>←</button>
-    <h1 class="marca chica"><span class="marca-pollito">🐤</span> Pío</h1>
+    <h1 class="marca chica"><img class="marca-pollito" src="/logo.svg" alt=""> Pío</h1>
     <div class="barra-acciones">
       <button class="icono" id="instalar-barra" data-t-titulo="nav.instalar" hidden>📲</button>
       <button class="icono" id="idioma" data-t-titulo="barra.idioma">🌐</button>
@@ -92,7 +92,7 @@
   </header>
 
   <nav class="lateral">
-    <h1 class="marca solo-escritorio"><span class="marca-pollito">🐤</span> Pío</h1>
+    <h1 class="marca solo-escritorio"><img class="marca-pollito" src="/logo.svg" alt=""> Pío</h1>
     <a class="nav" href="#/nido" data-nav="nido"><span>🪹</span><em data-t="nav.nido"></em></a>
     <a class="nav" href="#/plaza" data-nav="plaza"><span>🌎</span><em data-t="nav.plaza"></em></a>
     <a class="nav" href="#/avisos" data-nav="avisos">

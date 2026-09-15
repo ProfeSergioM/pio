@@ -1,39 +1,24 @@
 'use strict';
 
 const zlib = require('zlib');
+const LOGO = require('./logo');
 
-// La imagen que acompaña a un pío compartido cuando el pío no trae la suya.
+// Las imágenes PNG de Pío: la que acompaña a un pío compartido cuando el pío no
+// trae la suya, y los íconos de la app instalada.
 //
 // Las redes no aceptan SVG en la vista previa, y el proyecto no usa
 // dependencias, así que se dibuja a mano: un lienzo de píxeles, unas pocas
-// figuras —círculos, anillos, polígonos— y un PNG armado con el zlib que ya
-// trae Node. Se dibuja una vez, la primera vez que alguien la pide, y queda en
-// memoria.
+// figuras y un PNG armado con el zlib que ya trae Node. El logo sale de
+// src/logo.js, el mismo del que sale el SVG de la página. Cada imagen se dibuja
+// una vez, la primera vez que alguien la pide, y queda en memoria.
 
 const ANCHO = 1200;
 const ALTO = 630;
-// Cada píxel se muestrea cuatro veces: sin eso los bordes de los círculos
-// quedan en escalera.
+// Cada píxel se muestrea cuatro veces: sin eso los bordes quedan en escalera.
 const MUESTRAS = [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
 
-const COLOR = {
-  fondo: [255, 244, 209],
-  cuerpo: [255, 198, 26],
-  ala: [242, 169, 0],
-  pico: [240, 124, 31],
-  ojo: [42, 33, 9],
-  letra: [32, 29, 22],
-};
-
-const circulo = (cx, cy, r) => ({
-  caja: [cx - r, cy - r, cx + r, cy + r],
-  dentro: (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r,
-});
-
-const elipse = (cx, cy, rx, ry) => ({
-  caja: [cx - rx, cy - ry, cx + rx, cy + ry],
-  dentro: (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1,
-});
+const CREMA = [255, 244, 209];
+const LETRA = [32, 29, 22];
 
 const anillo = (cx, cy, fuera, dentroR, recorte = () => true) => ({
   caja: [cx - fuera, cy - fuera, cx + fuera, cy + fuera],
@@ -64,53 +49,38 @@ const poligono = (puntos) => ({
   },
 });
 
-// El pollito, en las coordenadas de la imagen de 1200 por 630. Los íconos
-// usan el mismo, achicado: un solo dibujo, así nunca quedan distintos.
-function pollito() {
-  return [
-    [rectangulo(300, 505, 322, 570), COLOR.pico],
-    [rectangulo(398, 505, 420, 570), COLOR.pico],
-    [circulo(360, 330, 195), COLOR.cuerpo],
-    [elipse(300, 380, 88, 58), COLOR.ala],
-    [poligono([[530, 300], [612, 335], [530, 370]]), COLOR.pico],
-    [circulo(440, 270, 20), COLOR.ojo],
-  ];
-}
-
-// Lo que ocupa el pollito de punta a punta: del ala a la punta del pico, de
-// la coronilla a las patas.
-const CAJA_POLLITO = { x0: 165, y0: 135, x1: 612, y1: 570 };
-
-// En orden: lo de abajo primero.
-function figuras() {
-  return [
-    ...pollito(),
-
-    // "Pío", en letras hechas de figuras.
-    [rectangulo(660, 195, 708, 430), COLOR.letra],
-    [anillo(716, 272, 77, 29, (x) => x >= 708), COLOR.letra],
-    [rectangulo(848, 282, 896, 430), COLOR.letra],
-    [poligono([[858, 260], [900, 260], [948, 192], [906, 192]]), COLOR.letra],
-    [anillo(1030, 356, 78, 30), COLOR.letra],
-  ];
-}
-
-// La misma figura, achicada `k` veces y con su punto (cx, cy) llevado a (ox, oy).
-function escalada(figura, k, cx, cy, ox, oy) {
+// La misma figura, agrandada `k` veces desde la grilla de 100 del logo y con
+// su esquina (0, 0) llevada a (ox, oy).
+function escalada(figura, k, ox, oy) {
   const [x0, y0, x1, y1] = figura.caja;
   return {
-    caja: [(x0 - cx) * k + ox, (y0 - cy) * k + oy, (x1 - cx) * k + ox, (y1 - cy) * k + oy],
-    dentro: (x, y) => figura.dentro((x - ox) / k + cx, (y - oy) / k + cy),
+    caja: [x0 * k + ox, y0 * k + oy, x1 * k + ox, y1 * k + oy],
+    dentro: (x, y) => figura.dentro((x - ox) / k, (y - oy) / k),
   };
 }
 
-function dibujar() {
-  return pintarLienzo(ANCHO, ALTO, figuras());
+// El logo en un cuadrado de `lado` píxeles con esquina en (ox, oy).
+function logoEn(lado, ox, oy, opciones) {
+  const k = lado / 100;
+  return LOGO.figurasDelLogo(opciones).map(([figura, color]) => [escalada(figura, k, ox, oy), color]);
 }
 
-function pintarLienzo(ancho, alto, lista) {
+// La imagen para compartir: el logo a la izquierda y "Pío" en letras hechas de
+// figuras a la derecha.
+function figuras() {
+  return [
+    ...logoEn(430, 175, 100),
+    [rectangulo(700, 195, 748, 430), LETRA],
+    [anillo(756, 272, 77, 29, (x) => x >= 748), LETRA],
+    [rectangulo(888, 282, 936, 430), LETRA],
+    [poligono([[898, 260], [940, 260], [988, 192], [946, 192]]), LETRA],
+    [anillo(1070, 356, 78, 30), LETRA],
+  ];
+}
+
+function pintarLienzo(ancho, alto, lista, fondo = CREMA) {
   const pixeles = Buffer.alloc(ancho * alto * 3);
-  for (let i = 0; i < ancho * alto; i += 1) pixeles.set(COLOR.fondo, i * 3);
+  for (let i = 0; i < ancho * alto; i += 1) pixeles.set(fondo, i * 3);
 
   for (const [figura, color] of lista) {
     const [x0, y0, x1, y1] = figura.caja;
@@ -179,20 +149,21 @@ function comoPng(pixeles, ancho, alto) {
 let guardada = null;
 
 function imagenParaCompartir() {
-  if (!guardada) guardada = comoPng(dibujar(), ANCHO, ALTO);
+  if (!guardada) guardada = comoPng(pintarLienzo(ANCHO, ALTO, figuras()), ANCHO, ALTO);
   return guardada;
 }
 
 // --- íconos de la app ----------------------------------------------------------
 
-// Los que piden Android e iPhone para instalar Pío. El "enmascarable" deja más
-// aire alrededor: cada Android lo recorta con su forma —círculo, gota,
-// cuadrado redondeado— y sólo respeta el centro.
+// El ícono es el logo mismo, pero sin su cuadrado redondeado: el fondo naranja
+// llega hasta el borde, porque Android y el iPhone ya le ponen su propia forma.
+// `ocupa` es cuánto del lado usa el dibujo; el enmascarable deja más aire,
+// porque cada Android lo recorta distinto y sólo respeta el centro.
 const ICONOS = {
-  'pio-192.png': { lado: 192, ocupa: 0.72 },
-  'pio-512.png': { lado: 512, ocupa: 0.72 },
-  'pio-mascara-512.png': { lado: 512, ocupa: 0.56 },
-  'apple-180.png': { lado: 180, ocupa: 0.68 },
+  'pio-192.png': { lado: 192, ocupa: 1 },
+  'pio-512.png': { lado: 512, ocupa: 1 },
+  'pio-mascara-512.png': { lado: 512, ocupa: 0.8 },
+  'apple-180.png': { lado: 180, ocupa: 1 },
 };
 
 const iconosGuardados = new Map();
@@ -202,13 +173,11 @@ function icono(nombre) {
   if (!pedido) return null;
   if (!iconosGuardados.has(nombre)) {
     const { lado, ocupa } = pedido;
-    const ancho = CAJA_POLLITO.x1 - CAJA_POLLITO.x0;
-    const alto = CAJA_POLLITO.y1 - CAJA_POLLITO.y0;
-    const k = (lado * ocupa) / Math.max(ancho, alto);
-    const cx = (CAJA_POLLITO.x0 + CAJA_POLLITO.x1) / 2;
-    const cy = (CAJA_POLLITO.y0 + CAJA_POLLITO.y1) / 2;
-    const lista = pollito().map(([figura, color]) => [escalada(figura, k, cx, cy, lado / 2, lado / 2), color]);
-    iconosGuardados.set(nombre, comoPng(pintarLienzo(lado, lado, lista), lado, lado));
+    const dibujo = lado * ocupa;
+    const margen = (lado - dibujo) / 2;
+    const lista = logoEn(dibujo, margen, margen, { conFondo: false });
+    const fondo = LOGO.rgb(LOGO.COLORES.fondo);
+    iconosGuardados.set(nombre, comoPng(pintarLienzo(lado, lado, lista, fondo), lado, lado));
   }
   return iconosGuardados.get(nombre);
 }

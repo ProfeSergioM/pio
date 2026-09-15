@@ -12,7 +12,7 @@
 // compartir. Mostrar píos viejos como si fueran de ahora sería peor que no
 // mostrar nada.
 
-const VERSION = 'pio-cascara-2';
+const VERSION = 'pio-cascara-3';
 
 // Lo mínimo para que la app abra sin red.
 const CASCARA = [
@@ -25,6 +25,7 @@ const CASCARA = [
   '/temas/pixel.css',
   '/manifest.webmanifest',
   '/iconos/pio-192.png',
+  '/logo.svg',
 ];
 
 self.addEventListener('install', (evento) => {

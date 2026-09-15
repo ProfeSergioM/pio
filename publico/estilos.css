@@ -64,7 +64,7 @@ a { color: inherit; text-decoration: none; }
   position: relative;
 }
 
-.pollito { font-size: clamp(120px, 22vw, 260px); filter: drop-shadow(0 12px 30px rgba(0,0,0,.15)); }
+.pollito { width: clamp(120px, 22vw, 260px); height: auto; filter: drop-shadow(0 12px 30px rgba(0,0,0,.15)); }
 
 .globo {
   position: absolute;
@@ -93,7 +93,12 @@ a { color: inherit; text-decoration: none; }
 
 .marca { font-size: 34px; margin: 0 0 6px; letter-spacing: -.5px; }
 .marca.chica { font-size: 20px; margin: 0; }
-.marca-pollito { filter: drop-shadow(0 2px 4px rgba(0,0,0,.15)); }
+/* El logo mide en em, como medía el emoji: así cada tema lo agranda o achica
+   con el tamaño de la letra, igual que antes. */
+.marca-pollito {
+  height: 1.15em; width: auto; vertical-align: -0.22em;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.15));
+}
 .lema { color: var(--tenue); margin: 0 0 20px; }
 
 .pestanas { display: flex; gap: 6px; background: var(--panel-2); padding: 4px; border-radius: 999px; margin-bottom: 18px; }

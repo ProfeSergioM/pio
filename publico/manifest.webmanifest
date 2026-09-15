@@ -6,11 +6,11 @@
   "start_url": "/#/nido",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#fff4d1",
-  "theme_color": "#f2b705",
+  "background_color": "#f07c1f",
+  "theme_color": "#f07c1f",
   "icons": [
-    { "src": "/iconos/pio-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/iconos/pio-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/iconos/pio-mascara-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/iconos/pio-192.png?v=2", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/iconos/pio-512.png?v=2", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/iconos/pio-mascara-512.png?v=2", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

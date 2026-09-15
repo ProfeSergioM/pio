@@ -2720,14 +2720,27 @@ async function main() {
     const r = await fetch(`${baseApp}${ruta}`);
     const tipo = r.headers.get('content-type') || '';
     const esperado = ruta === '/' ? 'text/html' : ruta.endsWith('.css') ? 'text/css' : ruta.endsWith('.js') ? 'text/javascript'
-      : ruta.endsWith('.png') ? 'image/png' : 'application/manifest+json';
+      : ruta.endsWith('.png') ? 'image/png' : ruta.endsWith('.svg') ? 'image/svg+xml' : 'application/manifest+json';
     if (r.status !== 200 || !tipo.startsWith(esperado)) { cascaraSana = false; console.log('     falta:', ruta, r.status, tipo); }
   }
   probar('todo lo que guarda para abrir sin red existe', cascaraSana);
 
+  const logo = await fetch(`${baseApp}/logo.svg`);
+  const logoTexto = await logo.text();
+  probar('el logo se sirve como SVG', logo.headers.get('content-type').startsWith('image/svg+xml') && logoTexto.startsWith('<svg'));
+  // Un solo dibujo para todo: el SVG y los PNG salen de src/logo.js.
+  probar('trae el cuadrado, la cáscara quebrada y la cabeza inclinada', logoTexto.includes('rx="22"')
+    && /<path d="M22 61 (L[\d.]+ [\d.]+ ){8}A28 30/.test(logoTexto) && logoTexto.includes('rotate(-20 50 46)'));
+  const icono512 = Buffer.from(await (await fetch(`${baseApp}/iconos/pio-512.png`)).arrayBuffer());
+  const zlibPrueba = require('zlib');
+  const crudo512 = zlibPrueba.inflateSync(icono512.subarray(41, icono512.length - 12));
+  const pixel = (x, y) => [...crudo512.subarray(y * (512 * 3 + 1) + 1 + x * 3, y * (512 * 3 + 1) + 1 + x * 3 + 3)];
+  probar('el ícono de la app es naranja hasta el borde', JSON.stringify(pixel(0, 0)) === JSON.stringify([240, 124, 31]));
+  probar('y tiene la cáscara crema abajo al centro', JSON.stringify(pixel(256, 420)) === JSON.stringify([255, 244, 209]));
   const pagina = await (await fetch(`${baseApp}/`)).text();
   probar('la página enlaza el manifiesto', pagina.includes('rel="manifest"'));
   probar('y el ícono del iPhone', pagina.includes('rel="apple-touch-icon"'));
+  probar('la pestaña usa el logo', pagina.includes('rel="icon" type="image/svg+xml" href="/logo.svg"'));
 
   await new Promise((listo) => conApp.close(listo));
   fs.rmSync(carpetaApp, { recursive: true, force: true });

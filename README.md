@@ -99,7 +99,8 @@ queda apagada y lo dice.
 | [`src/frases.js`](src/frases.js) | De qué habla el piobot |
 | [`src/latido.js`](src/latido.js) | La puerta que mantiene el sitio despierto y hace piar al bot |
 | [`src/compartir.js`](src/compartir.js) | La página de `/p/<id>`, con la vista previa para las redes |
-| [`src/portada.js`](src/portada.js) | La imagen de Pío para las vistas previas, dibujada a mano en PNG |
+| [`src/logo.js`](src/logo.js) | El logo, en un solo lugar: de acá salen el SVG de la página y los PNG |
+| [`src/portada.js`](src/portada.js) | Los PNG: la imagen para compartir y los íconos de la app |
 | [`supabase.sql`](supabase.sql) | Las tablas, listas para pegar y ejecutar |
 | [`supabase-corrales.sql`](supabase-corrales.sql) | Las tablas de corrales y del chat |
 | [`servidor.js`](servidor.js) | Servidor: API + archivos estáticos |

@@ -296,11 +296,18 @@ a { color: inherit; text-decoration: none; }
 
 /* Medidas del árbol. El avatar mide 24: su centro, en 12, es de donde baja la
    línea. La sangría es cuánto se corre cada nivel. */
+#contenido { position: relative; --linea: color-mix(in srgb, var(--tenue) 65%, transparent); }
 #cascada {
-  --linea: color-mix(in srgb, var(--tenue) 65%, transparent);
   --sangria: 20px;
-  padding: 10px 14px 28px;
+  padding: 10px 14px 28px 0;
 }
+
+/* Las respuestas directas cuelgan de la línea que baja del avatar del pío de
+   arriba; --raiz-x es dónde queda ese avatar, medido en cada tema. */
+.com-hijos.raiz { margin-left: calc(var(--raiz-x, 41px) - 1px); }
+.com-desplegar.raiz { margin-left: var(--raiz-x, 41px); }
+.linea-raiz { position: absolute; border-left: 2px solid var(--linea); pointer-events: none; }
+#contenido:has(.com-hijos.raiz > .com-linea:hover) .linea-raiz { border-color: var(--pico); }
 
 /* Un comentario no es una tarjeta: sin caja, sin sombra, sin nada que los
    temas le hayan puesto al pío. Lo que ordena es la línea, no el recuadro. */
@@ -368,7 +375,7 @@ a { color: inherit; text-decoration: none; }
 
 @media (max-width: 700px) {
   /* Con ocho niveles de hondura, veinte píxeles por nivel se comen la pantalla. */
-  #cascada { --sangria: 12px; padding-left: 8px; padding-right: 8px; }
+  #cascada { --sangria: 12px; padding-right: 8px; }
   .com-cuerpo { padding-left: 30px; }
   .plegado { padding-left: 30px; }
 }

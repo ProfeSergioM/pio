@@ -720,11 +720,69 @@ let hiloAbierto = null;
 
 function pintarCascada() {
   if (!hiloEnPantalla) return;
-  const { despues, recortado } = hiloEnPantalla;
-  $('#cascada').innerHTML = despues.length
-    ? despues.map(comentario).join('')
-      + (recortado ? `<div class="plegado">${escapar(T('hilo.recortado'))}</div>` : '')
-    : `<div class="vacio"><span class="emoji">💬</span>${escapar(T('hilo.vacio'))}</div>`;
+  const { despues, recortado, pio } = hiloEnPantalla;
+  const cerrada = plegadas.has(pio.id);
+  const total = despues.reduce((suma, nodo) => suma + 1 + cuantasCuelgan(nodo), 0);
+
+  // Las respuestas directas también cuelgan de una línea: la que baja del
+  // avatar del pío de arriba. Sin ella, un hilo de un solo nivel —el más
+  // común— no mostraba ningún árbol.
+  $('#cascada').innerHTML = !despues.length
+    ? `<div class="vacio"><span class="emoji">💬</span>${escapar(T('hilo.vacio'))}</div>`
+    : (cerrada
+      ? `<button type="button" class="com-desplegar raiz" data-plegar="${escapar(pio.id)}">
+           ⊕ ${escapar(T('hilo.ocultas', { n: total }))}
+         </button>`
+      : `<div class="com-hijos raiz">
+           <button type="button" class="com-linea" data-plegar="${escapar(pio.id)}"
+                   title="${escapar(T('hilo.plegar'))}" aria-label="${escapar(T('hilo.plegar'))}"></button>
+           ${despues.map(comentario).join('')}
+         </div>`
+        + (recortado ? `<div class="plegado">${escapar(T('hilo.recortado'))}</div>` : ''));
+
+  trazarRaiz();
+  vigilarRaiz();
+}
+
+// El pío de arriba tiene medidas distintas en cada tema —avatar más grande,
+// ficha con márgenes—, así que el punto de donde baja la línea se mide en vez
+// de adivinarlo.
+function trazarRaiz() {
+  const contenido = $('#contenido');
+  const cascada = $('#cascada');
+  const avatarRaiz = contenido.querySelector('.pio.destacado .avatar');
+  const colgantes = cascada && cascada.querySelector('.com-hijos.raiz');
+  let linea = contenido.querySelector('.linea-raiz');
+  if (!avatarRaiz || !cascada) { if (linea) linea.remove(); return; }
+
+  const base = contenido.getBoundingClientRect();
+  const a = avatarRaiz.getBoundingClientRect();
+  const centro = a.left + a.width / 2;
+  cascada.style.setProperty('--raiz-x', `${Math.round(centro - cascada.getBoundingClientRect().left)}px`);
+
+  if (!colgantes) { if (linea) linea.remove(); return; }
+  if (!linea) {
+    linea = document.createElement('div');
+    linea.className = 'linea-raiz';
+    contenido.appendChild(linea);
+  }
+  const arriba = a.bottom - base.top + 4;
+  const abajo = colgantes.getBoundingClientRect().top - base.top;
+  linea.style.left = `${Math.round(centro - base.left - 1)}px`;
+  linea.style.top = `${Math.round(arriba)}px`;
+  linea.style.height = `${Math.max(0, Math.round(abajo - arriba))}px`;
+}
+
+// Si la foto del pío termina de cargar o cambia el ancho de la ventana, el pío
+// cambia de alto y la línea tiene que seguirlo.
+let vigiaRaiz = null;
+function vigilarRaiz() {
+  if (vigiaRaiz) vigiaRaiz.disconnect();
+  const destacado = $('#contenido').querySelector('.pio.destacado');
+  if (!destacado || typeof ResizeObserver === 'undefined') return;
+  vigiaRaiz = new ResizeObserver(() => trazarRaiz());
+  vigiaRaiz.observe(destacado);
+  vigiaRaiz.observe($('#contenido'));
 }
 
 async function vistaHilo(id) {

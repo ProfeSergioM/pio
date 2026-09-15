@@ -33,6 +33,10 @@
 /* Varias reglas de abajo fijan display, así que hidden necesita ganar. */
 [hidden] { display: none !important; }
 
+/* Sin el "tirar para recargar" del navegador, que recarga el sitio entero: el
+   de Pío actualiza sólo lo que se está mirando. */
+html, body { overscroll-behavior-y: none; }
+
 body {
   margin: 0;
   background: var(--fondo);
@@ -214,6 +218,23 @@ a { color: inherit; text-decoration: none; }
   position: sticky; top: calc(var(--alto-barra, 56px) + 16px);
   padding: 16px 0; display: flex; flex-direction: column; gap: 16px;
 }
+
+/* --- tirar para actualizar ------------------------------------------- */
+
+/* Espera escondido detrás de la barra de arriba y baja al tirar. */
+.tirar {
+  position: fixed; left: 50%; top: calc(var(--alto-barra, 56px) - 46px); z-index: 29;
+  width: 42px; height: 42px; margin-left: -21px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--panel); border: 1px solid var(--borde); box-shadow: var(--sombra);
+  opacity: 0; pointer-events: none;
+}
+.tirar img { width: 28px; height: 28px; }
+.tirar.listo { border-color: var(--amarillo); }
+.tirar.volviendo { transition: transform .25s ease, opacity .25s ease; }
+.tirar.girando img { animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tirar.girando img { animation: none; } }
 
 /* --- la cinta de tendencias ------------------------------------------ */
 

@@ -409,8 +409,12 @@ function rutaActual() {
 
 let turnoDePintar = 0;
 
-async function pintar() {
+// `soloVista`: rearma la vista y nada más —ni sugerencias, ni avisos, ni
+// tendencias—. Es lo que usa "tirar para actualizar". Cuando pintar se llama
+// desde el evento hashchange, el argumento es el evento, y eso no es pedirlo.
+async function pintar(opciones) {
   if (!estado.yo) return;
+  const soloVista = !!(opciones && opciones.soloVista === true);
   const { partes, params } = rutaActual();
   const [vista, argumento] = partes;
 
@@ -470,12 +474,96 @@ async function pintar() {
     vigia.disconnect();
   }
 
+  if (soloVista) return;
   cargarTendencias();
   cargarSugerencias();
   cargarAvisos();
 }
 
 window.addEventListener('hashchange', pintar);
+
+// --- tirar para actualizar ---------------------------------------------------------
+
+// En el teléfono, arrastrar hacia abajo desde arriba de todo actualiza lo que
+// se está mirando y la cinta de tendencias, sin recargar el sitio. El gesto
+// nativo del navegador —que recarga la página entera— se apaga en los estilos
+// con overscroll-behavior, y acá se dibuja el propio: un pollito que baja y
+// gira mientras se tira, y da vueltas mientras actualiza.
+const tirarIcono = $('#tirar');
+const TIRAR_UMBRAL = 64;
+const TIRAR_TOPE = 110;
+let tirarDesde = null;
+let tirarDistancia = 0;
+let tirando = false;
+let actualizandoTirado = false;
+
+const tirarSePuede = (objetivo) => matchMedia('(pointer: coarse)').matches
+  && !actualizandoTirado && !$('#app').hidden && window.scrollY <= 0
+  && !document.querySelector('dialog[open]')
+  // Lo que tiene su propio desplazamiento o su propio gesto no se toca.
+  && !objetivo.closest('.charla, .menu, .cinta, input, textarea, [contenteditable]');
+
+function dibujarTirar(distancia) {
+  tirarIcono.classList.remove('volviendo');
+  tirarIcono.style.transform = `translateY(${distancia}px) rotate(${distancia * 3}deg)`;
+  tirarIcono.style.opacity = String(Math.min(1, distancia / TIRAR_UMBRAL));
+  tirarIcono.classList.toggle('listo', distancia >= TIRAR_UMBRAL);
+}
+
+function guardarTirar() {
+  tirarIcono.classList.add('volviendo');
+  tirarIcono.classList.remove('listo', 'girando');
+  tirarIcono.style.transform = 'translateY(0)';
+  tirarIcono.style.opacity = '0';
+}
+
+async function soltarTirar() {
+  const alcanzo = tirarDistancia >= TIRAR_UMBRAL;
+  tirando = false;
+  tirarDesde = null;
+  if (!alcanzo) { guardarTirar(); return; }
+
+  actualizandoTirado = true;
+  tirarIcono.classList.add('volviendo', 'girando');
+  tirarIcono.style.transform = `translateY(${TIRAR_UMBRAL}px)`;
+  const inicio = Date.now();
+  try {
+    await Promise.all([pintar({ soloVista: true }), cargarTendencias()]);
+  } finally {
+    // Un giro mínimo: si la respuesta llega al instante, el pollito ni se ve y
+    // no queda claro que algo pasó.
+    const falta = 450 - (Date.now() - inicio);
+    if (falta > 0) await new Promise((listo) => setTimeout(listo, falta));
+    guardarTirar();
+    actualizandoTirado = false;
+  }
+}
+
+document.addEventListener('touchstart', (ev) => {
+  if (ev.touches.length !== 1 || !tirarSePuede(ev.target)) return;
+  tirarDesde = ev.touches[0].clientY;
+  tirarDistancia = 0;
+}, { passive: true });
+
+document.addEventListener('touchmove', (ev) => {
+  if (tirarDesde === null) return;
+  const bajo = ev.touches[0].clientY - tirarDesde;
+  // Hacia arriba, o si la página se movió, es desplazarse normal y no tirar.
+  if (bajo <= 0 || window.scrollY > 0) {
+    if (tirando) guardarTirar();
+    tirando = false;
+    tirarDesde = null;
+    return;
+  }
+  tirando = true;
+  // Con resistencia: cuanto más se tira, menos avanza, como un elástico.
+  tirarDistancia = Math.min(TIRAR_TOPE, bajo * 0.5);
+  dibujarTirar(tirarDistancia);
+  if (ev.cancelable) ev.preventDefault();
+}, { passive: false });
+
+document.addEventListener('touchend', () => { if (tirando) soltarTirar(); else tirarDesde = null; });
+document.addEventListener('touchcancel', () => { tirando = false; tirarDesde = null; guardarTirar(); });
 $('#atras').addEventListener('click', () => history.back());
 
 // --- vistas ---------------------------------------------------------------

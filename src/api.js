@@ -232,7 +232,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
   }
 
   if (recurso === 'yo') {
-    if (metodo === 'GET') {
+    if (metodo === 'GET' && !id) {
       exigir(yo);
       return { datos: { yo: perfil(almacen, yo, yo) } };
     }
@@ -257,6 +257,12 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       const { codigo } = await almacen.cambiarClave(yo, cuerpo.actual, cuerpo.nueva, tokenDe(req));
       // Si la cuenta no tenía clave —venía de Google— ahora estrena código.
       return { datos: Object.assign({ ok: true }, codigo ? { recuperacion: codigo } : {}) };
+    }
+
+    // Tu nido es tuyo: todo lo que es de la cuenta, en un JSON para llevárselo.
+    if (metodo === 'GET' && id === 'exportar') {
+      exigir(yo);
+      return { datos: exportarCuenta(almacen, yo) };
     }
 
     // Pedir un código nuevo, que anula el anterior.
@@ -935,6 +941,78 @@ function serializar(almacen, pio, yo) {
     // Sólo le importa a quien bloqueó: con esto la tarjeta sale borrosa.
     bloqueadoHasta: almacen.bloqueoVigente(yo, pio.autor),
     mio: !!yo && pio.autor === yo.usuario,
+  };
+}
+
+// Lo que se lleva quien exporta su cuenta. Va lo suyo: lo que escribió, a quién
+// sigue, sus ajustes, lo que marcó. No va lo que no le sirve a nadie fuera de
+// Pío ni lo que es de otros: la clave y su sal, el código de recuperación, las
+// sesiones, las suscripciones del teléfono, quién le dio me gusta, ni quién
+// hizo una pregunta anónima.
+function exportarCuenta(almacen, cuenta) {
+  const referencia = (p) => {
+    const autor = almacen.buscarUsuario(p.autor);
+    return { id: p.id, autor: autor ? autor.usuario : p.autor, texto: p.texto, creado: p.creado };
+  };
+  const preguntaSin = (p) => ({
+    texto: p.texto,
+    creado: p.creado,
+    anonima: !!p.anonima,
+    de: p.anonima ? null : p.de,
+  });
+  const propios = almacen.datos.pios.filter((p) => p.autor === cuenta.usuario).sort((a, b) => a.creado - b.creado);
+  const b = B.deCuenta(cuenta);
+  const hechas = [];
+  for (const otra of almacen.datos.usuarios) {
+    if (otra === cuenta) continue;
+    for (const p of B.deCuenta(otra).preguntas) {
+      if (p.de === cuenta.usuario) hechas.push({ para: otra.usuario, texto: p.texto, creado: p.creado, anonima: !!p.anonima });
+    }
+  }
+  return {
+    formato: 'pio-exportacion-1',
+    exportado: new Date().toISOString(),
+    cuenta: {
+      usuario: cuenta.usuario,
+      nombre: cuenta.nombre,
+      bio: cuenta.bio || '',
+      avatar: cuenta.avatar || null,
+      creado: cuenta.creado,
+      nombresAnteriores: cuenta.alias || [],
+      conGoogle: !!cuenta.google,
+      siguiendo: cuenta.siguiendo.slice(),
+      silenciados: (cuenta.silenciados || []).slice(),
+      corrales: (cuenta.corrales || []).slice(),
+      descanso: D.deCuenta(cuenta),
+      buzon: { abierto: b.abierto, anonimas: b.anonimas },
+    },
+    pios: propios.map((p) => ({
+      id: p.id,
+      texto: p.texto,
+      creado: p.creado,
+      respuestaA: p.respuestaA || null,
+      corral: p.corral || null,
+      adjunto: p.adjunto ? { tipo: p.adjunto.tipo || null, url: p.adjunto.url || null, texto: p.adjunto.texto || '' } : null,
+      etiquetas: p.etiquetas || [],
+      menciones: p.menciones || [],
+      meGusta: p.meGusta.length,
+      repios: p.repios.length,
+      preguntaDelDia: p.pregunta || null,
+      explota: p.explota || null,
+      aMano: !!p.aMano,
+      cadena: p.cadena ? { terminada: !!p.cadena.terminada } : null,
+      eslabonDe: p.eslabonDe || null,
+      respondeAlBuzon: p.buzon ? preguntaSin(p.buzon) : null,
+    })),
+    meGusta: almacen.datos.pios.filter((p) => p.meGusta.includes(cuenta.usuario)).map(referencia),
+    repios: almacen.datos.pios.filter((p) => p.repios.some((r) => r.usuario === cuenta.usuario)).map(referencia),
+    buzon: {
+      pendientes: b.preguntas.map(preguntaSin),
+      preguntasQueHice: hechas,
+    },
+    mensajesDeChat: almacen.datos.mensajes
+      .filter((m) => m.autor === cuenta.usuario)
+      .map((m) => ({ corral: m.corral, texto: m.texto, creado: m.creado })),
   };
 }
 

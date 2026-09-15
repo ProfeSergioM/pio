@@ -645,6 +645,7 @@ async function vistaPerfil(usuario, solapa) {
          <button class="boton" data-editar>${escapar(T('perfil.editar'))}</button>
          <a class="boton" href="#/buzon">📮 ${escapar(T('buzon.boton'))}${perfil.buzon.pendientes ? ` <b>${perfil.buzon.pendientes}</b>` : ''}</a>
          <button class="boton" data-clave>${escapar(T('perfil.clave'))}</button>
+         <button class="boton fantasma" data-exportar title="${escapar(T('nido.exportarExplica'))}">🧺 ${escapar(T('nido.exportar'))}</button>
          <button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>
        </div>`
     : `<div class="perfil-botones">
@@ -684,6 +685,7 @@ async function vistaPerfil(usuario, solapa) {
         <span>${escapar(T('perfil.desde', {
           fecha: new Date(perfil.creado).toLocaleDateString(diccionario().fechas),
         }))}</span>
+        <a class="enlace-rss" href="/rss/u/${escapar(perfil.usuario)}" target="_blank" rel="noopener" title="${escapar(T('nido.rssExplica'))}">RSS</a>
       </div>
     </div>
     <div class="sub-pestanas">
@@ -708,6 +710,29 @@ async function vistaPerfil(usuario, solapa) {
   if (clave) clave.addEventListener('click', abrirClave);
   const preguntar = $('#contenido').querySelector('[data-preguntar]');
   if (preguntar) preguntar.addEventListener('click', () => abrirPreguntar(perfil));
+  const exportar = $('#contenido').querySelector('[data-exportar]');
+  if (exportar) exportar.addEventListener('click', () => exportarMisDatos(exportar));
+}
+
+// Tu nido es tuyo: todo lo propio en un JSON, bajado en este dispositivo.
+async function exportarMisDatos(boton) {
+  boton.disabled = true;
+  try {
+    const datos = await api('/yo/exportar');
+    const archivo = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
+    const enlace = document.createElement('a');
+    enlace.href = URL.createObjectURL(archivo);
+    enlace.download = `pio-${datos.cuenta.usuario}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+    avisar(T('nido.exportado'));
+  } catch (err) {
+    avisar(err.message);
+  } finally {
+    boton.disabled = false;
+  }
 }
 
 // --- el buzón ---------------------------------------------------------------
@@ -1454,6 +1479,7 @@ async function vistaCorral(nombre, solapa) {
         <span><b data-suscritos-de="${escapar(corral.nombre)}">${corral.suscritos}</b> ${escapar(T('corral.gente', { n: corral.suscritos }).replace(/^\d+\s/, ''))}</span>
         <span>${escapar(T('corral.pios', { n: corral.pios }))}</span>
         <span>${escapar(T('corral.dueno', { usuario: corral.dueno }))}</span>
+        <a class="enlace-rss" href="/rss/c/${escapar(corral.nombre)}" target="_blank" rel="noopener" title="${escapar(T('nido.rssExplica'))}">RSS</a>
       </div>
       <div class="perfil-botones" style="margin-top:12px">
         <button class="boton ${corral.estoy ? 'fantasma' : 'principal'}" data-corral="${escapar(corral.nombre)}">

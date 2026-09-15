@@ -7,6 +7,7 @@ const { Almacen } = require('./src/almacen');
 const { crearApi } = require('./src/api');
 const { leerAjustes } = require('./src/ajustes');
 const { paginaParaCompartir } = require('./src/compartir');
+const { rssDeUsuario, rssDeCorral } = require('./src/rss');
 const { imagenParaCompartir, icono } = require('./src/portada');
 const { svgDelLogo } = require('./src/logo');
 
@@ -65,6 +66,23 @@ function crearServidor(opciones = {}) {
     if (req.method === 'GET' && url.pathname === '/compartir.png') {
       res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
       res.end(imagenParaCompartir());
+      return;
+    }
+
+    // Los RSS de cada perfil y cada corral: ver src/rss.js.
+    const pedidoRss = req.method === 'GET' && url.pathname.match(/^\/rss\/(u|c)\/([a-z0-9_-]{1,40})\/?$/i);
+    if (pedidoRss) {
+      await almacen.listo;
+      await almacen.detonar().catch(() => {});
+      // Sin origen no hay direcciones completas, y un RSS con direcciones a
+      // medias no lo abre ningún lector.
+      const origen = origenDe(req) || '';
+      const xml = pedidoRss[1].toLowerCase() === 'u'
+        ? rssDeUsuario(almacen, pedidoRss[2], origen)
+        : rssDeCorral(almacen, pedidoRss[2], origen);
+      if (!xml) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('No encontrado'); return; }
+      res.writeHead(200, { 'Content-Type': 'application/rss+xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+      res.end(xml);
       return;
     }
 

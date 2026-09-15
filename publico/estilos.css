@@ -626,6 +626,11 @@ a { color: inherit; text-decoration: none; }
 .cadena-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; }
 .cadena-pie p { margin: 0; }
 
+/* --- tu nido es tuyo -------------------------------------------------- */
+
+.enlace-rss { font-size: 11px; font-weight: 800; letter-spacing: .5px; color: #fff; background: var(--pico); padding: 1px 7px; border-radius: 6px; }
+.enlace-rss:hover { filter: brightness(1.1); }
+
 /* --- escrito a mano ---------------------------------------------------- */
 
 /* Al piar, el sello se apaga si se pegó texto. */

@@ -26,9 +26,9 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 750 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 769 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
-persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio, buzón, cadenas,
+persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio, buzón, cadenas, exportación y RSS,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
 tokens de Google. Ninguna sale a internet: los servicios externos se inyectan
 falseados.
@@ -110,6 +110,7 @@ queda apagada y lo dice.
 | [`src/descanso.js`](src/descanso.js) | La granja duerme: horario de silencio y tope de píos |
 | [`src/buzon.js`](src/buzon.js) | Las reglas del buzón de preguntas |
 | [`src/cadenas.js`](src/cadenas.js) | Las reglas de las cadenas: turnos y tope |
+| [`src/rss.js`](src/rss.js) | Los RSS de cada perfil y cada corral |
 | [`src/cadenas.js`](src/cadenas.js) | Las reglas de las cadenas: turnos y tope |
 | [`pruebas/`](pruebas) | La batería de pruebas |
 
@@ -201,6 +202,21 @@ como todo ([`src/cadenas.js`](src/cadenas.js)). Se lee entera en
   escribieron los demás.
 - Quien la empezó y quien puso el eslabón anterior reciben aviso. Una cadena
   bomba explota entera, y una de corral vive en su corral.
+
+**🧺 Tu nido es tuyo.** Lo que uno escribe no queda encerrado en Pío.
+
+- **Mis datos**, en el perfil propio, descarga un JSON con todo lo de la cuenta:
+  los píos —con sus bombas, cadenas y respuestas del buzón—, a quién sigue, sus
+  corrales y ajustes, lo que marcó con me gusta o repió, las preguntas
+  pendientes y las que hizo, y sus mensajes de chat. No van la clave, su sal, el
+  código de recuperación, las sesiones ni las suscripciones del teléfono; de
+  los me gusta recibidos va el número, no quién, y de una pregunta anónima no va
+  quién la hizo.
+- **RSS** en cada perfil (`/rss/u/<usuario>`) y cada corral (`/rss/c/<nombre>`),
+  para seguirlos desde cualquier lector sin cuenta. Los últimos cincuenta, con
+  enlaces a la página para compartir de cada pío. No van huevos, cuentas
+  ocultas ni píos bomba: una bomba explota en un día, pero un lector la
+  guardaría para siempre.
 
 **Bloquear es suave y por tiempo.** Desde el perfil de alguien se elige una hora,
 un día, una semana o un mes. Mientras dura, sus píos se ven borrosos —con un
@@ -475,6 +491,7 @@ POST   /api/sesion/google {credencial}             ->     {token, yo}
 POST   /api/sesion       {usuario, clave}          ->     {token, yo}
 DELETE /api/sesion       cierra la sesión          ->     {ok}
 GET    /api/yo           tu perfil                 ->     {yo}
+GET    /api/yo/exportar  todo lo tuyo, en JSON     ->     {formato, cuenta, pios, …}
 PATCH  /api/yo           {nombre?, bio?, descanso?} ->    {yo}
 
 GET    /api/pios?tipo=plaza[&mano=1]              ->     {tipo, pios, hayMas}

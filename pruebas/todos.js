@@ -2794,6 +2794,80 @@ async function main() {
   await new Promise((listo) => conCad.close(listo));
   fs.rmSync(carpetaCad, { recursive: true, force: true });
 
+  // --- tu nido es tuyo ----------------------------------------------------------
+
+  grupo('Tu nido es tuyo');
+  const RSS = require('../src/rss');
+
+  const carpetaNid = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-nid-'));
+  const conNid = crearServidor({ datos: carpetaNid, api: { altas: 100, admins: ['jefa'] } });
+  await new Promise((listo) => conNid.listen(0, '127.0.0.1', listo));
+  const baseNid = `http://127.0.0.1:${conNid.address().port}`;
+  const pedirNid = async (ruta, o = {}) => {
+    const r = await fetch(`${baseNid}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceNid = async (usuario) => (await pedirNid('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+  const duenoNidT = await naceNid('anfitrion');
+  const visitaNidT = await naceNid('visita');
+  const jefaNidT = await naceNid('jefa');
+  const piarNid = async (token, cuerpo) => (await pedirNid('/pios', { metodo: 'POST', token, cuerpo })).datos.pio;
+
+  const publico = await piarNid(duenoNidT, { texto: 'Hola <mundo> & "amigos"', aMano: true });
+  const efimero = await piarNid(duenoNidT, { texto: 'esto no queda en ningún lector', bomba: true });
+  await pedirNid('/pios/' + publico.id + '/megusta', { metodo: 'POST', token: visitaNidT });
+  const ajeno = await piarNid(visitaNidT, { texto: 'un pío de la visita' });
+  await pedirNid(`/pios/${ajeno.id}/megusta`, { metodo: 'POST', token: duenoNidT });
+  await pedirNid('/usuarios/visita/seguir', { metodo: 'POST', token: duenoNidT });
+  await pedirNid('/buzon', { metodo: 'PATCH', token: duenoNidT, cuerpo: { abierto: true, anonimas: true } });
+  await pedirNid('/usuarios/anfitrion/buzon', { metodo: 'POST', token: visitaNidT, cuerpo: { texto: '¿secreto?', anonima: true } });
+  await pedirNid('/buzon', { metodo: 'PATCH', token: visitaNidT, cuerpo: { abierto: true } });
+  await pedirNid('/usuarios/visita/buzon', { metodo: 'POST', token: duenoNidT, cuerpo: { texto: '¿qué tal?' } });
+
+  probar('exportar pide sesión', (await pedirNid('/yo/exportar')).estado === 401);
+  const exportado = (await pedirNid('/yo/exportar', { token: duenoNidT })).datos;
+  const crudo = JSON.stringify(exportado);
+  probar('se exportan los píos propios', exportado.pios.length === 2 && exportado.pios.some((p) => p.id === publico.id && p.aMano));
+  probar('y a quién sigue', exportado.cuenta.siguiendo.includes('visita'));
+  probar('y lo que marcó con me gusta', exportado.meGusta.some((p) => p.id === ajeno.id && p.autor === 'visita'));
+  probar('y las preguntas que hizo', exportado.buzon.preguntasQueHice.some((p) => p.para === 'visita'));
+  probar('los me gusta recibidos van como número, no quién', exportado.pios.find((p) => p.id === publico.id).meGusta === 1);
+  probar('ni la clave, ni la sal, ni el código', !/"hash"|"sal"|"recuperacion"|"suscripciones"/.test(crudo));
+  probar('ni quién hizo la pregunta anónima', exportado.buzon.pendientes.length === 1 && exportado.buzon.pendientes[0].de === null);
+  probar('el GET de /yo sigue siendo el perfil', (await pedirNid('/yo', { token: duenoNidT })).datos.yo.usuario === 'anfitrion');
+
+  const rss = await fetch(`${baseNid}/rss/u/anfitrion`);
+  const xml = await rss.text();
+  probar('cada perfil tiene su RSS', rss.status === 200 && /application\/rss\+xml/.test(rss.headers.get('content-type')));
+  probar('con sus píos, escapados', xml.includes('Hola &lt;mundo&gt; &amp; &quot;amigos&quot;') && !xml.includes('<mundo>'));
+  probar('y enlaces completos a cada pío', xml.includes(`${baseNid}/p/${publico.id}`));
+  probar('las bombas no van al RSS', !xml.includes('ningún lector') && !xml.includes(efimero.id));
+  const huevoRss = conNid.almacen.buscarPio(publico.id);
+  huevoRss.nace = Date.now() + 60000;
+  probar('ni los huevos', !(await (await fetch(`${baseNid}/rss/u/anfitrion`)).text()).includes(publico.id));
+  huevoRss.nace = null;
+  probar('un perfil que no existe da 404', (await fetch(`${baseNid}/rss/u/nadie`)).status === 404);
+  await pedirNid('/admin/ocultos/anfitrion', { metodo: 'POST', token: jefaNidT });
+  probar('una cuenta oculta no tiene RSS', (await fetch(`${baseNid}/rss/u/anfitrion`)).status === 404);
+  await pedirNid('/admin/ocultos/anfitrion', { metodo: 'POST', token: jefaNidT });
+
+  await pedirNid('/corrales', { metodo: 'POST', token: duenoNidT, cuerpo: { nombre: 'lectores', titulo: 'Lectores' } });
+  await piarNid(duenoNidT, { texto: 'dentro del corral', corral: 'lectores' });
+  const rssCorral = await (await fetch(`${baseNid}/rss/c/lectores`)).text();
+  probar('cada corral tiene su RSS', rssCorral.includes('dentro del corral') && !rssCorral.includes('Hola &lt;mundo'));
+  probar('un corral que no existe da 404', (await fetch(`${baseNid}/rss/c/nada`)).status === 404);
+  probar('un carácter de control no rompe el XML', RSS.escaparXml(['a', String.fromCharCode(1), 'b', String.fromCharCode(0), 'c'].join('')) === 'abc');
+
+  await new Promise((listo) => conNid.close(listo));
+  fs.rmSync(carpetaNid, { recursive: true, force: true });
+
   // --- la pregunta del día -------------------------------------------------
 
   grupo('La pregunta del día');

@@ -8,6 +8,7 @@ const R = require('./recuperacion');
 const C = require('./corrales');
 const MSG = require('./mensajes');
 const D = require('./descanso');
+const B = require('./buzon');
 const { esReservado } = require('./reservados');
 
 // Cada cambio dice qué registro tocar. El depósito de archivo los ignora y
@@ -531,6 +532,7 @@ class Almacen {
       for (const r of pio.repios) {
         if (r.usuario === viejo) { r.usuario = nuevo; tocado = true; }
       }
+      if (pio.buzon && pio.buzon.de === viejo) { pio.buzon.de = nuevo; tocado = true; }
       if (tocado) cambios.push(cambioPio(pio));
     }
 
@@ -567,6 +569,15 @@ class Almacen {
         otro.bloqueados[nuevo] = otro.bloqueados[viejo];
         delete otro.bloqueados[viejo];
         tocado = true;
+      }
+      // Ni del buzón: sus preguntas, su cupo del día y su bloqueo lo siguen.
+      if (otro.buzon) {
+        const b = B.deCuenta(otro);
+        for (const p of b.preguntas) if (p.de === viejo) { p.de = nuevo; tocado = true; }
+        for (const mapa of [b.envios, b.bloqueados]) {
+          if (mapa[viejo] !== undefined) { mapa[nuevo] = mapa[viejo]; delete mapa[viejo]; tocado = true; }
+        }
+        otro.buzon = b;
       }
       if (tocado && otro !== cuenta) cambios.push(cambioUsuario(otro));
     }
@@ -636,6 +647,12 @@ class Almacen {
     // de comprobarlo desde acá: es un guiño, como los cien justos, no un control.
     // Sin texto no hay nada que se haya escrito.
     if (extra.aMano && limpio) nuevo.aMano = true;
+    // La pregunta del buzón que este pío responde. Se guarda con quién la hizo
+    // aunque sea anónima —para moderar—, pero eso nunca sale en el pío.
+    if (extra.buzon) {
+      const { id, de, anonima, texto: preguntaTexto, creado } = extra.buzon;
+      nuevo.buzon = { id, de, anonima: !!anonima, texto: preguntaTexto, creado };
+    }
     // Los píos de antes no tienen `nace`: nacieron hace rato.
     if (this.incubacion > 0) nuevo.nace = nuevo.creado + this.incubacion;
     // Lo que se contesta a una bomba explota con ella, lo pida o no: si no, la
@@ -665,7 +682,16 @@ class Almacen {
     this.datos.pios = this.datos.pios.filter((p) => p.id !== id);
     const huerfanos = this.datos.notificaciones.filter((n) => n.pio === id);
     this.datos.notificaciones = this.datos.notificaciones.filter((n) => n.pio !== id);
-    await this.guardar([baja('pio_pios', id), ...huerfanos.map((n) => baja('pio_avisos', n.id))]);
+    const cambios = [baja('pio_pios', id), ...huerfanos.map((n) => baja('pio_avisos', n.id))];
+    // Deshacer la respuesta a una pregunta del buzón la devuelve al buzón: se
+    // deshace para corregir, no para perder la pregunta.
+    if (pio.buzon && this.esHuevo(pio)) {
+      const buzon = B.deCuenta(cuenta);
+      buzon.preguntas = [...buzon.preguntas, pio.buzon].sort((a, b) => a.creado - b.creado);
+      cuenta.buzon = buzon;
+      cambios.push(cambioUsuario(cuenta));
+    }
+    await this.guardar(cambios);
     return true;
   }
 
@@ -744,7 +770,18 @@ class Almacen {
       const j = (otro.silenciados || []).indexOf(quien);
       if (j !== -1) { otro.silenciados.splice(j, 1); tocado = true; }
       if (otro.bloqueados && otro.bloqueados[quien]) { delete otro.bloqueados[quien]; tocado = true; }
+      if (otro.buzon) {
+        const suyas = this.sacarPreguntas(otro, (p) => p.de === quien);
+        if (suyas.idas.length) { cambios.push(...suyas.cambios.filter((c) => c.tabla === 'pio_avisos')); tocado = true; }
+        const b = B.deCuenta(otro);
+        for (const mapa of [b.envios, b.bloqueados]) if (mapa[quien] !== undefined) { delete mapa[quien]; tocado = true; }
+        otro.buzon = b;
+      }
       if (tocado) cambios.push(cambioUsuario(otro));
+    }
+    // Las respuestas que siguen publicadas pierden a quien preguntó.
+    for (const p of this.datos.pios) {
+      if (p.buzon && p.buzon.de === quien) { p.buzon.de = null; cambios.push(cambioPio(p)); }
     }
     const k = (this.datos.ocultos || []).indexOf(quien);
     if (k !== -1) {
@@ -898,6 +935,133 @@ class Almacen {
 
   piosDe(corral) {
     return this.datos.pios.filter((p) => p.corral === corral).length;
+  }
+
+  // --- buzón ---------------------------------------------------------------
+
+  async ajustarBuzon(cuenta, pedido) {
+    const buzon = B.deCuenta(cuenta);
+    for (const campo of ['abierto', 'anonimas']) {
+      if (pedido[campo] === undefined) continue;
+      if (typeof pedido[campo] !== 'boolean') throw new ErrorPio(400, B.mensaje('buzon.malo'), 'buzon.malo');
+      buzon[campo] = pedido[campo];
+    }
+    cuenta.buzon = buzon;
+    await this.guardar([cambioUsuario(cuenta)]);
+    return buzon;
+  }
+
+  // Devuelve siempre lo mismo, entre o no la pregunta: a quien está bloqueado o
+  // silenciado no se le avisa que lo está, así que su pregunta se tira callada.
+  async preguntar(cuenta, destinoUsuario, texto, anonima) {
+    const destino = this.buscarUsuario(destinoUsuario);
+    if (!destino) throw new ErrorPio(404, 'No existe ese pollito.', 'pollito.noexiste');
+    if (destino.usuario === cuenta.usuario) throw new ErrorPio(400, B.mensaje('buzon.propio'), 'buzon.propio');
+    const ahora = Date.now();
+    const buzon = B.podar(B.deCuenta(destino), ahora);
+    if (!buzon.abierto) throw new ErrorPio(403, B.mensaje('buzon.cerrado'), 'buzon.cerrado');
+    if (anonima && !buzon.anonimas) throw new ErrorPio(400, B.mensaje('buzon.sinAnonimas'), 'buzon.sinAnonimas');
+    const error = M.validarPio(texto);
+    if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
+    const enviadas = buzon.envios[cuenta.usuario] || [];
+    if (enviadas.length >= B.POR_DIA) throw new ErrorPio(429, B.mensaje('buzon.muchas'), 'buzon.muchas');
+    if (buzon.preguntas.length >= B.PENDIENTES) throw new ErrorPio(429, B.mensaje('buzon.lleno'), 'buzon.lleno');
+
+    buzon.envios[cuenta.usuario] = [...enviadas, ahora];
+    destino.buzon = buzon;
+    const cambios = [cambioUsuario(destino)];
+
+    const callado = buzon.bloqueados[cuenta.usuario]
+      || this.bloqueoVigente(destino, cuenta.usuario, ahora)
+      || (destino.silenciados || []).includes(cuenta.usuario)
+      || (this.datos.ocultos || []).includes(cuenta.usuario);
+    if (!callado) {
+      const pregunta = {
+        id: this.proximoId('b'),
+        de: cuenta.usuario,
+        anonima: !!anonima,
+        texto: M.normalizarTexto(texto),
+        creado: ahora,
+      };
+      buzon.preguntas.push(pregunta);
+      // El aviso de una anónima no dice de quién: ni en la campana ni en el teléfono.
+      const aviso = {
+        id: this.proximoId('n'),
+        para: destino.usuario,
+        de: pregunta.anonima ? null : cuenta.usuario,
+        tipo: 'buzon',
+        pio: null,
+        pregunta: pregunta.id,
+        creado: ahora,
+        leida: false,
+      };
+      this.datos.notificaciones.push(aviso);
+      if (typeof this.alAvisar === 'function') this.alAvisar(aviso);
+      cambios.push(cambioAviso(aviso));
+    }
+    cambios.push(cambioSecuencia(this.datos.secuencia));
+    await this.guardar(cambios);
+    return true;
+  }
+
+  // Saca preguntas del buzón, con sus avisos, y devuelve los cambios. No guarda.
+  sacarPreguntas(cuenta, cuales) {
+    const buzon = B.deCuenta(cuenta);
+    const idas = buzon.preguntas.filter(cuales);
+    if (!idas.length) return { idas, cambios: [] };
+    const ids = new Set(idas.map((p) => p.id));
+    buzon.preguntas = buzon.preguntas.filter((p) => !ids.has(p.id));
+    cuenta.buzon = buzon;
+    const avisos = this.datos.notificaciones.filter((n) => n.pregunta && ids.has(n.pregunta));
+    this.datos.notificaciones = this.datos.notificaciones.filter((n) => !(n.pregunta && ids.has(n.pregunta)));
+    return { idas, cambios: [cambioUsuario(cuenta), ...avisos.map((n) => baja('pio_avisos', n.id))] };
+  }
+
+  preguntaDe(cuenta, id) {
+    const pregunta = B.deCuenta(cuenta).preguntas.find((p) => p.id === id);
+    if (!pregunta) throw new ErrorPio(404, B.mensaje('buzon.noesta'), 'buzon.noesta');
+    return pregunta;
+  }
+
+  // Borrar sin responder. Quien preguntó no se entera.
+  async borrarPregunta(cuenta, id) {
+    this.preguntaDe(cuenta, id);
+    const { cambios } = this.sacarPreguntas(cuenta, (p) => p.id === id);
+    await this.guardar(cambios);
+  }
+
+  // Bloquea a quien preguntó sólo en el buzón, sin decir quién es, y se lleva
+  // todas sus preguntas pendientes.
+  async bloquearDesdePregunta(cuenta, id, minutos) {
+    const pregunta = this.preguntaDe(cuenta, id);
+    const cuanto = Number(minutos);
+    if (!DURACIONES_DE_BLOQUEO.includes(cuanto)) {
+      throw new ErrorPio(400, 'Ese plazo de bloqueo no está entre los que se ofrecen.', 'bloqueo.plazo');
+    }
+    const hasta = Date.now() + cuanto * 60 * 1000;
+    const { cambios } = this.sacarPreguntas(cuenta, (p) => p.de === pregunta.de);
+    const buzon = B.podar(B.deCuenta(cuenta), Date.now());
+    buzon.bloqueados[pregunta.de] = hasta;
+    cuenta.buzon = buzon;
+    await this.guardar([...cambios, cambioUsuario(cuenta)]);
+    return hasta;
+  }
+
+  // La respuesta es un pío con la pregunta colgada. Quien preguntó recibe
+  // aviso, aunque haya sido anónima: la respuesta ya es pública.
+  async responderPregunta(cuenta, id, texto, extra = {}) {
+    const pregunta = this.preguntaDe(cuenta, id);
+    const error = M.validarPio(texto);
+    if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
+
+    const { cambios } = this.sacarPreguntas(cuenta, (p) => p.id === id);
+    const pio = await this.publicar(cuenta, texto, null, extra.adjunto || null, null, {
+      bomba: extra.bomba, aMano: extra.aMano, buzon: pregunta,
+    });
+    const aviso = this.anotarAviso(pregunta.de, cuenta.usuario, 'buzonRespuesta', pio.id);
+    if (aviso) cambios.push(cambioAviso(aviso), cambioSecuencia(this.datos.secuencia));
+    await this.guardar(cambios);
+    return pio;
   }
 
   // --- avisos -------------------------------------------------------------

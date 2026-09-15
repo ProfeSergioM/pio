@@ -26,9 +26,9 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 676 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 719 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
-persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio,
+persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio, buzón,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
 tokens de Google. Ninguna sale a internet: los servicios externos se inyectan
 falseados.
@@ -108,6 +108,7 @@ queda apagada y lo dice.
 | [`publico/idiomas.js`](publico/idiomas.js) | Español e inglés, en un solo archivo |
 | [`src/reservados.js`](src/reservados.js) | Nombres de usuario que nadie puede tomar |
 | [`src/descanso.js`](src/descanso.js) | La granja duerme: horario de silencio y tope de píos |
+| [`src/buzon.js`](src/buzon.js) | Las reglas del buzón de preguntas |
 | [`pruebas/`](pruebas) | La batería de pruebas |
 
 ## Decisiones que vale la pena conocer
@@ -152,6 +153,35 @@ cuenta ([`src/descanso.js`](src/descanso.js)):
   Al llegar, el diálogo de piar dice "Hoy ya piaste 5 veces, tu tope. ¿Seguimos
   mañana?" y el botón pasa a "Piar igual". No se prohíbe nada; el servidor ni
   siquiera lo mira. Lo que se deshace mientras es huevo no cuenta.
+
+**📮 El buzón.** Cada perfil puede abrir uno para recibir preguntas de
+cualquier pollito con sesión ([`src/buzon.js`](src/buzon.js)). Quien lo abre
+elige si acepta anónimas. Las preguntas son privadas: sólo las ve quien las
+recibe, en `#/buzon`, y si responde sale un pío con la pregunta arriba. Lo
+anónimo es anónimo en todos lados: en el buzón, en el aviso, en la notificación
+del teléfono y en el pío publicado. Quien preguntó recibe aviso de la respuesta.
+
+Cómo se modera:
+
+- **Viene cerrado.** Nadie recibe preguntas sin haberlo pedido.
+- **Tres preguntas por persona, por buzón, por día.** Borrar o responder no
+  devuelve el cupo.
+- **Desde cada pregunta se borra o se bloquea.** El bloqueo es sólo para el
+  buzón, por los mismos plazos que el del perfil, y se lleva todas las
+  preguntas pendientes de esa persona. Va aparte del bloqueo del perfil a
+  propósito: si fuera el mismo, el perfil de quien preguntó anónimo diría
+  "bloqueado hasta…" y lo delataría.
+- **A quien está bloqueado o silenciado no se le avisa.** Su pregunta responde
+  lo mismo que cualquier otra y se tira callada.
+- **Quien administra ve el autor real.** En la solapa Buzones del panel, las
+  pendientes de todo el sitio con quién las hizo, y en Píos, quién hizo la
+  anónima que se respondió. El anonimato es entre quien pregunta y quien
+  responde, no un escudo para acosar.
+
+Las preguntas viven dentro de la cuenta de quien las recibe, así que no hace
+falta otra tabla en Supabase. Deshacer la respuesta mientras es huevo devuelve
+la pregunta al buzón; cambiar de nombre lleva consigo las preguntas y el cupo,
+y borrar una cuenta se lleva sus preguntas pendientes.
 
 **Bloquear es suave y por tiempo.** Desde el perfil de alguien se elige una hora,
 un día, una semana o un mes. Mientras dura, sus píos se ven borrosos —con un
@@ -445,6 +475,13 @@ POST   /api/notificaciones/leidas  marca todo leído ->     {ok, sinLeer}
 GET    /api/usuarios/:usuario                      ->     {perfil}
 POST   /api/usuarios/:usuario/seguir   alterna     ->     {perfil}
 GET    /api/buscar?q=                              ->     {pios, usuarios}
+
+POST   /api/usuarios/:usuario/buzon {texto, anonima?} -> 201 {ok}
+GET    /api/buzon        el propio, con preguntas   ->     {buzon}
+PATCH  /api/buzon        {abierto?, anonimas?}      ->     {buzon}
+POST   /api/buzon/:id/responder {texto, bomba?, aMano?} -> 201 {pio}
+POST   /api/buzon/:id/bloquear  {minutos}           ->     {hasta}
+DELETE /api/buzon/:id    borra sin responder        ->     {ok}
 GET    /api/tendencias   etiquetas de 7 días       ->     {tendencias}
 
 GET    /api/admin/resumen      cuántos hay de cada cosa  ->  {resumen}
@@ -453,6 +490,8 @@ GET    /api/admin/pios         los últimos 50, corrales incluidos -> {pios}
 DELETE /api/admin/usuarios/:u  borra la cuenta y lo suyo ->  {borrado}
 DELETE /api/admin/pios/:id     borra cualquier pío       ->  {borrado}
 DELETE /api/admin/corrales/:n  borra el corral, no sus píos -> {borrado}
+GET    /api/admin/buzones      las pendientes, con autor real -> {preguntas, total}
+DELETE /api/admin/buzones/:id  borra una pregunta        ->  {borrado}
 GET    /api/admin/emojis       los guardados y los de fábrica -> {emojis, enUso, defecto}
 PUT    /api/admin/emojis       {emojis}                  ->  {emojis, enUso}
 ```

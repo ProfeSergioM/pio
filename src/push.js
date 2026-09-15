@@ -140,6 +140,8 @@ const TEXTOS = {
     seguir: (u) => `@${u} te empezó a seguir`,
     foto: (u) => `@${u} te etiquetó en una foto`,
     otro: (u) => `@${u} anduvo por aquí`,
+    buzon: (u) => (u ? `📮 @${u} te dejó una pregunta` : '📮 Te dejaron una pregunta anónima'),
+    buzonRespuesta: (u) => `📮 @${u} respondió tu pregunta`,
   },
   en: {
     mencion: (u) => `@${u} mentioned you`,
@@ -149,16 +151,18 @@ const TEXTOS = {
     seguir: (u) => `@${u} started following you`,
     foto: (u) => `@${u} tagged you in a photo`,
     otro: (u) => `@${u} was around`,
+    buzon: (u) => (u ? `📮 @${u} left you a question` : '📮 You got an anonymous question'),
+    buzonRespuesta: (u) => `📮 @${u} answered your question`,
   },
 };
 
-function cargaDelAviso(aviso, de, pio, idioma) {
+function cargaDelAviso(aviso, de, pio, idioma, pregunta = null) {
   const textos = TEXTOS[idioma] || TEXTOS.es;
   const titulo = (textos[aviso.tipo] || textos.otro)(de ? de.usuario : aviso.de);
   return {
     titulo,
-    cuerpo: pio && pio.texto ? pio.texto : '',
-    url: pio ? `/#/p/${pio.id}` : `/#/u/${de ? de.usuario : aviso.de}`,
+    cuerpo: pregunta ? pregunta.texto : (pio && pio.texto ? pio.texto : ''),
+    url: pregunta ? '/#/buzon' : (pio ? `/#/p/${pio.id}` : `/#/u/${de ? de.usuario : aviso.de}`),
     // Los me gusta y repíos de un mismo pío se reemplazan entre sí: diez
     // corazones no son diez notificaciones.
     tag: pio && (aviso.tipo === 'megusta' || aviso.tipo === 'repio') ? `${aviso.tipo}-${pio.id}` : `aviso-${aviso.id}`,
@@ -223,6 +227,11 @@ function crearPush(almacen, opciones = {}) {
     const pio = aviso.pio ? almacen.buscarPio(aviso.pio) : null;
     if (pio && almacen.esHuevo(pio)) { programarEntrega(aviso, pio.nace - Date.now()); return; }
     if (aviso.pio && (!pio || almacen.explotado(pio))) return;
+    // Una pregunta del buzón que ya se borró o se respondió no suena.
+    const pregunta = aviso.pregunta
+      ? ((cuenta.buzon && cuenta.buzon.preguntas) || []).find((p) => p.id === aviso.pregunta)
+      : null;
+    if (aviso.pregunta && !pregunta) return;
     if (almacen.bloqueoVigente(cuenta, aviso.de)) return;
     // La granja duerme: de noche el aviso queda en la campana y el teléfono no
     // suena. No se guarda para la mañana: a las siete nadie quiere diez avisos
@@ -234,7 +243,7 @@ function crearPush(almacen, opciones = {}) {
     const vencidas = [];
     await Promise.all(suscripciones.map(async (s) => {
       try {
-        const estado = await mandar(s, cargaDelAviso(aviso, de, pio, s.idioma));
+        const estado = await mandar(s, cargaDelAviso(aviso, de, pio, s.idioma, pregunta));
         // 404 y 410: el navegador se dio de baja. Seguir mandándole es gastar.
         if (estado === 404 || estado === 410) vencidas.push(s.endpoint);
       } catch (err) {

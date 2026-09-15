@@ -14,6 +14,7 @@ const { crearLatido } = require('./latido');
 const PUSH = require('./push');
 const PR = require('./preguntas');
 const D = require('./descanso');
+const B = require('./buzon');
 
 // Dónde vive el sitio si nadie dice otra cosa. Pío nació en Chile.
 const ZONA_POR_DEFECTO = 'America/Santiago';
@@ -385,6 +386,50 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       await almacen.alternarSilencio(yo, id);
       return { datos: { perfil: perfil(almacen, cuenta, yo) } };
     }
+    // Dejar una pregunta en su buzón. La respuesta es la misma entre o no,
+    // para no delatar un bloqueo.
+    if (metodo === 'POST' && accion === 'buzon') {
+      exigir(yo);
+      await almacen.preguntar(yo, id, cuerpo.texto, cuerpo.anonima === true);
+      return { codigo: 201, datos: { ok: true } };
+    }
+  }
+
+  // --- el buzón propio ------------------------------------------------------
+
+  if (recurso === 'buzon') {
+    exigir(yo);
+    if (metodo === 'GET' && !id) {
+      const b = B.deCuenta(yo);
+      return {
+        datos: {
+          buzon: {
+            abierto: b.abierto,
+            anonimas: b.anonimas,
+            preguntas: b.preguntas.slice().sort((x, y) => y.creado - x.creado)
+              .map((p) => B.publica(p, (u) => almacen.buscarUsuario(u))),
+          },
+        },
+      };
+    }
+    if (metodo === 'PATCH' && !id) {
+      const b = await almacen.ajustarBuzon(yo, cuerpo);
+      return { datos: { buzon: { abierto: b.abierto, anonimas: b.anonimas } } };
+    }
+    if (metodo === 'DELETE' && id) {
+      await almacen.borrarPregunta(yo, id);
+      return { datos: { ok: true } };
+    }
+    if (metodo === 'POST' && id && accion === 'bloquear') {
+      return { datos: { hasta: await almacen.bloquearDesdePregunta(yo, id, cuerpo.minutos) } };
+    }
+    if (metodo === 'POST' && id && accion === 'responder') {
+      const pio = await almacen.responderPregunta(yo, id, cuerpo.texto, {
+        bomba: cuerpo.bomba === true, aMano: cuerpo.aMano === true,
+        adjunto: adjuntoConEtiquetas(almacen, cuerpo.adjunto),
+      });
+      return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
+    }
   }
 
   // --- imagenes -----------------------------------------------------------
@@ -485,11 +530,33 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       const pagina = coinciden.slice(0, PAGINA);
       return {
         datos: {
-          pios: pagina.map((p) => serializar(almacen, p, yo)),
+          // Quien administra ve quién hizo una pregunta anónima: el anonimato
+          // es entre quien pregunta y quien responde, no un escudo para acosar.
+          pios: pagina.map((p) => Object.assign(serializar(almacen, p, yo),
+            p.buzon ? { buzonDe: p.buzon.de } : {})),
           hayMas: coinciden.length > pagina.length,
           total: antes ? undefined : coinciden.length,
         },
       };
+    }
+
+    // Las preguntas que esperan en todos los buzones, con quién las hizo. Son
+    // privadas para el resto del sitio, pero lo que no se ve no se modera.
+    if (metodo === 'GET' && id === 'buzones') {
+      const preguntas = [];
+      for (const u of almacen.datos.usuarios) {
+        for (const p of B.deCuenta(u).preguntas) {
+          preguntas.push({ id: p.id, para: u.usuario, de: p.de, anonima: !!p.anonima, texto: p.texto, creado: p.creado });
+        }
+      }
+      preguntas.sort((a, b) => b.creado - a.creado);
+      return { datos: { preguntas: preguntas.slice(0, PAGINA), total: preguntas.length } };
+    }
+    if (metodo === 'DELETE' && id === 'buzones' && accion) {
+      const duena = almacen.datos.usuarios.find((u) => B.deCuenta(u).preguntas.some((p) => p.id === accion));
+      if (!duena) throw new ErrorPio(404, B.mensaje('buzon.noesta'), 'buzon.noesta');
+      await almacen.borrarPregunta(duena, accion);
+      return { datos: { borrado: accion } };
     }
 
     if (metodo === 'POST' && id === 'ocultos' && accion) {
@@ -827,12 +894,29 @@ function serializar(almacen, pio, yo) {
     bomba: !!pio.explota,
     explotaEn: pio.explota ? Math.max(0, pio.explota - Date.now()) : 0,
     aMano: !!pio.aMano,
+    // La pregunta del buzón que responde. De una anónima no sale quién la hizo.
+    buzon: pio.buzon ? preguntaDelPio(almacen, pio.buzon) : null,
     adjunto: adjuntoPublico(almacen, pio.adjunto),
     corral: pio.corral || null,
     pregunta: pio.pregunta || null,
     // Sólo le importa a quien bloqueó: con esto la tarjeta sale borrosa.
     bloqueadoHasta: almacen.bloqueoVigente(yo, pio.autor),
     mio: !!yo && pio.autor === yo.usuario,
+  };
+}
+
+function textoDePregunta(cuenta, id) {
+  const p = B.deCuenta(cuenta).preguntas.find((x) => x.id === id);
+  return p ? p.texto : null;
+}
+
+function preguntaDelPio(almacen, pregunta) {
+  if (pregunta.anonima || !pregunta.de) return { texto: pregunta.texto, anonima: !!pregunta.anonima, de: null };
+  const quien = almacen.buscarUsuario(pregunta.de);
+  return {
+    texto: pregunta.texto,
+    anonima: false,
+    de: quien ? { usuario: quien.usuario, nombre: quien.nombre } : { usuario: pregunta.de, nombre: pregunta.de },
   };
 }
 
@@ -846,10 +930,12 @@ function serializarAviso(almacen, aviso, yo) {
     tipo: aviso.tipo,
     creado: aviso.creado,
     leida: aviso.leida,
+    // Sin "de" es una pregunta anónima del buzón.
     de: de
       ? { usuario: de.usuario, nombre: de.nombre, avatar: de.avatar || null }
-      : { usuario: aviso.de, nombre: aviso.de },
+      : (aviso.de ? { usuario: aviso.de, nombre: aviso.de } : null),
     pio: pio ? serializar(almacen, pio, yo) : null,
+    pregunta: aviso.pregunta ? textoDePregunta(yo, aviso.pregunta) : undefined,
   };
 }
 
@@ -908,6 +994,12 @@ function perfil(almacen, cuenta, yo) {
       ? D.piosDeHoy(almacen.datos.pios, cuenta.usuario, D.deCuenta(cuenta).zona || almacen.zonaDelSitio)
       : undefined,
     loSigo: !!yo && yo.siguiendo.includes(cuenta.usuario),
+    // Si el buzón está abierto lo ve cualquiera; cuántas esperan, sólo quien lo tiene.
+    buzon: {
+      abierto: B.deCuenta(cuenta).abierto,
+      anonimas: B.deCuenta(cuenta).anonimas,
+      pendientes: propio ? B.deCuenta(cuenta).preguntas.length : undefined,
+    },
     loSilencio: silenciado(yo, cuenta.usuario),
     bloqueadoHasta: almacen.bloqueoVigente(yo, cuenta.usuario),
     soyYo: !!yo && yo.usuario === cuenta.usuario,

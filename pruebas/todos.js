@@ -2547,6 +2547,145 @@ async function main() {
   await new Promise((listo) => conBom.close(listo));
   fs.rmSync(carpetaBom, { recursive: true, force: true });
 
+  // --- el buzón ---------------------------------------------------------------
+
+  grupo('El buzón');
+
+  const carpetaBuz = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-buz-'));
+  const conBuz = crearServidor({ datos: carpetaBuz, api: { altas: 100, admins: ['jefa'] } });
+  await new Promise((listo) => conBuz.listen(0, '127.0.0.1', listo));
+  const baseBuz = `http://127.0.0.1:${conBuz.address().port}`;
+  const pedirBuz = async (ruta, o = {}) => {
+    const r = await fetch(`${baseBuz}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceBuz = async (usuario) => (await pedirBuz('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+  const duenaT = await naceBuz('duena');
+  const curiosoT = await naceBuz('curioso');
+  const pesadoT = await naceBuz('pesado');
+  const jefaBuzT = await naceBuz('jefa');
+  const preguntarA = (token, texto, anonima) => pedirBuz('/usuarios/duena/buzon', {
+    metodo: 'POST', token, cuerpo: { texto, anonima },
+  });
+  const miBuzon = async () => (await pedirBuz('/buzon', { token: duenaT })).datos.buzon;
+
+  probar('el buzón viene cerrado', (await pedirBuz('/usuarios/duena')).datos.perfil.buzon.abierto === false);
+  probar('a un buzón cerrado no se le pregunta', (await preguntarA(curiosoT, 'hola?')).datos.clave === 'buzon.cerrado');
+  probar('abrirlo pide sesión', (await pedirBuz('/buzon', { metodo: 'PATCH', cuerpo: { abierto: true } })).estado === 401);
+  await pedirBuz('/buzon', { metodo: 'PATCH', token: duenaT, cuerpo: { abierto: true } });
+  probar('abierto, el perfil lo dice a todos', (await pedirBuz('/usuarios/duena')).datos.perfil.buzon.abierto === true);
+  probar('preguntar pide sesión', (await pedirBuz('/usuarios/duena/buzon', { metodo: 'POST', cuerpo: { texto: 'x' } })).estado === 401);
+  probar('uno no se pregunta a sí mismo', (await preguntarA(duenaT, 'yo?')).datos.clave === 'buzon.propio');
+  probar('de fábrica, sólo firmadas', (await preguntarA(curiosoT, 'secreto', true)).datos.clave === 'buzon.sinAnonimas');
+  probar('la pregunta también entra en cien', (await preguntarA(curiosoT, 'a'.repeat(101))).datos.clave === 'pio.largo');
+
+  const firmada = await preguntarA(curiosoT, '¿Cuál es tu pío favorito?');
+  probar('una pregunta firmada entra', firmada.estado === 201);
+  await pedirBuz('/buzon', { metodo: 'PATCH', token: duenaT, cuerpo: { anonimas: true } });
+  await preguntarA(curiosoT, '¿Me contestas en secreto?', true);
+  let buzonDuena = await miBuzon();
+  probar('quien lo abre ve sus preguntas', buzonDuena.preguntas.length === 2);
+  const anonimaB = buzonDuena.preguntas.find((p) => p.anonima);
+  const firmadaB = buzonDuena.preguntas.find((p) => !p.anonima);
+  probar('de la firmada ve quién', firmadaB.de.usuario === 'curioso');
+  probar('de la anónima no', anonimaB.de === null && !JSON.stringify(anonimaB).includes('curioso'));
+  probar('nadie más ve el buzón ajeno', (await pedirBuz('/buzon', { token: curiosoT })).datos.buzon.preguntas.length === 0);
+  probar('el perfil propio cuenta las pendientes', (await pedirBuz('/usuarios/duena', { token: duenaT })).datos.perfil.buzon.pendientes === 2);
+  probar('el ajeno no', (await pedirBuz('/usuarios/duena', { token: curiosoT })).datos.perfil.buzon.pendientes === undefined);
+
+  const avisosDuena = (await pedirBuz('/notificaciones', { token: duenaT })).datos.notificaciones;
+  const avisoAnonimo = avisosDuena.find((n) => n.tipo === 'buzon' && n.de === null);
+  probar('cada pregunta avisa', avisosDuena.filter((n) => n.tipo === 'buzon').length === 2);
+  probar('el aviso de la anónima no dice de quién', !!avisoAnonimo && !JSON.stringify(avisoAnonimo).includes('curioso')
+    && avisoAnonimo.pregunta === '¿Me contestas en secreto?');
+
+  // Tres por día por buzón, y borrar no devuelve el cupo.
+  await preguntarA(curiosoT, 'la tercera');
+  probar('la cuarta del día no entra', (await preguntarA(curiosoT, 'la cuarta')).datos.clave === 'buzon.muchas');
+
+  // Responder: sale un pío con la pregunta arriba.
+  const respuestaB = await pedirBuz(`/buzon/${anonimaB.id}/responder`, {
+    metodo: 'POST', token: duenaT, cuerpo: { texto: 'Te contesto a la vista de todos', aMano: true },
+  });
+  probar('responder publica un pío', respuestaB.estado === 201 && respuestaB.datos.pio.texto === 'Te contesto a la vista de todos');
+  probar('con la pregunta colgada', respuestaB.datos.pio.buzon.texto === '¿Me contestas en secreto?');
+  probar('sin decir quién preguntó', respuestaB.datos.pio.buzon.de === null);
+  const plazaBuz = await pedirBuz('/pios?tipo=plaza');
+  probar('ni en la plaza', !JSON.stringify(plazaBuz.datos.pios.find((p) => p.id === respuestaB.datos.pio.id)).includes('curioso'));
+  probar('respondida, deja el buzón', !(await miBuzon()).preguntas.some((p) => p.id === anonimaB.id));
+  probar('y se lleva su aviso', !(await pedirBuz('/notificaciones', { token: duenaT })).datos.notificaciones
+    .some((n) => n.tipo === 'buzon' && n.de === null));
+  probar('quien preguntó se entera de la respuesta', (await pedirBuz('/notificaciones', { token: curiosoT })).datos.notificaciones
+    .some((n) => n.tipo === 'buzonRespuesta' && n.pio && n.pio.id === respuestaB.datos.pio.id));
+  probar('responder una que no está da 404',
+    (await pedirBuz(`/buzon/${anonimaB.id}/responder`, { metodo: 'POST', token: duenaT, cuerpo: { texto: 'otra vez' } })).estado === 404);
+
+  const respFirmada = await pedirBuz(`/buzon/${firmadaB.id}/responder`, { metodo: 'POST', token: duenaT, cuerpo: { texto: 'El de hoy' } });
+  probar('la respuesta a una firmada dice quién preguntó', respFirmada.datos.pio.buzon.de.usuario === 'curioso');
+
+  // Borrar sin responder.
+  const terceraB = (await miBuzon()).preguntas.find((p) => p.texto === 'la tercera');
+  probar('una pregunta se borra sin responder',
+    (await pedirBuz(`/buzon/${terceraB.id}`, { metodo: 'DELETE', token: duenaT })).estado === 200 && !(await miBuzon()).preguntas.length);
+  probar('una ajena no se borra', (await pedirBuz(`/buzon/${terceraB.id}`, { metodo: 'DELETE', token: curiosoT })).estado === 404);
+
+  // Bloquear desde una anónima: no dice quién, se lleva todo lo suyo y lo que mande después se tira callado.
+  await preguntarA(pesadoT, 'molesto 1', true);
+  await preguntarA(pesadoT, 'molesto 2', true);
+  const molesta = (await miBuzon()).preguntas[0];
+  const bloqueoB = await pedirBuz(`/buzon/${molesta.id}/bloquear`, { metodo: 'POST', token: duenaT, cuerpo: { minutos: 1440 } });
+  probar('se bloquea desde la pregunta', bloqueoB.estado === 200 && bloqueoB.datos.hasta > Date.now()
+    && !JSON.stringify(bloqueoB.datos).includes('pesado'));
+  probar('y se van todas sus preguntas', (await miBuzon()).preguntas.length === 0);
+  probar('el perfil de quien preguntó no queda marcado',
+    (await pedirBuz('/usuarios/pesado', { token: duenaT })).datos.perfil.bloqueadoHasta === null);
+  const trasBloqueo = await preguntarA(pesadoT, 'molesto 3', true);
+  probar('a quien está bloqueado no se le avisa', trasBloqueo.estado === 201);
+  probar('pero su pregunta no llega', (await miBuzon()).preguntas.length === 0);
+  probar('bloquear desde una pregunta que ya no está da 404', (await pedirBuz(`/buzon/${molesta.id}/bloquear`, { metodo: 'POST', token: duenaT, cuerpo: { minutos: 3 } })).estado === 404);
+
+  // Quien administra ve el autor real.
+  const chismosaT = await naceBuz('chismosa');
+  await preguntarA(chismosaT, 'para el panel', true);
+  const panelBuz = await pedirBuz('/admin/buzones', { token: jefaBuzT });
+  probar('el panel ve las pendientes con su autor real',
+    panelBuz.datos.preguntas.some((p) => p.texto === 'para el panel' && p.de === 'chismosa' && p.para === 'duena'), JSON.stringify(panelBuz.datos));
+  probar('y nadie más entra ahí', (await pedirBuz('/admin/buzones', { token: duenaT })).estado === 403);
+  const piosPanel = await pedirBuz('/admin/pios', { token: jefaBuzT });
+  probar('el panel sabe quién hizo la anónima ya respondida',
+    piosPanel.datos.pios.some((p) => p.id === respuestaB.datos.pio.id && p.buzonDe === 'curioso'));
+  const paraPanel = panelBuz.datos.preguntas.find((p) => p.texto === 'para el panel');
+  probar('y puede borrar una pregunta',
+    (await pedirBuz(`/admin/buzones/${paraPanel.id}`, { metodo: 'DELETE', token: jefaBuzT })).estado === 200 && !(await miBuzon()).preguntas.length);
+
+  // Deshacer la respuesta —mientras es huevo— devuelve la pregunta al buzón.
+  conBuz.almacen.incubacion = 60000;
+  await pedirBuz('/usuarios/duena/buzon', { metodo: 'POST', token: jefaBuzT, cuerpo: { texto: '¿y si te arrepientes?' } });
+  const arrepentible = (await miBuzon()).preguntas[0];
+  const huevoB = await pedirBuz(`/buzon/${arrepentible.id}/responder`, { metodo: 'POST', token: duenaT, cuerpo: { texto: 'mejor no' } });
+  await pedirBuz(`/pios/${huevoB.datos.pio.id}`, { metodo: 'DELETE', token: duenaT });
+  probar('deshacer la respuesta devuelve la pregunta', (await miBuzon()).preguntas.some((p) => p.id === arrepentible.id));
+  conBuz.almacen.incubacion = 0;
+
+  // Un cambio de nombre no deja preguntas huérfanas, y borrar la cuenta se las lleva.
+  await pedirBuz('/yo', { metodo: 'PATCH', token: jefaBuzT, cuerpo: { usuario: 'jefa2' } });
+  probar('la pregunta sigue a quien se cambió el nombre',
+    conBuz.almacen.buscarUsuario('duena').buzon.preguntas.some((p) => p.de === 'jefa2'));
+  await conBuz.almacen.borrarCuenta('curioso');
+  probar('borrar una cuenta saca su nombre de las respuestas',
+    conBuz.almacen.buscarPio(respFirmada.datos.pio.id).buzon.de === null);
+  probar('y del cupo del día', !conBuz.almacen.buscarUsuario('duena').buzon.envios.curioso);
+
+  await new Promise((listo) => conBuz.close(listo));
+  fs.rmSync(carpetaBuz, { recursive: true, force: true });
+
   // --- la pregunta del día -------------------------------------------------
 
   grupo('La pregunta del día');

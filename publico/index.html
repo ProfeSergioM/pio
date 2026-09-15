@@ -175,6 +175,26 @@
   </form>
 </dialog>
 
+<dialog id="dialogo-buzon" class="dialogo">
+  <form method="dialog" class="dialogo-caja" id="forma-buzon" novalidate>
+    <div class="dialogo-cabecera">
+      <button type="button" class="icono" id="cerrar-buzon" data-t-titulo="dialogo.cerrar">✕</button>
+      <span id="buzon-titulo"></span>
+    </div>
+    <p class="respondiendo" data-t="buzon.privada"></p>
+    <textarea id="texto-buzon" maxlength="200" rows="3" data-t-ph="buzon.ph"></textarea>
+    <label class="buzon-anonima" id="fila-anonima" hidden>
+      <input type="checkbox" id="buzon-anonima">
+      <span data-t="buzon.anonima"></span>
+    </label>
+    <p id="error-buzon" class="error" role="alert" hidden></p>
+    <div class="dialogo-pie">
+      <span class="chico" id="restantes-buzon">100</span>
+      <button class="boton principal" type="submit" id="enviar-buzon" data-t="buzon.enviar" disabled></button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dialogo-corral" class="dialogo">
   <form method="dialog" class="dialogo-caja" id="forma-corral" novalidate>
     <div class="dialogo-cabecera">

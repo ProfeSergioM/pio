@@ -442,6 +442,7 @@ async function pintar() {
     else if (vista === 'avisos') await vistaAvisos();
     else if (vista === 'admin') await vistaAdmin(params.get('ver'));
     else if (vista === 'pregunta') await vistaPregunta(argumento);
+    else if (vista === 'buzon') await vistaBuzon();
     else if (vista === 'corrales') await vistaCorrales();
     else if (vista === 'c') await vistaCorral(argumento, params.get('ver'));
     else await vistaLinea('nido');
@@ -641,10 +642,12 @@ async function vistaPerfil(usuario, solapa) {
   const botonRelacion = perfil.soyYo
     ? `<div class="perfil-botones">
          <button class="boton" data-editar>${escapar(T('perfil.editar'))}</button>
+         <a class="boton" href="#/buzon">📮 ${escapar(T('buzon.boton'))}${perfil.buzon.pendientes ? ` <b>${perfil.buzon.pendientes}</b>` : ''}</a>
          <button class="boton" data-clave>${escapar(T('perfil.clave'))}</button>
          <button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>
        </div>`
     : `<div class="perfil-botones">
+         ${perfil.buzon.abierto ? `<button class="boton fantasma" data-preguntar>📮 ${escapar(T('buzon.preguntar'))}</button>` : ''}
          <button class="boton fantasma" data-bloquear="${escapar(perfil.usuario)}"
                  data-hasta="${perfil.bloqueadoHasta || ''}">
            ⛔ ${escapar(perfil.bloqueadoHasta ? T('bloqueo.hasta', { fecha: fechaBloqueo(perfil.bloqueadoHasta) }) : T('bloqueo.boton'))}
@@ -702,6 +705,165 @@ async function vistaPerfil(usuario, solapa) {
   if (editar) editar.addEventListener('click', abrirPerfil);
   const clave = $('#contenido').querySelector('[data-clave]');
   if (clave) clave.addEventListener('click', abrirClave);
+  const preguntar = $('#contenido').querySelector('[data-preguntar]');
+  if (preguntar) preguntar.addEventListener('click', () => abrirPreguntar(perfil));
+}
+
+// --- el buzón ---------------------------------------------------------------
+
+let buzonDestino = null;
+const dialogoBuzon = $('#dialogo-buzon');
+
+function abrirPreguntar(perfil) {
+  buzonDestino = perfil;
+  $('#buzon-titulo').textContent = T('buzon.preguntarA', { usuario: perfil.usuario });
+  $('#texto-buzon').value = '';
+  $('#buzon-anonima').checked = false;
+  $('#fila-anonima').hidden = !perfil.buzon.anonimas;
+  $('#error-buzon').hidden = true;
+  medirPregunta();
+  dialogoBuzon.showModal();
+  $('#texto-buzon').focus();
+}
+
+function medirPregunta() {
+  const usados = largo($('#texto-buzon').value);
+  const cuenta = $('#restantes-buzon');
+  cuenta.textContent = LIMITE - usados;
+  cuenta.classList.toggle('error', usados > LIMITE);
+  $('#enviar-buzon').disabled = !$('#texto-buzon').value.trim() || usados > LIMITE;
+}
+
+$('#texto-buzon').addEventListener('input', medirPregunta);
+$('#cerrar-buzon').addEventListener('click', () => dialogoBuzon.close());
+$('#forma-buzon').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const error = $('#error-buzon');
+  error.hidden = true;
+  try {
+    await api(`/usuarios/${encodeURIComponent(buzonDestino.usuario)}/buzon`, {
+      metodo: 'POST',
+      cuerpo: { texto: $('#texto-buzon').value, anonima: $('#buzon-anonima').checked },
+    });
+    dialogoBuzon.close();
+    avisar(T('buzon.enviada'));
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  }
+});
+
+function tarjetaPregunta(p) {
+  const quien = p.de
+    ? `<a href="#/u/${escapar(p.de.usuario)}"><b>${escapar(p.de.nombre)}</b></a> <span class="pio-usuario">@${escapar(p.de.usuario)}</span>`
+    : `<b>🎭 ${escapar(T('buzon.anonimo'))}</b>`;
+  return `
+    <div class="pregunta-buzon-fila" data-pregunta="${escapar(p.id)}">
+      <div class="aviso-linea">${quien} <span class="pio-fecha">· ${hace(p.creado)}</span></div>
+      <p class="pregunta-buzon-texto">${escapar(p.texto)}</p>
+      <div class="pregunta-buzon-acciones">
+        <button class="boton principal chico" type="button" data-responder-buzon>${escapar(T('buzon.responder'))}</button>
+        <button class="boton fantasma chico" type="button" data-borrar-buzon>${escapar(T('buzon.borrar'))}</button>
+        <button class="boton fantasma chico" type="button" data-bloquear-buzon>⛔ ${escapar(T('bloqueo.boton'))}</button>
+      </div>
+    </div>`;
+}
+
+let preguntasEnPantalla = [];
+
+async function vistaBuzon() {
+  const { buzon } = await api('/buzon');
+  preguntasEnPantalla = buzon.preguntas;
+  cabecera(T('buzon.titulo'), T('buzon.sub'));
+  $('#contenido').innerHTML = `
+    <div class="descanso buzon-ajustes">
+      <label class="descanso-fila">
+        <input type="checkbox" data-ajuste-buzon="abierto" ${buzon.abierto ? 'checked' : ''}>
+        <span>${escapar(T('buzon.abierto'))}</span>
+      </label>
+      <label class="descanso-fila">
+        <input type="checkbox" data-ajuste-buzon="anonimas" ${buzon.anonimas ? 'checked' : ''} ${buzon.abierto ? '' : 'disabled'}>
+        <span>${escapar(T('buzon.permitirAnonimas'))}</span>
+      </label>
+      <p class="descanso-explica">${escapar(T('buzon.explica'))}</p>
+    </div>
+    ${buzon.preguntas.length
+      ? buzon.preguntas.map(tarjetaPregunta).join('')
+      : `<div class="vacio"><span class="emoji">📮</span>${escapar(T(buzon.abierto ? 'buzon.vacio' : 'buzon.cerradoVacio'))}</div>`}`;
+
+  $('#contenido').querySelector('.buzon-ajustes').addEventListener('change', async (ev) => {
+    const campo = ev.target.dataset.ajusteBuzon;
+    if (!campo) return;
+    try {
+      await api('/buzon', { metodo: 'PATCH', cuerpo: { [campo]: ev.target.checked } });
+      avisar(T(campo === 'abierto' ? (ev.target.checked ? 'buzon.abrio' : 'buzon.cerro') : 'descanso.guardado'));
+      await vistaBuzon();
+    } catch (err) {
+      avisar(err.message);
+    }
+  });
+}
+
+document.addEventListener('click', async (ev) => {
+  const fila = ev.target.closest('[data-pregunta]');
+  if (!fila || !$('#contenido').contains(fila)) return;
+  const id = fila.dataset.pregunta;
+  const pregunta = preguntasEnPantalla.find((p) => p.id === id);
+  if (!pregunta) return;
+
+  if (ev.target.closest('[data-responder-buzon]')) {
+    abrirDialogo(null, null, pregunta);
+  } else if (ev.target.closest('[data-borrar-buzon]')) {
+    try {
+      await api(`/buzon/${encodeURIComponent(id)}`, { metodo: 'DELETE' });
+      await cerrarDeAPoco(fila);
+      avisar(T('buzon.borrada'));
+    } catch (err) {
+      avisar(err.message);
+    }
+  } else if (ev.target.closest('[data-bloquear-buzon]')) {
+    abrirMenuBloqueoBuzon(ev.target.closest('[data-bloquear-buzon]'), id);
+  }
+});
+
+// El mismo menú de plazos que el bloqueo del perfil, pero sólo para el buzón:
+// no dice a quién se bloquea, y se lleva todas sus preguntas.
+function abrirMenuBloqueoBuzon(boton, id) {
+  cerrarMenuBloqueo();
+  menuBloqueo = document.createElement('div');
+  menuBloqueo.className = 'menu-compartir menu-bloqueo';
+  menuBloqueo.setAttribute('role', 'menu');
+  menuBloqueo.innerHTML = `
+    <p class="menu-titulo">${escapar(T('bloqueo.cuanto'))}</p>
+    ${PLAZOS_DE_BLOQUEO.map(([min, clave]) => `<button role="menuitem" type="button" data-plazo="${min}">${escapar(T(clave))}</button>`).join('')}
+    <p class="menu-pie">${escapar(T('buzon.bloqueoExplica'))}</p>`;
+  document.body.appendChild(menuBloqueo);
+  const r = boton.getBoundingClientRect();
+  const ancho = menuBloqueo.offsetWidth;
+  const maximo = window.scrollX + document.documentElement.clientWidth - ancho - 8;
+  menuBloqueo.style.top = `${window.scrollY + r.bottom + 4}px`;
+  menuBloqueo.style.left = `${Math.max(8, Math.min(window.scrollX + r.left, maximo))}px`;
+  menuBloqueo.addEventListener('click', async (ev) => {
+    const opcion = ev.target.closest('[data-plazo]');
+    if (!opcion) return;
+    cerrarMenuBloqueo();
+    try {
+      const { hasta } = await api(`/buzon/${encodeURIComponent(id)}/bloquear`, { metodo: 'POST', cuerpo: { minutos: Number(opcion.dataset.plazo) } });
+      avisar(T('buzon.bloqueado', { fecha: fechaBloqueo(hasta) }));
+      await vistaBuzon();
+    } catch (err) {
+      avisar(err.message);
+    }
+  });
+}
+
+// En la tarjeta del pío que responde, la pregunta va arriba del texto.
+function preguntaDelPio(pio) {
+  if (!pio.buzon) return '';
+  const quien = pio.buzon.de
+    ? T('buzon.preguntoFirmada', { usuario: pio.buzon.de.usuario })
+    : T('buzon.preguntoAnonima');
+  return `<blockquote class="pregunta-en-pio"><span>📮 ${escapar(quien)}</span>${escapar(pio.buzon.texto)}</blockquote>`;
 }
 
 // Qué ramas están plegadas, sólo mientras dura la vista. Guardarlo entre
@@ -896,7 +1058,7 @@ async function vistaHilo(id) {
 
 // --- avisos ---------------------------------------------------------------
 
-const TIPOS_DE_AVISO = ['mencion', 'respuesta', 'repio', 'megusta', 'seguir', 'foto'];
+const TIPOS_DE_AVISO = ['mencion', 'respuesta', 'repio', 'megusta', 'seguir', 'foto', 'buzon', 'buzonRespuesta'];
 
 const EMOJI_AVISO = {
   mencion: '📣',
@@ -905,6 +1067,8 @@ const EMOJI_AVISO = {
   megusta: '❤️',
   seguir: '🐣',
   foto: '📸',
+  buzon: '📮',
+  buzonRespuesta: '📮',
 };
 
 function queParece(tipo) {
@@ -1042,7 +1206,8 @@ function pintarTope() {
 
 function filaAviso(aviso) {
   // Sin pío (o si lo borraron) el aviso lleva al perfil de quien lo provocó.
-  const destino = aviso.pio ? `#/p/${aviso.pio.id}` : `#/u/${aviso.de.usuario}`;
+  // Una pregunta del buzón lleva al buzón; una anónima no tiene perfil al que ir.
+  const destino = aviso.tipo === 'buzon' ? '#/buzon' : (aviso.pio ? `#/p/${aviso.pio.id}` : `#/u/${aviso.de.usuario}`);
   // Div y no <a>: el texto citado trae sus propios enlaces de #etiqueta y
   // @mención, y una ancla adentro de otra hace que el navegador parta la fila.
   return `
@@ -1050,11 +1215,12 @@ function filaAviso(aviso) {
       <span class="aviso-icono">${EMOJI_AVISO[aviso.tipo] || '🐤'}</span>
       <div>
         <div class="aviso-linea">
-          <b>${escapar(aviso.de.nombre)}</b>
-          <span class="pio-usuario">@${escapar(aviso.de.usuario)}</span>
+          <b>${escapar(aviso.de ? aviso.de.nombre : T('buzon.anonimo'))}</b>
+          ${aviso.de ? `<span class="pio-usuario">@${escapar(aviso.de.usuario)}</span>` : ''}
           <span class="pio-fecha">· ${hace(aviso.creado)}</span>
         </div>
         <div class="aviso-que">${escapar(queParece(aviso.tipo))}</div>
+        ${aviso.pregunta ? `<p class="aviso-cita">${escapar(aviso.pregunta)}</p>` : ''}
         ${aviso.pio ? `<p class="aviso-cita">${enriquecer(aviso.pio.texto)}</p>` : ''}
       </div>
     </div>`;
@@ -1389,6 +1555,7 @@ function tarjetaPio(pio, opciones = {}) {
           ${cienJustos(pio)}
           ${accionesDePio(pio)}
         </div>
+        ${preguntaDelPio(pio)}
         ${pio.texto ? `<p class="texto">${enriquecer(pio.texto)}</p>` : ''}
         ${adjuntoDePio(pio)}
       </div>
@@ -2293,15 +2460,19 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
 const dialogo = $('#dialogo-piar');
 const areaTexto = $('#texto-pio');
 
-function abrirDialogo(respuestaA = null, pregunta = null) {
+function abrirDialogo(respuestaA = null, pregunta = null, buzon = null) {
   cerrarMenciones();
   estado.respondiendoA = respuestaA;
   estado.pregunta = respuestaA ? null : pregunta;
-  $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta' : (estado.pregunta ? 'dialogo.pregunta' : 'dialogo.nuevo'));
-  $('#dialogo-contexto').hidden = !respuestaA && !estado.pregunta;
+  // Responder una pregunta del buzón: sale un pío suelto, con la pregunta arriba.
+  estado.buzon = respuestaA || pregunta ? null : buzon;
+  $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta'
+    : (estado.pregunta ? 'dialogo.pregunta' : (estado.buzon ? 'buzon.responderTitulo' : 'dialogo.nuevo')));
+  $('#dialogo-contexto').hidden = !respuestaA && !estado.pregunta && !estado.buzon;
   $('#dialogo-contexto').textContent = respuestaA
     ? T('dialogo.contexto')
-    : (estado.pregunta ? textoPregunta(estado.pregunta) : '');
+    : (estado.pregunta ? textoPregunta(estado.pregunta)
+      : (estado.buzon ? `📮 ${estado.buzon.de ? `@${estado.buzon.de.usuario}` : T('buzon.anonimo')}: ${estado.buzon.texto}` : ''));
   areaTexto.value = '';
   adjunto = null;
   pintarAdjunto();
@@ -2540,10 +2711,21 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
       bomba: !!estado.bomba,
       aMano: !!estado.aMano,
+      buzon: estado.buzon || null,
     };
-    const { pio } = await api('/pios', {
-      metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta }),
-    });
+    const { pio } = borrador.buzon
+      ? await api(`/buzon/${encodeURIComponent(borrador.buzon.id)}/responder`, {
+        metodo: 'POST',
+        cuerpo: { texto: borrador.texto, bomba: borrador.bomba, aMano: borrador.aMano, adjunto: borrador.adjunto },
+      })
+      : await api('/pios', {
+        metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta, buzon: undefined }),
+      });
+    // En el buzón, la pregunta respondida se va de la lista.
+    if (borrador.buzon) {
+      const fila = document.querySelector(`[data-pregunta="${CSS.escape(borrador.buzon.id)}"]`);
+      if (fila) cerrarDeAPoco(fila);
+    }
     dialogo.close();
     sumarPioDeHoy(1);
     if (pio.huevo) {
@@ -2771,7 +2953,9 @@ async function deshacerHuevo(id) {
   // Vuelve al borrador tal como estaba: deshacer es para corregir, y
   // corregir sin el texto sería escribirlo de nuevo.
   if (borrador) {
-    abrirDialogo(borrador.respuestaA, borrador.pregunta);
+    abrirDialogo(borrador.respuestaA, borrador.pregunta, borrador.buzon);
+    // La pregunta volvió al buzón: si se está mirando, se vuelve a pintar.
+    if (borrador.buzon && rutaActual().partes[0] === 'buzon') vistaBuzon();
     areaTexto.value = borrador.texto;
     adjunto = borrador.adjunto;
     pintarAdjunto();
@@ -2965,6 +3149,8 @@ function filaPioPanel(p) {
           <span class="pio-usuario">@${escapar(p.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(p.creado)}</span>
         </div>
+        ${preguntaDelPio(p)}
+        ${p.buzonDe && p.buzon && !p.buzon.de ? `<p class="chico">${escapar(T('admin.buzonDe', { usuario: p.buzonDe }))}</p>` : ''}
         ${p.texto ? `<p class="texto">${enriquecer(p.texto)}</p>` : ''}
         <div class="perfil-botones" style="margin-top: 8px">
           <a class="boton fantasma chico" href="#/p/${escapar(p.id)}">${escapar(T('admin.ver'))}</a>
@@ -3123,8 +3309,32 @@ const SOLAPAS_PANEL = [
   ['pollitos', panelPollitos],
   ['pios', panelPios],
   ['corrales', panelCorrales],
+  ['buzones', panelBuzones],
   ['emojis', panelEmojis],
 ];
+
+// Las preguntas que esperan en todos los buzones, con quién las hizo de verdad.
+async function panelBuzones(donde) {
+  const { preguntas } = await api('/admin/buzones');
+  if (!preguntas.length) { donde.innerHTML = `<div class="vacio"><span class="emoji">📮</span>${escapar(T('admin.vacio'))}</div>`; return; }
+  donde.innerHTML = `<div class="tarjeta" style="margin: 12px 16px">${
+    preguntas.map((p) => `
+      <div class="sugerencia">
+        <div class="crece">
+          <b>${escapar(p.texto)}</b>
+          <span>${escapar(T('admin.buzonFila', { de: p.de, para: p.para }))}${p.anonima ? ` · 🎭 ${escapar(T('buzon.anonimo'))}` : ''} · ${hace(p.creado)}</span>
+        </div>
+        <button class="boton peligro chico" data-borrar-pregunta="${escapar(p.id)}">${escapar(T('admin.borrar'))}</button>
+      </div>`).join('')
+  }</div>`;
+  for (const boton of donde.querySelectorAll('[data-borrar-pregunta]')) {
+    boton.addEventListener('click', () => borrarDesdePanel(
+      `/admin/buzones/${encodeURIComponent(boton.dataset.borrarPregunta)}`,
+      T('admin.seguro.pregunta'),
+      () => cerrarDeAPoco(boton.closest('.sugerencia')),
+    ));
+  }
+}
 
 async function vistaAdmin(solapa) {
   cabecera(T('admin.titulo'), T('admin.sub'));

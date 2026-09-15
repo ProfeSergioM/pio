@@ -26,9 +26,9 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 719 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 750 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
-persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio, buzón,
+persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio, buzón, cadenas,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
 tokens de Google. Ninguna sale a internet: los servicios externos se inyectan
 falseados.
@@ -109,6 +109,8 @@ queda apagada y lo dice.
 | [`src/reservados.js`](src/reservados.js) | Nombres de usuario que nadie puede tomar |
 | [`src/descanso.js`](src/descanso.js) | La granja duerme: horario de silencio y tope de píos |
 | [`src/buzon.js`](src/buzon.js) | Las reglas del buzón de preguntas |
+| [`src/cadenas.js`](src/cadenas.js) | Las reglas de las cadenas: turnos y tope |
+| [`src/cadenas.js`](src/cadenas.js) | Las reglas de las cadenas: turnos y tope |
 | [`pruebas/`](pruebas) | La batería de pruebas |
 
 ## Decisiones que vale la pena conocer
@@ -182,6 +184,23 @@ Las preguntas viven dentro de la cuenta de quien las recibe, así que no hace
 falta otra tabla en Supabase. Deshacer la respuesta mientras es huevo devuelve
 la pregunta al buzón; cambiar de nombre lleva consigo las preguntas y el cupo,
 y borrar una cuenta se lleva sus preguntas pendientes.
+
+**⛓️ La cadena.** Un cuento escrito entre varios. Al piar, el botón ⛓️ convierte
+el pío en el primer eslabón, y cualquiera suma el siguiente, de cien caracteres
+como todo ([`src/cadenas.js`](src/cadenas.js)). Se lee entera en
+`#/cadena/<id>`, numerada de arriba a abajo.
+
+- **Nadie pone dos seguidos,** ni sigue desde un eslabón que todavía es huevo:
+  sería contestarle a algo que nadie más ve.
+- **A los veinte se termina sola.** Quien la empezó puede terminarla antes. Si
+  el vigésimo se deshace, la cadena se reabre.
+- **Los eslabones no van sueltos por las líneas:** una cadena de veinte llenaría
+  la plaza. Va el primero, con cuántos lleva y a quién le toca, y sube cada vez
+  que alguien suma. En el perfil de cada uno sí están los suyos.
+- **Sólo se borra el último eslabón.** Sacar uno del medio rompe el cuento que
+  escribieron los demás.
+- Quien la empezó y quien puso el eslabón anterior reciben aviso. Una cadena
+  bomba explota entera, y una de corral vive en su corral.
 
 **Bloquear es suave y por tiempo.** Desde el perfil de alguien se elige una hora,
 un día, una semana o un mes. Mientras dura, sus píos se ven borrosos —con un
@@ -463,10 +482,13 @@ GET    /api/pios?tipo=nido                               (pide sesión)
 GET    /api/pios?tipo=usuario&usuario=pollito
 GET    /api/pios?tipo=etiqueta&etiqueta=granja
 GET    /api/pios?tipo=megusta&usuario=pollito
-POST   /api/pios         {texto, respuestaA?, bomba?, aMano?} -> 201 {pio}
+POST   /api/pios         {texto, respuestaA?, bomba?, aMano?, cadena?} -> 201 {pio}
 DELETE /api/pios/:id     sólo los propios          ->     {ok}
 POST   /api/pios/:id/megusta   alterna             ->     {pio}
 POST   /api/pios/:id/repio     alterna, no el propio ->   {pio}
+POST   /api/pios/:id/eslabon   {texto, aMano?}     -> 201 {pio}
+POST   /api/pios/:id/terminar  sólo quien la empezó ->    {pio}
+GET    /api/pios/:id/cadena    la cadena entera    ->     {pio, eslabones}
 GET    /api/pios/:id/hilo                          ->     {antes, pio, despues}
 
 GET    /api/notificaciones                         ->     {notificaciones, sinLeer}

@@ -603,6 +603,29 @@ a { color: inherit; text-decoration: none; }
 }
 .pregunta-en-pio span { display: block; font-size: 12px; font-weight: 700; color: var(--tenue); margin-bottom: 2px; }
 
+/* --- la cadena --------------------------------------------------------- */
+
+.icono.cadena { filter: grayscale(1); opacity: .55; }
+.icono.cadena[aria-pressed="true"] { filter: none; opacity: 1; background: color-mix(in srgb, var(--pico) 18%, transparent); }
+.cadena-tira {
+  display: inline-block; margin-top: 8px; padding: 5px 12px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--tenue); background: var(--panel-2); border: 1px solid var(--borde);
+}
+.cadena-tira:hover { color: inherit; }
+.cadena-tira.te-toca { color: var(--pico); border-color: color-mix(in srgb, var(--pico) 45%, transparent); }
+/* El cuento: los eslabones numerados y unidos por una línea, de arriba a abajo. */
+.cadena-cuento { position: relative; }
+.cadena-eslabon { position: relative; display: grid; grid-template-columns: 34px 1fr; align-items: start; }
+.cadena-eslabon::before { content: ""; position: absolute; left: 25px; top: 0; bottom: 0; width: 2px; background: var(--borde); }
+.cadena-eslabon:first-child::before { top: 24px; }
+.cadena-eslabon:last-child::before { bottom: calc(100% - 24px); }
+.cadena-numero {
+  position: relative; z-index: 1; margin: 14px 0 0 14px; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; font-weight: 800; background: var(--pico); color: #fff;
+}
+.cadena-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; }
+.cadena-pie p { margin: 0; }
+
 /* --- escrito a mano ---------------------------------------------------- */
 
 /* Al piar, el sello se apaga si se pegó texto. */

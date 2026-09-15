@@ -2686,6 +2686,114 @@ async function main() {
   await new Promise((listo) => conBuz.close(listo));
   fs.rmSync(carpetaBuz, { recursive: true, force: true });
 
+  // --- la cadena ----------------------------------------------------------------
+
+  grupo('La cadena');
+  const CAD = require('../src/cadenas');
+
+  const carpetaCad = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-cad-'));
+  const conCad = crearServidor({ datos: carpetaCad, api: { altas: 100 } });
+  await new Promise((listo) => conCad.listen(0, '127.0.0.1', listo));
+  const baseCad = `http://127.0.0.1:${conCad.address().port}`;
+  const pedirCad = async (ruta, o = {}) => {
+    const r = await fetch(`${baseCad}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceCad = async (usuario) => (await pedirCad('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+  const cuentistaT = await naceCad('cuentista');
+  const segundaT = await naceCad('segunda');
+  const terceroT = await naceCad('tercero');
+  const sumar = (id, token, texto) => pedirCad(`/pios/${id}/eslabon`, { metodo: 'POST', token, cuerpo: { texto } });
+  const pausa = () => new Promise((listo) => setTimeout(listo, 3));
+
+  const inicio = (await pedirCad('/pios', { metodo: 'POST', token: cuentistaT, cuerpo: { texto: 'Había una vez un pollito', cadena: true } })).datos.pio;
+  probar('un pío puede empezar una cadena', inicio.cadena && inicio.cadena.total === 1 && inicio.cadena.terminada === false);
+  probar('quien la empieza no puede seguirla enseguida', inicio.cadena.puedoSumar === false && inicio.cadena.motivo === 'cadena.seguido');
+  probar('los demás sí', (await pedirCad(`/pios/${inicio.id}/cadena`, { token: segundaT })).datos.pio.cadena.puedoSumar === true);
+  probar('una respuesta no empieza cadenas',
+    !(await pedirCad('/pios', { metodo: 'POST', token: segundaT, cuerpo: { texto: 'ojo', respuestaA: inicio.id, cadena: true } })).datos.pio.cadena);
+  const suelto = (await pedirCad('/pios', { metodo: 'POST', token: segundaT, cuerpo: { texto: 'un pío común' } })).datos.pio;
+  probar('a un pío común no se le suman eslabones', (await sumar(suelto.id, terceroT, 'y?')).datos.clave === 'cadena.noes');
+
+  await pausa();
+  const e2 = await sumar(inicio.id, segundaT, 'que quería cruzar el camino');
+  probar('se suma un eslabón', e2.estado === 201 && e2.datos.pio.eslabonDe === inicio.id);
+  probar('nadie pone dos seguidos', (await sumar(inicio.id, segundaT, 'y otro más')).datos.clave === 'cadena.seguido');
+  probar('ni sin sesión', (await sumar(inicio.id, null, 'anónimo')).estado === 401);
+  probar('el eslabón también entra en cien', (await sumar(inicio.id, terceroT, 'a'.repeat(101))).datos.clave === 'pio.largo');
+  await pausa();
+  const e3 = await sumar(inicio.id, cuentistaT, 'pero había un gato');
+  probar('quien la empezó vuelve cuando otro puso el anterior', e3.estado === 201);
+
+  const cadenaEntera = (await pedirCad(`/pios/${inicio.id}/cadena`)).datos;
+  probar('la cadena se lee entera y en orden',
+    cadenaEntera.pio.id === inicio.id && cadenaEntera.eslabones.map((p) => p.texto).join(' / ') === 'que quería cruzar el camino / pero había un gato');
+  probar('y dice cuántos eslabones tiene', cadenaEntera.pio.cadena.total === 3);
+  probar('desde un eslabón se llega a su cadena', (await pedirCad(`/pios/${e2.datos.pio.id}/cadena`)).datos.pio.id === inicio.id);
+
+  const plazaCad = (await pedirCad('/pios?tipo=plaza')).datos.pios;
+  probar('los eslabones no llenan la plaza', !plazaCad.some((p) => p.eslabonDe));
+  probar('la cadena sube cuando alguien suma', plazaCad[0].id === inicio.id, plazaCad.map((p) => p.id).join(','));
+  probar('en el perfil de cada uno sí están los suyos',
+    (await pedirCad('/pios?tipo=usuario&usuario=segunda')).datos.pios.some((p) => p.id === e2.datos.pio.id));
+
+  const avisosCuentista = (await pedirCad('/notificaciones', { token: cuentistaT })).datos.notificaciones;
+  probar('quien empezó se entera de cada eslabón', avisosCuentista.some((n) => n.tipo === 'cadena' && n.pio.id === e2.datos.pio.id));
+  const avisosSegunda = (await pedirCad('/notificaciones', { token: segundaT })).datos.notificaciones;
+  probar('y quien puso el anterior también', avisosSegunda.some((n) => n.tipo === 'cadena' && n.pio.id === e3.datos.pio.id));
+  probar('sin avisarse a uno mismo', !avisosCuentista.some((n) => n.tipo === 'cadena' && n.pio.id === e3.datos.pio.id));
+
+  // Borrar: sólo el último.
+  probar('el primero no se borra con eslabones detrás',
+    (await pedirCad(`/pios/${inicio.id}`, { metodo: 'DELETE', token: cuentistaT })).datos.clave === 'cadena.enMedio');
+  probar('uno del medio tampoco',
+    (await pedirCad(`/pios/${e2.datos.pio.id}`, { metodo: 'DELETE', token: segundaT })).datos.clave === 'cadena.enMedio');
+  probar('el último sí', (await pedirCad(`/pios/${e3.datos.pio.id}`, { metodo: 'DELETE', token: cuentistaT })).estado === 200);
+
+  // Mientras el último es huevo, nadie sigue.
+  conCad.almacen.incubacion = 60000;
+  await pausa();
+  const huevoCad = await sumar(inicio.id, terceroT, 'y de pronto');
+  probar('con el último todavía huevo, hay que esperar', (await sumar(inicio.id, cuentistaT, 'apurado')).datos.clave === 'cadena.ocupada');
+  probar('y de un huevo ajeno no se dice quién escribe',
+    (await pedirCad(`/pios/${inicio.id}/cadena`, { token: cuentistaT })).datos.pio.cadena.ultimo.usuario === 'segunda');
+  conCad.almacen.buscarPio(huevoCad.datos.pio.id).nace = Date.now() - 1;
+  conCad.almacen.incubacion = 0;
+
+  // Terminar.
+  probar('sólo quien la empezó la termina', (await pedirCad(`/pios/${inicio.id}/terminar`, { metodo: 'POST', token: segundaT })).datos.clave === 'cadena.ajena');
+  const terminada = await pedirCad(`/pios/${inicio.id}/terminar`, { metodo: 'POST', token: cuentistaT });
+  probar('quien la empezó la termina', terminada.datos.pio.cadena.terminada === true);
+  probar('terminada, no se suma más', (await sumar(inicio.id, segundaT, 'fin?')).datos.clave === 'cadena.terminada');
+
+  // A los veinte se cierra sola, y si el vigésimo se deshace, se reabre.
+  const cadenaLarga = (await pedirCad('/pios', { metodo: 'POST', token: cuentistaT, cuerpo: { texto: 'Una cadena larga', cadena: true } })).datos.pio;
+  const turnos = [segundaT, terceroT];
+  for (let i = 0; i < CAD.MAXIMO - 2; i += 1) { await pausa(); await sumar(cadenaLarga.id, turnos[i % 2], `eslabón ${i + 2}`); }
+  await pausa();
+  const vigesimo = await sumar(cadenaLarga.id, cuentistaT, 'y colorín colorado');
+  const trasVeinte = (await pedirCad(`/pios/${cadenaLarga.id}/cadena`)).datos.pio.cadena;
+  probar('a los veinte se termina sola', vigesimo.estado === 201 && trasVeinte.total === CAD.MAXIMO && !!trasVeinte.terminada);
+  probar('el veintiuno no entra', (await sumar(cadenaLarga.id, segundaT, 'uno más')).estado === 409);
+  await pedirCad(`/pios/${vigesimo.datos.pio.id}`, { metodo: 'DELETE', token: cuentistaT });
+  probar('si el vigésimo se borra, la cadena se reabre', (await pedirCad(`/pios/${cadenaLarga.id}/cadena`)).datos.pio.cadena.terminada === false);
+
+  // Una cadena bomba explota entera.
+  const bombaCad = (await pedirCad('/pios', { metodo: 'POST', token: cuentistaT, cuerpo: { texto: 'Cuento efímero', cadena: true, bomba: true } })).datos.pio;
+  const eslabonBomba = await sumar(bombaCad.id, segundaT, 'se va con ella');
+  probar('el eslabón de una cadena bomba explota con ella',
+    conCad.almacen.buscarPio(eslabonBomba.datos.pio.id).explota === conCad.almacen.buscarPio(bombaCad.id).explota);
+
+  await new Promise((listo) => conCad.close(listo));
+  fs.rmSync(carpetaCad, { recursive: true, force: true });
+
   // --- la pregunta del día -------------------------------------------------
 
   grupo('La pregunta del día');

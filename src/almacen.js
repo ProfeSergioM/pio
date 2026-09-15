@@ -9,6 +9,7 @@ const C = require('./corrales');
 const MSG = require('./mensajes');
 const D = require('./descanso');
 const B = require('./buzon');
+const CAD = require('./cadenas');
 const { esReservado } = require('./reservados');
 
 // Cada cambio dice qué registro tocar. El depósito de archivo los ignora y
@@ -653,6 +654,16 @@ class Almacen {
       const { id, de, anonima, texto: preguntaTexto, creado } = extra.buzon;
       nuevo.buzon = { id, de, anonima: !!anonima, texto: preguntaTexto, creado };
     }
+    // Una cadena la empieza un pío suelto: ni respuesta, ni pregunta del día,
+    // ni respuesta del buzón, que ya tienen con qué colgar.
+    if (extra.cadena && !nuevo.respuestaA && !nuevo.pregunta && !nuevo.buzon) nuevo.cadena = { terminada: false };
+    // Un eslabón vive donde vive su cadena. Las reglas de quién puede sumar las
+    // mira sumarEslabon antes de llegar acá.
+    const raiz = extra.eslabonDe ? this.buscarPio(extra.eslabonDe) : null;
+    if (raiz) {
+      nuevo.eslabonDe = raiz.id;
+      nuevo.corral = raiz.corral || null;
+    }
     // Los píos de antes no tienen `nace`: nacieron hace rato.
     if (this.incubacion > 0) nuevo.nace = nuevo.creado + this.incubacion;
     // Lo que se contesta a una bomba explota con ella, lo pida o no: si no, la
@@ -662,6 +673,8 @@ class Almacen {
     const mechas = [];
     if (extra.bomba) mechas.push(nuevo.creado + this.mecha);
     if (padre && padre.explota) mechas.push(padre.explota);
+    // Y una cadena bomba explota entera.
+    if (raiz && raiz.explota) mechas.push(raiz.explota);
     if (mechas.length) {
       nuevo.explota = Math.min(...mechas);
       this.proximaExplosion = Math.min(this.proximaExplosion, nuevo.explota);
@@ -678,11 +691,24 @@ class Almacen {
     const pio = this.buscarPio(id);
     if (!pio) throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
     if (pio.autor !== cuenta.usuario) throw new ErrorPio(403, 'Solo puedes borrar tus propios píos.', 'pio.ajeno');
+    // De una cadena sólo se va el último eslabón: sacar uno del medio rompe el
+    // cuento que escribieron los demás.
+    const cadenaDe = pio.cadena ? pio.id : pio.eslabonDe;
+    if (cadenaDe) {
+      const eslabones = this.eslabonesDe(cadenaDe);
+      const ultimo = eslabones.length ? eslabones[eslabones.length - 1] : this.buscarPio(cadenaDe);
+      if (ultimo && ultimo.id !== pio.id) throw new ErrorPio(409, CAD.mensaje('cadena.enMedio'), 'cadena.enMedio');
+    }
     // Las respuestas quedan huerfanas a proposito: se muestran sueltas.
     this.datos.pios = this.datos.pios.filter((p) => p.id !== id);
     const huerfanos = this.datos.notificaciones.filter((n) => n.pio === id);
     this.datos.notificaciones = this.datos.notificaciones.filter((n) => n.pio !== id);
     const cambios = [baja('pio_pios', id), ...huerfanos.map((n) => baja('pio_avisos', n.id))];
+    const raizDeCadena = pio.eslabonDe ? this.buscarPio(pio.eslabonDe) : null;
+    if (raizDeCadena && raizDeCadena.cadena && raizDeCadena.cadena.terminada === 'llena') {
+      raizDeCadena.cadena.terminada = false;
+      cambios.push(cambioPio(raizDeCadena));
+    }
     // Deshacer la respuesta a una pregunta del buzón la devuelve al buzón: se
     // deshace para corregir, no para perder la pregunta.
     if (pio.buzon && this.esHuevo(pio)) {
@@ -736,6 +762,56 @@ class Almacen {
 
   respuestasDe(id) {
     return this.datos.pios.filter((p) => p.respuestaA === id);
+  }
+
+  // --- cadenas -------------------------------------------------------------
+
+  // Los eslabones de una cadena, sin el primero, en orden.
+  eslabonesDe(raizId) {
+    return this.datos.pios.filter((p) => p.eslabonDe === raizId).sort((a, b) => a.creado - b.creado);
+  }
+
+  // Cómo está una cadena. `ultimo` es el último de verdad, aunque sea un huevo
+  // ajeno: es el que decide si alguien puede sumar.
+  estadoDeCadena(raiz, yo, ahora = Date.now()) {
+    const eslabones = this.eslabonesDe(raiz.id);
+    const ultimo = eslabones.length ? eslabones[eslabones.length - 1] : raiz;
+    const total = 1 + eslabones.length;
+    const terminada = !!raiz.cadena.terminada;
+    return {
+      eslabones,
+      ultimo,
+      total,
+      terminada,
+      motivo: CAD.motivoParaNoSumar({ terminada, total, ultimo, yo, ahora, esHuevo: (p, t) => this.esHuevo(p, t) }),
+    };
+  }
+
+  async sumarEslabon(cuenta, raizId, texto, extra = {}) {
+    const raiz = this.buscarPio(raizId);
+    if (!raiz || !this.visiblePara(raiz, cuenta)) throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
+    if (!raiz.cadena) throw new ErrorPio(400, CAD.mensaje('cadena.noes'), 'cadena.noes');
+    const { motivo, total } = this.estadoDeCadena(raiz, cuenta);
+    if (motivo) throw new ErrorPio(409, CAD.mensaje(motivo), motivo);
+
+    const eslabon = await this.publicar(cuenta, texto, null, null, null, { aMano: extra.aMano, eslabonDe: raiz.id });
+    // El vigésimo cierra la cadena. Se anota que fue por llena y no porque la
+    // cerró quien la empezó: si el vigésimo se deshace, la cadena se reabre.
+    if (total + 1 >= CAD.MAXIMO) {
+      raiz.cadena.terminada = 'llena';
+      await this.guardar([cambioPio(raiz)]);
+    }
+    return eslabon;
+  }
+
+  async terminarCadena(cuenta, raizId) {
+    const raiz = this.buscarPio(raizId);
+    if (!raiz || !this.visiblePara(raiz, cuenta)) throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
+    if (!raiz.cadena) throw new ErrorPio(400, CAD.mensaje('cadena.noes'), 'cadena.noes');
+    if (raiz.autor !== cuenta.usuario) throw new ErrorPio(403, CAD.mensaje('cadena.ajena'), 'cadena.ajena');
+    raiz.cadena.terminada = true;
+    await this.guardar([cambioPio(raiz)]);
+    return raiz;
   }
 
   // Borra una cuenta y todo lo que colgaba de ella. Es irreversible y por eso
@@ -1149,6 +1225,15 @@ class Almacen {
     if (pio.respuestaA) {
       const padre = this.buscarPio(pio.respuestaA);
       if (padre) anotar(padre.autor, 'respuesta');
+    }
+    // Un eslabón le avisa a quien empezó la cadena y a quien puso el anterior.
+    if (pio.eslabonDe) {
+      const raiz = this.buscarPio(pio.eslabonDe);
+      const antes = this.eslabonesDe(pio.eslabonDe).filter((p) => p.id !== pio.id);
+      const anterior = antes.length ? antes[antes.length - 1] : raiz;
+      for (const quien of new Set([raiz && raiz.autor, anterior && anterior.autor])) {
+        if (quien && !avisados.has(quien)) anotar(quien, 'cadena');
+      }
     }
     for (const quien of pio.menciones) {
       if (avisados.has(quien)) continue;

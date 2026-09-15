@@ -15,6 +15,7 @@ const PUSH = require('./push');
 const PR = require('./preguntas');
 const D = require('./descanso');
 const B = require('./buzon');
+const CAD = require('./cadenas');
 
 // Dónde vive el sitio si nadie dice otra cosa. Pío nació en Chile.
 const ZONA_POR_DEFECTO = 'America/Santiago';
@@ -312,9 +313,29 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
         yo, cuerpo.texto, cuerpo.respuestaA, adjuntoConEtiquetas(almacen, cuerpo.adjunto),
         dondeVa ? dondeVa.nombre : null,
         { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null, bomba: cuerpo.bomba === true,
-          aMano: cuerpo.aMano === true },
+          aMano: cuerpo.aMano === true, cadena: cuerpo.cadena === true },
       );
       return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
+    }
+    if (metodo === 'POST' && id && accion === 'eslabon') {
+      exigir(yo);
+      const eslabon = await almacen.sumarEslabon(yo, id, cuerpo.texto, { aMano: cuerpo.aMano === true });
+      return { codigo: 201, datos: { pio: serializar(almacen, eslabon, yo) } };
+    }
+    if (metodo === 'POST' && id && accion === 'terminar') {
+      exigir(yo);
+      const raiz = await almacen.terminarCadena(yo, id);
+      return { datos: { pio: serializar(almacen, raiz, yo) } };
+    }
+    // La cadena entera, de principio a fin. Un eslabón lleva a su cadena.
+    if (metodo === 'GET' && id && accion === 'cadena') {
+      const pedido = almacen.buscarPio(id);
+      const raiz = pedido && pedido.eslabonDe ? almacen.buscarPio(pedido.eslabonDe) : pedido;
+      if (!raiz || !raiz.cadena || !almacen.visiblePara(raiz, yo)) throw new ErrorPio(404, 'Ese pío ya no está.', 'pio.noesta');
+      const eslabones = almacen.eslabonesDe(raiz.id)
+        .filter((p) => almacen.visiblePara(p, yo) && !callado(almacen, yo, p.autor))
+        .map((p) => serializar(almacen, p, yo));
+      return { datos: { pio: serializar(almacen, raiz, yo), eslabones } };
     }
     if (metodo === 'DELETE' && id) {
       exigir(yo);
@@ -790,7 +811,17 @@ function linea(almacen, params, yo) {
   const tipo = params.get('tipo') || 'plaza';
   const entradas = [];
 
-  const agregar = (pio, orden, repiadoPor) => entradas.push({ pio, orden, repiadoPor });
+  // Los eslabones de una cadena no van sueltos por las líneas: una cadena de
+  // veinte llenaría la plaza. Va el primero, que sube cada vez que alguien
+  // suma. En el perfil de cada uno sí se ven los suyos.
+  const conEslabones = tipo === 'usuario' || tipo === 'megusta';
+  const agregar = (pio, orden, repiadoPor) => {
+    if (pio.eslabonDe && !conEslabones) return;
+    const movida = pio.cadena && !repiadoPor && !conEslabones
+      ? Math.max(orden, ...almacen.eslabonesDe(pio.id).filter((p) => almacen.visiblePara(p, yo)).map((p) => p.creado))
+      : orden;
+    entradas.push({ pio, orden: movida, repiadoPor });
+  };
 
   if (tipo === 'nido') {
     exigir(yo);
@@ -896,12 +927,35 @@ function serializar(almacen, pio, yo) {
     aMano: !!pio.aMano,
     // La pregunta del buzón que responde. De una anónima no sale quién la hizo.
     buzon: pio.buzon ? preguntaDelPio(almacen, pio.buzon) : null,
+    cadena: pio.cadena ? resumenDeCadena(almacen, pio, yo) : null,
+    eslabonDe: pio.eslabonDe || null,
     adjunto: adjuntoPublico(almacen, pio.adjunto),
     corral: pio.corral || null,
     pregunta: pio.pregunta || null,
     // Sólo le importa a quien bloqueó: con esto la tarjeta sale borrosa.
     bloqueadoHasta: almacen.bloqueoVigente(yo, pio.autor),
     mio: !!yo && pio.autor === yo.usuario,
+  };
+}
+
+// Lo que la tarjeta necesita saber de una cadena para dibujarse sin pedir más.
+function resumenDeCadena(almacen, raiz, yo) {
+  const { eslabones, total, terminada, motivo } = almacen.estadoDeCadena(raiz, yo);
+  // El último que se ve: de un huevo ajeno no se dice ni quién lo está escribiendo.
+  const visibles = eslabones.filter((p) => almacen.visiblePara(p, yo));
+  const ultimo = visibles.length ? visibles[visibles.length - 1] : raiz;
+  const autorUltimo = almacen.buscarUsuario(ultimo.autor);
+  return {
+    total,
+    maximo: CAD.MAXIMO,
+    terminada,
+    // Sólo quien empezó la cadena la puede cerrar antes de tiempo.
+    puedoTerminar: !!yo && raiz.autor === yo.usuario && !terminada,
+    ultimo: { usuario: autorUltimo ? autorUltimo.usuario : ultimo.autor },
+    puedoSumar: !!yo && !motivo,
+    motivo: yo ? motivo : null,
+    // La última actividad: con esto la cadena sube en la plaza cada vez que alguien suma.
+    movida: ultimo.creado,
   };
 }
 

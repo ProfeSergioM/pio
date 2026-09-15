@@ -443,6 +443,7 @@ async function pintar() {
     else if (vista === 'admin') await vistaAdmin(params.get('ver'));
     else if (vista === 'pregunta') await vistaPregunta(argumento);
     else if (vista === 'buzon') await vistaBuzon();
+    else if (vista === 'cadena') await vistaCadena(argumento);
     else if (vista === 'corrales') await vistaCorrales();
     else if (vista === 'c') await vistaCorral(argumento, params.get('ver'));
     else await vistaLinea('nido');
@@ -857,6 +858,62 @@ function abrirMenuBloqueoBuzon(boton, id) {
   });
 }
 
+// --- la cadena --------------------------------------------------------------
+
+// Debajo del primer pío: cuántos eslabones lleva y quién siguió último. Lleva
+// a la cadena entera. Un eslabón suelto —en un perfil, en la búsqueda— dice de
+// qué es parte.
+function tiraDeCadena(pio, opciones = {}) {
+  if (opciones.enCadena) return '';
+  if (pio.eslabonDe) {
+    return `<a class="cadena-tira" href="#/cadena/${escapar(pio.eslabonDe)}">⛓️ ${escapar(T('cadena.esEslabon'))}</a>`;
+  }
+  if (!pio.cadena) return '';
+  const c = pio.cadena;
+  const estadoTexto = c.terminada
+    ? T('cadena.terminadaCorta')
+    : (c.puedoSumar ? T('cadena.teToca') : T('cadena.siguio', { usuario: c.ultimo.usuario }));
+  return `<a class="cadena-tira ${c.puedoSumar ? 'te-toca' : ''}" href="#/cadena/${escapar(pio.id)}">⛓️ ${escapar(T('cadena.cuenta', { n: c.total, max: c.maximo }))} · ${escapar(estadoTexto)} →</a>`;
+}
+
+async function vistaCadena(id) {
+  const { pio, eslabones } = await api(`/pios/${encodeURIComponent(id)}/cadena`);
+  const c = pio.cadena;
+  cabecera(T('cadena.titulo'), T('cadena.cuenta', { n: c.total, max: c.maximo }) + (c.terminada ? ` · ${T('cadena.terminadaCorta')}` : ''));
+  const todos = [pio, ...eslabones];
+  const ultimo = todos[todos.length - 1];
+  const motivo = c.motivo ? T(c.motivo) : '';
+  $('#contenido').innerHTML = `
+    <div class="cadena-cuento">${todos.map((p, i) => `
+      <div class="cadena-eslabon"><span class="cadena-numero">${i + 1}</span>${tarjetaPio(p, { enCadena: true })}</div>`).join('')}
+    </div>
+    <div class="cadena-pie">
+      ${c.puedoSumar
+        ? `<button class="boton principal" type="button" data-sumar-eslabon>⛓️ ${escapar(T('cadena.sumar'))}</button>`
+        : `<p class="chico">${escapar(estado.yo ? motivo : '')}</p>`}
+      ${c.puedoTerminar ? `<button class="boton fantasma chico" type="button" data-terminar-cadena>${escapar(T('cadena.terminar'))}</button>` : ''}
+    </div>`;
+
+  const sumarBoton = $('#contenido').querySelector('[data-sumar-eslabon]');
+  if (sumarBoton) {
+    sumarBoton.addEventListener('click', () => abrirDialogo(null, null, null, {
+      id: pio.id, texto: ultimo.texto, usuario: ultimo.autor.usuario,
+    }));
+  }
+  const terminarBoton = $('#contenido').querySelector('[data-terminar-cadena]');
+  if (terminarBoton) {
+    terminarBoton.addEventListener('click', async () => {
+      if (!confirm(T('cadena.terminarSeguro'))) return;
+      try {
+        await api(`/pios/${encodeURIComponent(pio.id)}/terminar`, { metodo: 'POST' });
+        await vistaCadena(pio.id);
+      } catch (err) {
+        avisar(err.message);
+      }
+    });
+  }
+}
+
 // En la tarjeta del pío que responde, la pregunta va arriba del texto.
 function preguntaDelPio(pio) {
   if (!pio.buzon) return '';
@@ -1058,7 +1115,7 @@ async function vistaHilo(id) {
 
 // --- avisos ---------------------------------------------------------------
 
-const TIPOS_DE_AVISO = ['mencion', 'respuesta', 'repio', 'megusta', 'seguir', 'foto', 'buzon', 'buzonRespuesta'];
+const TIPOS_DE_AVISO = ['mencion', 'respuesta', 'repio', 'megusta', 'seguir', 'foto', 'buzon', 'buzonRespuesta', 'cadena'];
 
 const EMOJI_AVISO = {
   mencion: '📣',
@@ -1069,6 +1126,7 @@ const EMOJI_AVISO = {
   foto: '📸',
   buzon: '📮',
   buzonRespuesta: '📮',
+  cadena: '⛓️',
 };
 
 function queParece(tipo) {
@@ -1207,7 +1265,9 @@ function pintarTope() {
 function filaAviso(aviso) {
   // Sin pío (o si lo borraron) el aviso lleva al perfil de quien lo provocó.
   // Una pregunta del buzón lleva al buzón; una anónima no tiene perfil al que ir.
-  const destino = aviso.tipo === 'buzon' ? '#/buzon' : (aviso.pio ? `#/p/${aviso.pio.id}` : `#/u/${aviso.de.usuario}`);
+  const destino = aviso.tipo === 'buzon' ? '#/buzon'
+    : (aviso.pio && aviso.pio.eslabonDe ? `#/cadena/${aviso.pio.eslabonDe}`
+      : (aviso.pio ? `#/p/${aviso.pio.id}` : `#/u/${aviso.de.usuario}`));
   // Div y no <a>: el texto citado trae sus propios enlaces de #etiqueta y
   // @mención, y una ancla adentro de otra hace que el navegador parta la fila.
   return `
@@ -1558,6 +1618,7 @@ function tarjetaPio(pio, opciones = {}) {
         ${preguntaDelPio(pio)}
         ${pio.texto ? `<p class="texto">${enriquecer(pio.texto)}</p>` : ''}
         ${adjuntoDePio(pio)}
+        ${tiraDeCadena(pio, opciones)}
       </div>
     </article>`;
 }
@@ -2460,19 +2521,27 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
 const dialogo = $('#dialogo-piar');
 const areaTexto = $('#texto-pio');
 
-function abrirDialogo(respuestaA = null, pregunta = null, buzon = null) {
+function abrirDialogo(respuestaA = null, pregunta = null, buzon = null, eslabon = null) {
   cerrarMenciones();
   estado.respondiendoA = respuestaA;
   estado.pregunta = respuestaA ? null : pregunta;
   // Responder una pregunta del buzón: sale un pío suelto, con la pregunta arriba.
   estado.buzon = respuestaA || pregunta ? null : buzon;
+  // Sumar un eslabón: { id de la cadena, texto y autor del último }.
+  estado.eslabon = respuestaA || pregunta || buzon ? null : eslabon;
+  estado.cadena = false;
+  const suelto = !respuestaA && !estado.pregunta && !estado.buzon && !estado.eslabon;
+  $('#poner-cadena').hidden = !suelto;
+  $('#poner-cadena').setAttribute('aria-pressed', 'false');
   $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta'
-    : (estado.pregunta ? 'dialogo.pregunta' : (estado.buzon ? 'buzon.responderTitulo' : 'dialogo.nuevo')));
-  $('#dialogo-contexto').hidden = !respuestaA && !estado.pregunta && !estado.buzon;
+    : (estado.pregunta ? 'dialogo.pregunta'
+      : (estado.buzon ? 'buzon.responderTitulo' : (estado.eslabon ? 'cadena.sumarTitulo' : 'dialogo.nuevo'))));
+  $('#dialogo-contexto').hidden = suelto;
   $('#dialogo-contexto').textContent = respuestaA
     ? T('dialogo.contexto')
     : (estado.pregunta ? textoPregunta(estado.pregunta)
-      : (estado.buzon ? `📮 ${estado.buzon.de ? `@${estado.buzon.de.usuario}` : T('buzon.anonimo')}: ${estado.buzon.texto}` : ''));
+      : (estado.buzon ? `📮 ${estado.buzon.de ? `@${estado.buzon.de.usuario}` : T('buzon.anonimo')}: ${estado.buzon.texto}`
+        : (estado.eslabon ? `⛓️ @${estado.eslabon.usuario}: …${estado.eslabon.texto}` : '')));
   areaTexto.value = '';
   adjunto = null;
   pintarAdjunto();
@@ -2497,12 +2566,23 @@ function armarBomba(armada) {
   boton.setAttribute('aria-pressed', String(armada));
   boton.disabled = estado.bombaHeredada;
   const aviso = $('#aviso-bomba');
-  aviso.hidden = !armada;
-  aviso.textContent = armada ? T(estado.bombaHeredada ? 'bomba.heredada' : 'bomba.armada') : '';
+  aviso.hidden = !armada && !estado.cadena;
+  aviso.textContent = [armada ? T(estado.bombaHeredada ? 'bomba.heredada' : 'bomba.armada') : '', estado.cadena ? T('cadena.armada') : '']
+    .filter(Boolean).join(' · ');
 }
 
 $('#poner-bomba').addEventListener('click', () => {
   if (!estado.bombaHeredada) armarBomba(!estado.bomba);
+});
+
+$('#poner-cadena').addEventListener('click', () => {
+  estado.cadena = !estado.cadena;
+  $('#poner-cadena').setAttribute('aria-pressed', String(estado.cadena));
+  const aviso = $('#aviso-bomba');
+  // Comparte el renglón de aviso con la bomba: si están las dos, dice las dos.
+  aviso.hidden = !estado.cadena && !estado.bomba;
+  aviso.textContent = [estado.bomba ? T(estado.bombaHeredada ? 'bomba.heredada' : 'bomba.armada') : '', estado.cadena ? T('cadena.armada') : '']
+    .filter(Boolean).join(' · ');
 });
 
 // --- escrito a mano ---------------------------------------------------------
@@ -2712,15 +2792,24 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       bomba: !!estado.bomba,
       aMano: !!estado.aMano,
       buzon: estado.buzon || null,
+      eslabon: estado.eslabon || null,
+      cadena: !!estado.cadena,
     };
-    const { pio } = borrador.buzon
-      ? await api(`/buzon/${encodeURIComponent(borrador.buzon.id)}/responder`, {
+    let pio;
+    if (borrador.buzon) {
+      ({ pio } = await api(`/buzon/${encodeURIComponent(borrador.buzon.id)}/responder`, {
         metodo: 'POST',
         cuerpo: { texto: borrador.texto, bomba: borrador.bomba, aMano: borrador.aMano, adjunto: borrador.adjunto },
-      })
-      : await api('/pios', {
-        metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta, buzon: undefined }),
-      });
+      }));
+    } else if (borrador.eslabon) {
+      ({ pio } = await api(`/pios/${encodeURIComponent(borrador.eslabon.id)}/eslabon`, {
+        metodo: 'POST', cuerpo: { texto: borrador.texto, aMano: borrador.aMano },
+      }));
+    } else {
+      ({ pio } = await api('/pios', {
+        metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta, buzon: undefined, eslabon: undefined }),
+      }));
+    }
     // En el buzón, la pregunta respondida se va de la lista.
     if (borrador.buzon) {
       const fila = document.querySelector(`[data-pregunta="${CSS.escape(borrador.buzon.id)}"]`);
@@ -2855,6 +2944,12 @@ let comentarioQueEntra = null;
 async function mostrarPioNuevo(pio) {
   const { partes } = rutaActual();
 
+  // Un eslabón sólo tiene lugar en su cadena.
+  if (pio.eslabonDe) {
+    if (partes[0] === 'cadena') await vistaCadena(pio.eslabonDe);
+    return;
+  }
+
   // En un hilo, la respuesta tiene que caer en su lugar del árbol: se vuelve a
   // armar el árbol sin tocar la pantalla y la respuesta nueva crece ahí.
   if (partes[0] === 'p') {
@@ -2953,7 +3048,9 @@ async function deshacerHuevo(id) {
   // Vuelve al borrador tal como estaba: deshacer es para corregir, y
   // corregir sin el texto sería escribirlo de nuevo.
   if (borrador) {
-    abrirDialogo(borrador.respuestaA, borrador.pregunta, borrador.buzon);
+    abrirDialogo(borrador.respuestaA, borrador.pregunta, borrador.buzon, borrador.eslabon);
+    if (borrador.cadena) $('#poner-cadena').click();
+    if (borrador.eslabon && rutaActual().partes[0] === 'cadena') vistaCadena(borrador.eslabon.id);
     // La pregunta volvió al buzón: si se está mirando, se vuelve a pintar.
     if (borrador.buzon && rutaActual().partes[0] === 'buzon') vistaBuzon();
     areaTexto.value = borrador.texto;

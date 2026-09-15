@@ -142,6 +142,7 @@ const TEXTOS = {
     otro: (u) => `@${u} anduvo por aquí`,
     buzon: (u) => (u ? `📮 @${u} te dejó una pregunta` : '📮 Te dejaron una pregunta anónima'),
     buzonRespuesta: (u) => `📮 @${u} respondió tu pregunta`,
+    cadena: (u) => `⛓️ @${u} sumó un eslabón a la cadena`,
   },
   en: {
     mencion: (u) => `@${u} mentioned you`,
@@ -153,6 +154,7 @@ const TEXTOS = {
     otro: (u) => `@${u} was around`,
     buzon: (u) => (u ? `📮 @${u} left you a question` : '📮 You got an anonymous question'),
     buzonRespuesta: (u) => `📮 @${u} answered your question`,
+    cadena: (u) => `⛓️ @${u} added a link to the chain`,
   },
 };
 
@@ -162,7 +164,9 @@ function cargaDelAviso(aviso, de, pio, idioma, pregunta = null) {
   return {
     titulo,
     cuerpo: pregunta ? pregunta.texto : (pio && pio.texto ? pio.texto : ''),
-    url: pregunta ? '/#/buzon' : (pio ? `/#/p/${pio.id}` : `/#/u/${de ? de.usuario : aviso.de}`),
+    url: pregunta ? '/#/buzon'
+      : (pio && pio.eslabonDe ? `/#/cadena/${pio.eslabonDe}`
+        : (pio ? `/#/p/${pio.id}` : `/#/u/${de ? de.usuario : aviso.de}`)),
     // Los me gusta y repíos de un mismo pío se reemplazan entre sí: diez
     // corazones no son diez notificaciones.
     tag: pio && (aviso.tipo === 'megusta' || aviso.tipo === 'repio') ? `${aviso.tipo}-${pio.id}` : `aviso-${aviso.id}`,

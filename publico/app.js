@@ -1322,6 +1322,26 @@ function cienJustos(pio) {
     : '';
 }
 
+// Un mismo pío puede estar dos veces en pantalla —el original y un repío—:
+// se tocan todas sus copias.
+const copiasDe = (id) => document.querySelectorAll(`.pio[data-id="${CSS.escape(id)}"]`);
+
+function marcarAccion(id, tipo, encender) {
+  for (const copia of copiasDe(id)) {
+    const boton = copia.querySelector(`.acciones [data-accion="${tipo}"]`);
+    if (!boton) continue;
+    boton.classList.toggle('activa', encender);
+    if (tipo === 'megusta' && boton.firstChild) boton.firstChild.textContent = encender ? '❤️ ' : '🤍 ';
+  }
+}
+
+function pintarAccionesDe(pio) {
+  for (const copia of copiasDe(pio.id)) {
+    const acciones = copia.querySelector('.acciones');
+    if (acciones) acciones.outerHTML = accionesDePio(pio);
+  }
+}
+
 function accionesDePio(pio) {
   return `
         <div class="acciones">
@@ -1563,10 +1583,26 @@ document.body.addEventListener('click', async (ev) => {
     ev.stopPropagation();
     const id = articulo.dataset.id;
     if (accion.dataset.accion === 'compartir') { abrirCompartir(accion, id); return; }
+
+    // Me gusta y repío no vuelven a dibujar la vista: cambia el botón y nada
+    // más. Se marca al instante y después se acomoda con lo que dice el
+    // servidor; si falla, vuelve a como estaba.
+    if (accion.dataset.accion === 'megusta' || accion.dataset.accion === 'repio') {
+      const tipo = accion.dataset.accion;
+      const encender = !accion.classList.contains('activa');
+      marcarAccion(id, tipo, encender);
+      try {
+        const { pio } = await api(`/pios/${encodeURIComponent(id)}/${tipo}`, { metodo: 'POST' });
+        pintarAccionesDe(pio);
+      } catch (err) {
+        marcarAccion(id, tipo, !encender);
+        avisar(err.message);
+      }
+      return;
+    }
+
     try {
-      if (accion.dataset.accion === 'megusta') await api(`/pios/${id}/megusta`, { metodo: 'POST' });
-      else if (accion.dataset.accion === 'repio') await api(`/pios/${id}/repio`, { metodo: 'POST' });
-      else if (accion.dataset.accion === 'responder') { abrirDialogo(id); return; }
+      if (accion.dataset.accion === 'responder') { abrirDialogo(id); return; }
       else if (accion.dataset.accion === 'borrar') {
         const comoAdmin = 'comoAdmin' in accion.dataset;
         if (!confirm(T(comoAdmin ? 'admin.seguro.pio' : 'confirmar.borrar'))) return;

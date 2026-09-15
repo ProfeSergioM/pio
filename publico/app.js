@@ -388,6 +388,8 @@ function rutaActual() {
   return { partes, params: new URLSearchParams(consulta || '') };
 }
 
+let turnoDePintar = 0;
+
 async function pintar() {
   if (!estado.yo) return;
   const { partes, params } = rutaActual();
@@ -410,8 +412,20 @@ async function pintar() {
   // Lo anterior se queda en pantalla hasta que lo nuevo está listo. El
   // "cargando" sólo aparece si la respuesta tarda: si llega rápido, vaciar la
   // vista primero es un parpadeo que no le sirve a nadie.
+  //
+  // Dos cuidados. Hay vistas que se arman en dos pasos —la cabecera primero,
+  // la lista después—: si el aviso cayera entre medio, borraría la primera
+  // parte y la segunda ya no tendría dónde ponerse, y la vista quedaba
+  // "piando" para siempre. Por eso el aviso sólo sale si la vista todavía no
+  // tocó nada. Y si mientras tanto se navegó a otro lado, el aviso de esta
+  // navegación ya no es de nadie.
   const contenido = $('#contenido');
+  const turno = ++turnoDePintar;
+  let yaDibujo = false;
+  const vigia = new MutationObserver(() => { yaDibujo = true; });
+  vigia.observe(contenido, { childList: true });
   const avisoCargando = setTimeout(() => {
+    if (yaDibujo || turno !== turnoDePintar) return;
     contenido.innerHTML = `<div class="cargando">${escapar(T('cargando'))}</div>`;
   }, 250);
 
@@ -433,6 +447,7 @@ async function pintar() {
     contenido.innerHTML = `<div class="vacio"><span class="emoji">💥</span>${escapar(err.message)}</div>`;
   } finally {
     clearTimeout(avisoCargando);
+    vigia.disconnect();
   }
 
   cargarTendencias();

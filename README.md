@@ -26,9 +26,9 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 387 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 642 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
-persistencia, altas masivas, nombres reservados, respuestas en cascada,
+persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
 tokens de Google. Ninguna sale a internet: los servicios externos se inyectan
 falseados.
@@ -138,6 +138,28 @@ Nadie más lo ve: ni en las líneas, ni en la búsqueda, ni en las tendencias, y
 los avisos de menciones y respuestas esperan a que nazca. Es la pausa que frena
 lo que se escribe en caliente sin necesidad de un botón de editar. La espera se
 cambia con `PIO_INCUBACION_SEGUNDOS`; las pruebas la ponen en cero.
+
+**💣 El pío bomba explota a las 24 horas.** Al piar se arma con el botón 💣, y
+la tarjeta lleva la cuenta regresiva. Cuando llega a cero se va de todos lados
+y de la base: líneas, perfil de quien la repió, búsqueda, tendencias, la
+dirección para compartir y los avisos que provocó. No hay papelera.
+
+Tres decisiones:
+
+- **La conversación explota entera.** Lo que se contesta a una bomba es bomba,
+  lo pida o no, y explota a la misma hora. Si no, las respuestas quedarían
+  citando justo lo que se quiso borrar. Una bomba que contesta a un pío común
+  no lo arrastra; si contesta a otra bomba, se queda con la mecha más corta.
+- **La barrida no recorre los píos en cada petición.** Se guarda la hora de la
+  próxima explosión, y hasta entonces cada pedido sólo compara dos números.
+  Al arrancar se barre enseguida, por lo que haya explotado con el sitio
+  apagado.
+- **Una bomba vencida no se ve aunque la barrida no haya pasado.** La
+  visibilidad mira la hora, no si el pío sigue en memoria. La página para
+  compartir, que no pasa por la API, lo comprueba por su cuenta.
+
+La mecha se guarda con el pío (`explota`), así que un reinicio no la apaga. Se
+cambia con `PIO_MECHA_SEGUNDOS`.
 
 
 **El límite se cuenta en puntos de código, no en unidades UTF-16.** Un emoji
@@ -384,7 +406,7 @@ GET    /api/pios?tipo=nido                               (pide sesión)
 GET    /api/pios?tipo=usuario&usuario=pollito
 GET    /api/pios?tipo=etiqueta&etiqueta=granja
 GET    /api/pios?tipo=megusta&usuario=pollito
-POST   /api/pios         {texto, respuestaA?}      -> 201 {pio}
+POST   /api/pios         {texto, respuestaA?, bomba?} -> 201 {pio}
 DELETE /api/pios/:id     sólo los propios          ->     {ok}
 POST   /api/pios/:id/megusta   alterna             ->     {pio}
 POST   /api/pios/:id/repio     alterna, no el propio ->   {pio}

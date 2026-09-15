@@ -561,6 +561,15 @@ a { color: inherit; text-decoration: none; }
 .pio.huevo { opacity: .72; box-shadow: inset 3px 0 0 var(--amarillo); }
 .huevo-aviso { display: flex; gap: 10px; align-items: center; }
 
+/* --- el pío bomba ------------------------------------------------------ */
+
+/* Apagado hasta que se arma; armado, con la mecha encendida. */
+.icono.bomba { filter: grayscale(1); opacity: .55; }
+.icono.bomba[aria-pressed="true"] { filter: none; opacity: 1; background: color-mix(in srgb, var(--rojo) 16%, transparent); }
+.icono.bomba:disabled { cursor: default; }
+.mecha { flex: none; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--rojo); cursor: default; }
+.pio.bomba { box-shadow: inset 3px 0 0 var(--rojo); }
+
 .enlace-boton {
   border: 0; background: transparent; padding: 0; cursor: pointer;
   font: inherit; font-weight: 700; color: var(--pico);

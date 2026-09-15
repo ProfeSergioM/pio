@@ -87,6 +87,8 @@ function leerAjustes(directorio) {
     // Cuánto tarda un pío en nacer, en segundos. Vacío es el valor de siempre;
     // las pruebas lo ponen en cero para no esperar en cada una.
     incubacion: segundosOpcionales(process.env.PIO_INCUBACION_SEGUNDOS, guardado.incubacionSegundos),
+    // Cuánto dura la mecha de un pío bomba, en segundos. Vacío son 24 horas.
+    mecha: segundosOpcionales(process.env.PIO_MECHA_SEGUNDOS, guardado.mechaSegundos),
     altas: numero('PIO_ALTAS_POR_HORA', 'altas'),
     subidas: numero('PIO_SUBIDAS_POR_HORA', 'subidas'),
   };

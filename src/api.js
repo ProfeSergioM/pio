@@ -83,6 +83,7 @@ function crearApi(almacen, opciones = {}) {
     await almacen.listo;
     // Que una barrida falle no es motivo para tirar abajo la petición.
     await almacen.barrerSesiones().catch(() => {});
+    await almacen.detonar().catch(() => {});
 
     try {
       const cuerpo = await leerCuerpo(req, url);
@@ -304,7 +305,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       const pio = await almacen.publicar(
         yo, cuerpo.texto, cuerpo.respuestaA, adjuntoConEtiquetas(almacen, cuerpo.adjunto),
         dondeVa ? dondeVa.nombre : null,
-        { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null },
+        { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null, bomba: cuerpo.bomba === true },
       );
       return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
     }
@@ -814,6 +815,9 @@ function serializar(almacen, pio, yo) {
     // puede estar corrido, el del servidor es uno solo.
     huevo: almacen.esHuevo(pio),
     naceEn: almacen.esHuevo(pio) ? pio.nace - Date.now() : 0,
+    // Con el mismo reloj: cuánto le queda a la mecha.
+    bomba: !!pio.explota,
+    explotaEn: pio.explota ? Math.max(0, pio.explota - Date.now()) : 0,
     adjunto: adjuntoPublico(almacen, pio.adjunto),
     corral: pio.corral || null,
     pregunta: pio.pregunta || null,

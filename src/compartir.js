@@ -19,7 +19,9 @@ const ID = /^[a-z0-9]{1,40}$/;
 function paginaParaCompartir(almacen, id, origen = null) {
   if (!ID.test(String(id || ''))) return null;
   const pio = almacen.buscarPio(id);
-  if (!pio) return null;
+  // Esta página no pasa por la API ni por su barrida: una bomba que explotó
+  // puede seguir en memoria, y su vista previa no puede quedar dando vueltas.
+  if (!pio || almacen.explotado(pio)) return null;
 
   const autor = almacen.buscarUsuario(pio.autor);
   const usuario = autor ? autor.usuario : pio.autor;

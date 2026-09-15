@@ -2363,6 +2363,116 @@ async function main() {
   await new Promise((listo) => conHue.close(listo));
   fs.rmSync(carpetaHue, { recursive: true, force: true });
 
+  // --- el pío bomba --------------------------------------------------------
+
+  grupo('El pío bomba');
+  const { MECHA } = require('../src/almacen');
+
+  const carpetaBom = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-bom-'));
+  let conBom = crearServidor({ datos: carpetaBom, api: { altas: 100 } });
+  await new Promise((listo) => conBom.listen(0, '127.0.0.1', listo));
+  let baseBom = `http://127.0.0.1:${conBom.address().port}`;
+  const pedirBom = async (ruta, o = {}) => {
+    const r = await fetch(`${baseBom}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceBom = async (usuario) => (await pedirBom('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+  const piarBom = async (token, cuerpo) => (await pedirBom('/pios', { metodo: 'POST', token, cuerpo })).datos.pio;
+  const idsBom = async (ruta, token) => (await pedirBom(ruta, { token })).datos.pios.map((p) => p.id);
+
+  const artificieraT = await naceBom('artificiera');
+  const testigoT = await naceBom('testigo');
+
+  const bomba = await piarBom(artificieraT, { texto: 'esto se autodestruye @testigo #kaboom', bomba: true });
+  probar('un pío puede ser bomba', bomba.bomba === true);
+  probar('y dice cuánto le queda: veinticuatro horas',
+    bomba.explotaEn > MECHA - 5000 && bomba.explotaEn <= MECHA, String(bomba.explotaEn));
+  const comun = await piarBom(artificieraT, { texto: 'esto se queda' });
+  probar('un pío común no es bomba', comun.bomba === false && comun.explotaEn === 0);
+  probar('sólo un true de verdad arma la bomba',
+    (await piarBom(artificieraT, { texto: 'casi', bomba: 'si' })).bomba === false);
+
+  // La conversación explota entera: nadie queda citando lo que se quiso borrar.
+  const respuestaBom = await piarBom(testigoT, { texto: 'lo vi', respuestaA: bomba.id });
+  probar('lo que contesta a una bomba es bomba, aunque no lo pida', respuestaBom.bomba === true);
+  probar('y explota a la misma hora',
+    conBom.almacen.buscarPio(respuestaBom.id).explota === conBom.almacen.buscarPio(bomba.id).explota);
+  const nietaBom = await piarBom(artificieraT, { texto: 'shh', respuestaA: respuestaBom.id });
+  probar('la respuesta de la respuesta también', nietaBom.bomba === true);
+  // Un respiro, para que no explote en el mismo milisegundo que la primera.
+  await new Promise((listo) => setTimeout(listo, 5));
+  const bombaEnComun = await piarBom(testigoT, { texto: 'y yo me voy', respuestaA: comun.id, bomba: true });
+  probar('una bomba puede contestar a un pío común', bombaEnComun.bomba === true);
+  probar('sin arrastrarlo', (await pedirBom(`/pios/${comun.id}/hilo`)).datos.pio.bomba === false);
+
+  await pedirBom(`/pios/${bomba.id}/repio`, { metodo: 'POST', token: testigoT });
+  probar('mientras dura, se ve como cualquier pío', (await idsBom('/pios?tipo=plaza')).includes(bomba.id));
+  probar('la mención llega', (await pedirBom('/notificaciones', { token: testigoT })).datos.notificaciones
+    .some((n) => n.tipo === 'mencion' && n.pio.id === bomba.id));
+  probar('se puede repiar', (await idsBom('/pios?tipo=usuario&usuario=testigo')).includes(bomba.id));
+  probar('y entra en tendencias', (await pedirBom('/tendencias')).datos.tendencias.some((x) => x.etiqueta === 'kaboom'));
+
+  // Detonar sólo recorre los píos cuando llega la hora de la próxima explosión.
+  const explota = conBom.almacen.buscarPio(bomba.id).explota;
+  probar('antes de hora no explota nada', (await conBom.almacen.detonar(explota - 1)) === 0);
+  probar('a la hora explota la bomba con su conversación', (await conBom.almacen.detonar(explota)) === 3);
+  probar('y la próxima es la que queda', conBom.almacen.proximaExplosion === conBom.almacen.buscarPio(bombaEnComun.id).explota);
+
+  probar('ya no está en la plaza', !(await idsBom('/pios?tipo=plaza')).includes(bomba.id));
+  probar('ni se abre su hilo', (await pedirBom(`/pios/${bomba.id}/hilo`)).estado === 404);
+  probar('ni sus respuestas', (await pedirBom(`/pios/${respuestaBom.id}/hilo`)).estado === 404);
+  probar('ni en el perfil de quien la repió', !(await idsBom('/pios?tipo=usuario&usuario=testigo')).includes(bomba.id));
+  probar('ni en la búsqueda', !(await pedirBom('/buscar?q=autodestruye')).datos.pios.length);
+  probar('ni en tendencias', !(await pedirBom('/tendencias')).datos.tendencias.some((x) => x.etiqueta === 'kaboom'));
+  // A la artificiera sólo le queda el aviso de la bomba que contestó a su pío común.
+  const avisosArtificiera = (await pedirBom('/notificaciones', { token: artificieraT })).datos.notificaciones;
+  probar('sus avisos se fueron con ella',
+    (await pedirBom('/notificaciones', { token: testigoT })).datos.notificaciones.length === 0
+    && avisosArtificiera.length === 1 && avisosArtificiera[0].pio.id === bombaEnComun.id,
+    JSON.stringify(avisosArtificiera.map((n) => n.tipo)));
+  const compartidaBom = await fetch(`${baseBom}/p/${bomba.id}`, { redirect: 'manual' });
+  probar('la dirección para compartir lleva a la portada', compartidaBom.status === 302);
+  probar('el pío común sigue ahí', (await idsBom('/pios?tipo=plaza')).includes(comun.id));
+
+  // Entre que explota y que pasa la barrida, no la ve nadie igual.
+  const rezagada = await piarBom(artificieraT, { texto: 'rezagada', bomba: true });
+  conBom.almacen.buscarPio(rezagada.id).explota = Date.now() - 1;
+  conBom.almacen.proximaExplosion = Date.now() + 60000;
+  probar('una bomba vencida no se ve aunque siga en memoria',
+    !(await idsBom('/pios?tipo=plaza', artificieraT)).includes(rezagada.id) && !!conBom.almacen.buscarPio(rezagada.id));
+  probar('ni se comparte', (await fetch(`${baseBom}/p/${rezagada.id}`, { redirect: 'manual' })).status === 302);
+  conBom.almacen.proximaExplosion = 0;
+  await pedirBom('/pios?tipo=plaza');
+  probar('y la barrida siguiente se la lleva', !conBom.almacen.buscarPio(rezagada.id));
+
+  // La mecha se guarda con el pío: un reinicio no la apaga.
+  const duradera = await piarBom(artificieraT, { texto: 'sobrevivo al reinicio', bomba: true });
+  // Y una que explota con el sitio apagado: se guarda ya vencida.
+  const aOscuras = await piarBom(artificieraT, { texto: 'exploto a oscuras', bomba: true });
+  conBom.almacen.buscarPio(aOscuras.id).explota = Date.now() - 1;
+  await conBom.almacen.guardar([]);
+  await new Promise((listo) => conBom.close(listo));
+  conBom = crearServidor({ datos: carpetaBom, api: { altas: 100 } });
+  await new Promise((listo) => conBom.listen(0, '127.0.0.1', listo));
+  baseBom = `http://127.0.0.1:${conBom.address().port}`;
+  const trasReinicio = (await pedirBom(`/pios/${duradera.id}/hilo`)).datos.pio;
+  probar('una bomba sigue siendo bomba después de un reinicio', trasReinicio && trasReinicio.bomba === true);
+  probar('y lo que explotó con el sitio apagado se barre al primer pedido', !conBom.almacen.buscarPio(aOscuras.id));
+
+  probar('la mecha se ajusta', crearServidor({ datos: carpetaBom, api: { mecha: 5000 } }).almacen.mecha === 5000);
+  probar('una mecha de cero vuelve a las veinticuatro horas',
+    crearServidor({ datos: carpetaBom, api: { mecha: 0 } }).almacen.mecha === MECHA);
+
+  await new Promise((listo) => conBom.close(listo));
+  fs.rmSync(carpetaBom, { recursive: true, force: true });
+
   // --- la pregunta del día -------------------------------------------------
 
   grupo('La pregunta del día');

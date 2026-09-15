@@ -138,6 +138,7 @@
       <span id="dialogo-titulo"></span>
     </div>
     <div id="dialogo-contexto" class="respondiendo" hidden></div>
+    <div id="aviso-bomba" class="respondiendo" hidden></div>
     <textarea id="texto-pio" maxlength="200" rows="3"
               data-t-ph="dialogo.ph" data-t-aria="dialogo.aria"></textarea>
     <div id="menciones" class="menciones" role="listbox" hidden></div>
@@ -157,6 +158,7 @@
         <button type="button" class="icono" id="poner-spotify" data-t-titulo="spotify.boton">🎵</button>
         <button type="button" class="icono arroba" id="poner-mencion" data-t-titulo="mencion.boton">@</button>
         <button type="button" class="icono" id="acortar-enlaces" data-t-titulo="enlace.acortar" hidden>🔗</button>
+        <button type="button" class="icono bomba" id="poner-bomba" data-t-titulo="bomba.boton" aria-pressed="false">💣</button>
       </div>
       <div class="medidor" id="medidor">
         <svg viewBox="0 0 36 36" class="anillo" aria-hidden="true">

@@ -715,7 +715,7 @@ function comentario(nodo) {
   // dispararía también las acciones del pío.
   return `
     <div class="comentario-rama">
-      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''} ${nodo.bloqueadoHasta ? 'borroso' : ''} ${nodo.id === hiloResaltado ? 'resaltado' : ''}" data-id="${nodo.id}" data-autor="${escapar(nodo.autor.usuario)}">
+      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''} ${nodo.bomba ? 'bomba' : ''} ${nodo.bloqueadoHasta ? 'borroso' : ''} ${nodo.id === hiloResaltado ? 'resaltado' : ''}" data-id="${nodo.id}" data-autor="${escapar(nodo.autor.usuario)}">
         ${avisoBloqueo(nodo)}
         ${cascaronDe(nodo)}
         <div class="com-cabeza">
@@ -723,6 +723,7 @@ function comentario(nodo) {
           <a class="pio-nombre" href="#/u/${escapar(nodo.autor.usuario)}">${escapar(nodo.autor.nombre)}</a>
           <span class="pio-usuario">@${escapar(nodo.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(nodo.creado)}</span>
+          ${mechaDe(nodo)}
           ${cienJustos(nodo)}
           ${accionesDePio(nodo)}
         </div>
@@ -1254,7 +1255,7 @@ function tarjetaPio(pio, opciones = {}) {
   const cascaron = cascaronDe(pio);
 
   return `
-    <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''} ${pio.bloqueadoHasta ? 'borroso' : ''}" data-id="${pio.id}" data-autor="${escapar(pio.autor.usuario)}">
+    <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''} ${pio.bomba ? 'bomba' : ''} ${pio.bloqueadoHasta ? 'borroso' : ''}" data-id="${pio.id}" data-autor="${escapar(pio.autor.usuario)}">
       ${avisoBloqueo(pio)}
       ${cascaron}
       ${contexto}
@@ -1264,6 +1265,7 @@ function tarjetaPio(pio, opciones = {}) {
           <a class="pio-nombre" href="#/u/${escapar(pio.autor.usuario)}" data-parar>${escapar(pio.autor.nombre)}</a>
           <span class="pio-usuario">@${escapar(pio.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(pio.creado)}</span>
+          ${mechaDe(pio)}
           ${cienJustos(pio)}
           ${accionesDePio(pio)}
         </div>
@@ -1350,6 +1352,40 @@ function cascaronDe(pio) {
        </div>`
     : '';
 }
+
+// --- el pío bomba -----------------------------------------------------------
+
+function faltaParaExplotar(ms) {
+  if (ms <= 0) return T('bomba.ya');
+  // Redondeado: recién armada tiene que decir 24 h, no 23.
+  if (ms >= 3600000) return T('bomba.horas', { n: Math.round(ms / 3600000) });
+  return T('bomba.minutos', { n: Math.max(1, Math.ceil(ms / 60000)) });
+}
+
+function mechaDe(pio) {
+  if (!pio.bomba) return '';
+  const falta = faltaParaExplotar(pio.explotaEn);
+  return `<span class="mecha" data-explota="${Date.now() + pio.explotaEn}" title="${escapar(T('bomba.titulo', { t: falta }))}">${escapar(T('bomba.queda', { t: falta }))}</span>`;
+}
+
+// Un solo reloj para todas las mechas en pantalla. Cuando una llega a cero, la
+// tarjeta se va de a poco: el servidor ya no la va a volver a mandar.
+function latirMechas() {
+  const ahora = Date.now();
+  for (const el of document.querySelectorAll('[data-explota]')) {
+    const falta = Number(el.dataset.explota) - ahora;
+    const texto = faltaParaExplotar(falta);
+    el.textContent = T('bomba.queda', { t: texto });
+    el.title = T('bomba.titulo', { t: texto });
+    if (falta > 0) continue;
+    el.removeAttribute('data-explota');
+    const articulo = el.closest('.pio');
+    if (!articulo) continue;
+    // En la cascada se va la rama entera: sus respuestas explotan con ella.
+    setTimeout(() => cerrarDeAPoco(articulo.closest('.comentario-rama, .entrada') || articulo), 900);
+  }
+}
+setInterval(latirMechas, 15000);
 
 function cienJustos(pio) {
   return largo(pio.texto) === LIMITE
@@ -2145,12 +2181,31 @@ function abrirDialogo(respuestaA = null, pregunta = null) {
   areaTexto.value = '';
   adjunto = null;
   pintarAdjunto();
+  // Si se contesta a una bomba, la respuesta explota con ella quiera o no: el
+  // botón queda armado y quieto, y se dice por qué.
+  const padre = respuestaA ? document.querySelector(`.pio[data-id="${CSS.escape(respuestaA)}"]`) : null;
+  estado.bombaHeredada = !!(padre && padre.classList.contains('bomba'));
+  armarBomba(estado.bombaHeredada);
   $('#tablero-gif').hidden = true;
   $('#error-pio').hidden = true;
   actualizarMedidor();
   dialogo.showModal();
   areaTexto.focus();
 }
+
+function armarBomba(armada) {
+  estado.bomba = armada;
+  const boton = $('#poner-bomba');
+  boton.setAttribute('aria-pressed', String(armada));
+  boton.disabled = estado.bombaHeredada;
+  const aviso = $('#aviso-bomba');
+  aviso.hidden = !armada;
+  aviso.textContent = armada ? T(estado.bombaHeredada ? 'bomba.heredada' : 'bomba.armada') : '';
+}
+
+$('#poner-bomba').addEventListener('click', () => {
+  if (!estado.bombaHeredada) armarBomba(!estado.bomba);
+});
 
 function actualizarMedidor() {
   const usados = largo(areaTexto.value);
@@ -2321,6 +2376,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       corral: estado.pregunta ? null : corralActual,
       pregunta: estado.pregunta || null,
       adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
+      bomba: !!estado.bomba,
     };
     const { pio } = await api('/pios', {
       metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta }),
@@ -2330,7 +2386,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       borradores.set(pio.id, borrador);
       mostrarHuevo(pio);
     } else {
-      avisar(T(borrador.respuestaA ? 'toast.respuesta' : 'toast.pio'));
+      avisar(T(pio.bomba && !borrador.respuestaA ? 'bomba.toast' : (borrador.respuestaA ? 'toast.respuesta' : 'toast.pio')));
     }
     await mostrarPioNuevo(pio);
   } catch (err) {
@@ -2553,6 +2609,7 @@ async function deshacerHuevo(id) {
     areaTexto.value = borrador.texto;
     adjunto = borrador.adjunto;
     pintarAdjunto();
+    if (borrador.bomba) armarBomba(true);
     actualizarMedidor();
   }
   avisar(T('huevo.deshecho'));

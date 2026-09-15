@@ -218,7 +218,7 @@ function crearPush(almacen, opciones = {}) {
 
     const pio = aviso.pio ? almacen.buscarPio(aviso.pio) : null;
     if (pio && almacen.esHuevo(pio)) { programarEntrega(aviso, pio.nace - Date.now()); return; }
-    if (aviso.pio && !pio) return;
+    if (aviso.pio && (!pio || almacen.explotado(pio))) return;
     if (almacen.bloqueoVigente(cuenta, aviso.de)) return;
     if ((cuenta.silenciados || []).includes(aviso.de) || (almacen.datos.ocultos || []).includes(aviso.de)) return;
 

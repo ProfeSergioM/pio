@@ -37,6 +37,10 @@ const ESPERA_CAMBIO = 30 * 24 * 60 * 60 * 1000;
 // escribe en caliente, sin necesidad de un botón de editar.
 const INCUBACION = 10 * 1000;
 
+// El pío bomba explota a las veinticuatro horas de haber sido escrito: se va
+// de todos lados y de la base, con sus avisos y su conversación entera.
+const MECHA = 24 * 60 * 60 * 1000;
+
 // Los plazos que se ofrecen para un bloqueo, en minutos: una hora, un día, una
 // semana y un mes. Pocos y claros; un campo libre invita a poner "999999".
 const DURACIONES_DE_BLOQUEO = [60, 24 * 60, 7 * 24 * 60, 30 * 24 * 60];
@@ -58,7 +62,10 @@ class Almacen {
   constructor(directorio, ajustes = {}, opciones = {}) {
     this.deposito = opciones.deposito || crearDeposito(directorio, ajustes, opciones);
     this.incubacion = ajustes.incubacion == null ? INCUBACION : Number(ajustes.incubacion);
+    // Una mecha de cero sería un pío que explota al nacer: no tiene sentido.
+    this.mecha = Number(ajustes.mecha) > 0 ? Number(ajustes.mecha) : MECHA;
     this.datos = vacio();
+    this.proximaExplosion = 0;
     // Se arranca a cargar sin bloquear: quien necesite los datos espera esta
     // promesa. Así crearServidor() sigue siendo síncrono y las pruebas no
     // tienen que cambiar de forma.
@@ -70,6 +77,8 @@ class Almacen {
     // Al arrancar se barre sin esperar a la primera hora: es el momento en que
     // mas basura acumulada puede haber.
     this.ultimaBarrida = 0;
+    // Lo mismo con las bombas: pudo haber explotado alguna con el sitio apagado.
+    this.proximaExplosion = 0;
     return this;
   }
 
@@ -306,6 +315,34 @@ class Almacen {
     }
     if (cambios.length) await this.guardar(cambios);
     return cambios.length;
+  }
+
+  // Saca de la base los píos bomba que ya explotaron, con sus avisos. Se llama
+  // en cada petición, pero sólo recorre los píos cuando llegó la hora de la
+  // próxima explosión: el resto de las veces es comparar dos números.
+  async detonar(ahora = Date.now()) {
+    if (ahora < this.proximaExplosion) return 0;
+
+    const explotados = new Set();
+    let proxima = Infinity;
+    for (const p of this.datos.pios) {
+      if (!p.explota) continue;
+      if (p.explota <= ahora) explotados.add(p.id);
+      else proxima = Math.min(proxima, p.explota);
+    }
+    // Se fija antes de guardar: las peticiones que lleguen mientras tanto ya no
+    // vuelven a recorrer ni a borrar lo mismo dos veces.
+    this.proximaExplosion = proxima;
+    if (!explotados.size) return 0;
+
+    const avisos = this.datos.notificaciones.filter((n) => explotados.has(n.pio));
+    this.datos.pios = this.datos.pios.filter((p) => !explotados.has(p.id));
+    this.datos.notificaciones = this.datos.notificaciones.filter((n) => !explotados.has(n.pio));
+    await this.guardar([
+      ...[...explotados].map((id) => baja('pio_pios', id)),
+      ...avisos.map((n) => baja('pio_avisos', n.id)),
+    ]);
+    return explotados.size;
   }
 
   // Valida TODO antes de tocar nada. Antes se aplicaba campo por campo, y si
@@ -589,6 +626,17 @@ class Almacen {
     if (extra.pregunta && !nuevo.respuestaA && !nuevo.corral) nuevo.pregunta = extra.pregunta;
     // Los píos de antes no tienen `nace`: nacieron hace rato.
     if (this.incubacion > 0) nuevo.nace = nuevo.creado + this.incubacion;
+    // Lo que se contesta a una bomba explota con ella, lo pida o no: si no, la
+    // conversación quedaría colgando de un pío que ya no está, y lo que se
+    // quiso que desapareciera seguiría citado en las respuestas. Una bomba que
+    // contesta a otra se lleva la mecha más corta.
+    const mechas = [];
+    if (extra.bomba) mechas.push(nuevo.creado + this.mecha);
+    if (padre && padre.explota) mechas.push(padre.explota);
+    if (mechas.length) {
+      nuevo.explota = Math.min(...mechas);
+      this.proximaExplosion = Math.min(this.proximaExplosion, nuevo.explota);
+    }
     this.datos.pios.push(nuevo);
     const cambios = [cambioPio(nuevo)];
     for (const aviso of this.avisarDelPio(cuenta, nuevo)) cambios.push(cambioAviso(aviso));
@@ -976,9 +1024,14 @@ class Almacen {
     return !!(pio && pio.nace && ahora < pio.nace);
   }
 
-  // Un huevo sólo lo ve quien lo puso.
+  explotado(pio, ahora = Date.now()) {
+    return !!(pio && pio.explota && ahora >= pio.explota);
+  }
+
+  // Un huevo sólo lo ve quien lo puso. Una bomba que explotó no la ve nadie,
+  // aunque la barrida todavía no haya pasado a sacarla.
   visiblePara(pio, yo) {
-    return !!pio && (!this.esHuevo(pio) || (!!yo && yo.usuario === pio.autor));
+    return !!pio && !this.explotado(pio) && (!this.esHuevo(pio) || (!!yo && yo.usuario === pio.autor));
   }
 
   // Un aviso de un pío que todavía es huevo espera a que nazca: avisar de algo
@@ -1003,4 +1056,4 @@ class ErrorPio extends Error {
   }
 }
 
-module.exports = { Almacen, ErrorPio, DURACIONES_DE_BLOQUEO };
+module.exports = { Almacen, ErrorPio, DURACIONES_DE_BLOQUEO, MECHA };

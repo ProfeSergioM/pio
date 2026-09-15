@@ -26,9 +26,9 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 642 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 651 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
-persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba,
+persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
 tokens de Google. Ninguna sale a internet: los servicios externos se inyectan
 falseados.
@@ -125,6 +125,18 @@ el pío; los demás ven si ellos dieron el suyo.
 
 **💯 Cien justos.** Un pío de exactamente cien caracteres lleva la marca. Es un
 guiño, no un puntaje.
+
+**✍️ Escrito a mano.** Un pío tecleado, sin pegar texto, lleva el sello. Mientras
+se escribe, el ✍️ está junto al anillo y se apaga en cuanto se pega o se arrastra
+texto, o cuando entra de golpe un bloque de más de 25 caracteres, que es como
+escriben los teclados que redactan solos. Pegar sólo una dirección no lo apaga:
+un enlace no son palabras de otro. Si se borra todo, se empieza de cero. En la
+plaza, "Sólo a mano" (`#/plaza?mano=1`) deja ver únicamente esos píos, y el
+filtro `mano=1` sirve en cualquier línea de la API.
+
+Como el 💯, es un guiño y no un control: lo avisa el cliente y desde la consola
+se engaña en un segundo. No hay forma honesta de comprobarlo en el servidor, y
+fingir que sí sería peor que decirlo.
 
 **Bloquear es suave y por tiempo.** Desde el perfil de alguien se elige una hora,
 un día, una semana o un mes. Mientras dura, sus píos se ven borrosos —con un
@@ -401,12 +413,12 @@ DELETE /api/sesion       cierra la sesión          ->     {ok}
 GET    /api/yo           tu perfil                 ->     {yo}
 PATCH  /api/yo           {nombre?, bio?}           ->     {yo}
 
-GET    /api/pios?tipo=plaza                        ->     {tipo, pios, hayMas}
+GET    /api/pios?tipo=plaza[&mano=1]              ->     {tipo, pios, hayMas}
 GET    /api/pios?tipo=nido                               (pide sesión)
 GET    /api/pios?tipo=usuario&usuario=pollito
 GET    /api/pios?tipo=etiqueta&etiqueta=granja
 GET    /api/pios?tipo=megusta&usuario=pollito
-POST   /api/pios         {texto, respuestaA?, bomba?} -> 201 {pio}
+POST   /api/pios         {texto, respuestaA?, bomba?, aMano?} -> 201 {pio}
 DELETE /api/pios/:id     sólo los propios          ->     {ok}
 POST   /api/pios/:id/megusta   alterna             ->     {pio}
 POST   /api/pios/:id/repio     alterna, no el propio ->   {pio}

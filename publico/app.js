@@ -433,7 +433,7 @@ async function pintar() {
   }, 250);
 
   try {
-    if (vista === 'plaza') await vistaLinea('plaza');
+    if (vista === 'plaza') await vistaLinea('plaza', params.get('mano') === '1');
     else if (vista === 'buscar') await vistaBuscar(params.get('q') || '');
     else if (vista === 'yo') { location.hash = `#/u/${estado.yo.usuario}`; return; }
     else if (vista === 'u') await vistaPerfil(argumento, params.get('ver') || 'pios');
@@ -536,26 +536,36 @@ function lineaConMarca(pios, visto) {
   return pios.map((p, i) => (i === corte ? marcaAlDia(i === 0) : '') + tarjetaPio(p)).join('');
 }
 
-async function vistaLinea(tipo) {
-  cabecera(T(`${tipo}.titulo`), T(`${tipo}.sub`));
+async function vistaLinea(tipo, aMano = false) {
+  // En la plaza, un interruptor para ver sólo lo escrito a mano. Vive en la
+  // dirección, así se comparte y sobrevive a recargar.
+  const filtro = tipo === 'plaza'
+    ? `<a class="boton ${aMano ? 'principal' : 'fantasma'} chico filtro-mano" href="#/plaza${aMano ? '' : '?mano=1'}"
+          aria-pressed="${aMano}" title="${escapar(T('mano.filtroExplica'))}">✍️ ${escapar(T('mano.filtro'))}</a>`
+    : '';
+  cabecera(T(`${tipo}.titulo`), T(aMano ? 'mano.sub' : `${tipo}.sub`), filtro);
+  const mano = aMano ? '&mano=1' : '';
   const [datos, pregunta] = await Promise.all([
-    api(`/pios?tipo=${tipo}`),
+    api(`/pios?tipo=${tipo}${mano}`),
     tipo === 'plaza' ? api('/pregunta').then((r) => r.pregunta).catch(() => null) : null,
   ]);
   if (pregunta) preguntaDeHoy = pregunta;
   const vacio = tipo === 'nido'
     ? { emoji: '🪹', texto: T('nido.vacio') }
-    : { emoji: '🌱', texto: T('plaza.vacio') };
+    : (aMano ? { emoji: '✍️', texto: T('mano.vacio') } : { emoji: '🌱', texto: T('plaza.vacio') });
 
-  const visto = leerVisto(tipo);
+  // Lo filtrado lleva su propia marca: si compartiera la de la plaza, los píos
+  // pegados que no se mostraron quedarían como vistos.
+  const clave = aMano ? `${tipo}.mano` : tipo;
+  const visto = leerVisto(clave);
   const pios = datos.pios;
   const cuerpo = pios.length
     ? lineaConMarca(pios, visto) + pieLinea(datos.hayMas, pios[pios.length - 1].orden)
     : listaPios(pios, vacio);
   $('#contenido').innerHTML = (pregunta ? cajaPregunta(pregunta) : '') + cuerpo;
-  if (pios.length) guardarVisto(tipo, Math.max(visto, pios[0].orden));
+  if (pios.length) guardarVisto(clave, Math.max(visto, pios[0].orden));
 
-  engancharMas(tipo);
+  engancharMas(`${tipo}${mano}`);
 }
 
 // Más antiguos, a pedido. Nada de desplazamiento infinito: la línea termina, y
@@ -1388,9 +1398,12 @@ function latirMechas() {
 setInterval(latirMechas, 15000);
 
 function cienJustos(pio) {
-  return largo(pio.texto) === LIMITE
+  return (largo(pio.texto) === LIMITE
     ? `<span class="cien-justos" title="${escapar(T('pio.cienJustos'))}" aria-label="${escapar(T('pio.cienJustos'))}">💯</span>`
-    : '';
+    : '')
+    + (pio.aMano
+      ? `<span class="cien-justos" title="${escapar(T('mano.sello'))}" aria-label="${escapar(T('mano.sello'))}">✍️</span>`
+      : '');
 }
 
 // Un mismo pío puede estar dos veces en pantalla —el original y un repío—:
@@ -2186,6 +2199,8 @@ function abrirDialogo(respuestaA = null, pregunta = null) {
   const padre = respuestaA ? document.querySelector(`.pio[data-id="${CSS.escape(respuestaA)}"]`) : null;
   estado.bombaHeredada = !!(padre && padre.classList.contains('bomba'));
   armarBomba(estado.bombaHeredada);
+  estado.aMano = true;
+  pintarSelloMano();
   $('#tablero-gif').hidden = true;
   $('#error-pio').hidden = true;
   actualizarMedidor();
@@ -2205,6 +2220,41 @@ function armarBomba(armada) {
 
 $('#poner-bomba').addEventListener('click', () => {
   if (!estado.bombaHeredada) armarBomba(!estado.bomba);
+});
+
+// --- escrito a mano ---------------------------------------------------------
+
+// Un pío lleva ✍️ si se tecleó. Lo pegado o arrastrado lo pierde, y también un
+// bloque grande que entra de una sola vez sin pegar: así escriben los teclados
+// que redactan solos. Pegar sólo una dirección no cuenta, porque un enlace no
+// son palabras de otro. Si se borra todo, se empieza de nuevo.
+// No es un control, es un guiño: desde la consola se engaña en un segundo.
+const DE_UNA_VEZ = 25;
+const soloEnlace = (texto) => /^\s*https?:\/\/\S+\s*$/i.test(texto);
+
+function perderSello(texto) {
+  if (soloEnlace(texto || '')) return;
+  estado.aMano = false;
+  pintarSelloMano();
+}
+
+function pintarSelloMano() {
+  const sello = $('#sello-mano');
+  sello.hidden = !areaTexto.value.trim();
+  sello.classList.toggle('perdido', !estado.aMano);
+  sello.title = T(estado.aMano ? 'mano.vale' : 'mano.perdido');
+}
+
+areaTexto.addEventListener('paste', (ev) => perderSello(ev.clipboardData && ev.clipboardData.getData('text')));
+areaTexto.addEventListener('drop', (ev) => perderSello(ev.dataTransfer && ev.dataTransfer.getData('text')));
+areaTexto.addEventListener('beforeinput', (ev) => {
+  // Lo pegado y lo arrastrado ya lo miraron sus propios eventos, que llegan antes.
+  if (ev.inputType.startsWith('insertFrom')) return;
+  if (ev.data && largo(ev.data) > DE_UNA_VEZ) perderSello(ev.data);
+});
+areaTexto.addEventListener('input', () => {
+  if (!areaTexto.value) estado.aMano = true;
+  pintarSelloMano();
 });
 
 function actualizarMedidor() {
@@ -2377,6 +2427,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       pregunta: estado.pregunta || null,
       adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
       bomba: !!estado.bomba,
+      aMano: !!estado.aMano,
     };
     const { pio } = await api('/pios', {
       metodo: 'POST', cuerpo: Object.assign({}, borrador, { pregunta: !!borrador.pregunta }),
@@ -2493,7 +2544,7 @@ function lugarParaPioNuevo(pio) {
   const vista = partes[0] || 'nido';
   const argumento = partes[1];
   if (vista === 'nido') return { caja: $('#contenido') };
-  if (vista === 'plaza' && !pio.corral) return { caja: $('#contenido') };
+  if (vista === 'plaza' && !pio.corral && (pio.aMano || params.get('mano') !== '1')) return { caja: $('#contenido') };
   if (vista === 'c' && pio.corral === argumento && params.get('ver') !== 'chat' && $('#abajo-corral')) {
     return { caja: $('#abajo-corral'), opciones: { enCorral: true } };
   }
@@ -2610,6 +2661,9 @@ async function deshacerHuevo(id) {
     adjunto = borrador.adjunto;
     pintarAdjunto();
     if (borrador.bomba) armarBomba(true);
+    // El texto vuelve por código, no por teclado: el sello es el que tenía.
+    estado.aMano = borrador.aMano;
+    pintarSelloMano();
     actualizarMedidor();
   }
   avisar(T('huevo.deshecho'));

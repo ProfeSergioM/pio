@@ -2470,6 +2470,31 @@ async function main() {
   probar('una mecha de cero vuelve a las veinticuatro horas',
     crearServidor({ datos: carpetaBom, api: { mecha: 0 } }).almacen.mecha === MECHA);
 
+  // --- escrito a mano --------------------------------------------------------
+
+  grupo('Escrito a mano');
+
+  const manoT = await naceBom('caligrafa');
+  const aMano = await piarBom(manoT, { texto: 'tecleado letra por letra', aMano: true });
+  probar('un pío puede venir escrito a mano', aMano.aMano === true);
+  probar('sin decirlo, no lo es', (await piarBom(manoT, { texto: 'pegado de otro lado' })).aMano === false);
+  probar('sólo un true de verdad pone el sello',
+    (await piarBom(manoT, { texto: 'dudoso', aMano: 'sí' })).aMano === false);
+  // Una imagen sola no tiene nada escrito.
+  const imagenSinTexto = await conBom.almacen.publicar(conBom.almacen.buscarUsuario('caligrafa'), '', null,
+    { tipo: 'imagen', url: 'https://i.ibb.co/x/y.png' }, null, { aMano: true });
+  probar('sin texto no hay sello', !imagenSinTexto.aMano);
+  const respuestaMano = await piarBom(manoT, { texto: 'y la respuesta también', respuestaA: aMano.id, aMano: true });
+  probar('una respuesta también puede serlo', respuestaMano.aMano === true);
+
+  const plazaMano = await idsBom('/pios?tipo=plaza&mano=1');
+  probar('la plaza se filtra a lo escrito a mano',
+    plazaMano.includes(aMano.id) && plazaMano.includes(respuestaMano.id) && plazaMano.length === 2, JSON.stringify(plazaMano));
+  probar('sin el filtro está todo', (await idsBom('/pios?tipo=plaza')).length > plazaMano.length);
+  probar('el filtro sirve en cualquier línea',
+    (await idsBom('/pios?tipo=usuario&usuario=caligrafa&mano=1')).length === 2);
+  probar('el sello se guarda', conBom.almacen.buscarPio(aMano.id).aMano === true);
+
   await new Promise((listo) => conBom.close(listo));
   fs.rmSync(carpetaBom, { recursive: true, force: true });
 

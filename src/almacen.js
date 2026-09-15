@@ -624,6 +624,10 @@ class Almacen {
     // La respuesta a la pregunta del día vive en la plaza y no contesta a nadie:
     // una respuesta a otro pío o un pío de corral no pueden serlo.
     if (extra.pregunta && !nuevo.respuestaA && !nuevo.corral) nuevo.pregunta = extra.pregunta;
+    // ✍️ Escrito a mano: tecleado, sin pegar. Lo dice el cliente y no hay forma
+    // de comprobarlo desde acá: es un guiño, como los cien justos, no un control.
+    // Sin texto no hay nada que se haya escrito.
+    if (extra.aMano && limpio) nuevo.aMano = true;
     // Los píos de antes no tienen `nace`: nacieron hace rato.
     if (this.incubacion > 0) nuevo.nace = nuevo.creado + this.incubacion;
     // Lo que se contesta a una bomba explota con ella, lo pida o no: si no, la

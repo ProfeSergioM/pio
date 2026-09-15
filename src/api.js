@@ -305,7 +305,8 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       const pio = await almacen.publicar(
         yo, cuerpo.texto, cuerpo.respuestaA, adjuntoConEtiquetas(almacen, cuerpo.adjunto),
         dondeVa ? dondeVa.nombre : null,
-        { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null, bomba: cuerpo.bomba === true },
+        { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null, bomba: cuerpo.bomba === true,
+          aMano: cuerpo.aMano === true },
       );
       return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
     }
@@ -765,8 +766,10 @@ function linea(almacen, params, yo) {
   // fue a buscar sería confuso.
   // Los huevos ajenos no se muestran en ninguna línea, ni siquiera en el
   // perfil de quien los puso.
+  // Con mano=1, sólo lo escrito a mano, en cualquier línea.
+  const soloAMano = params.get('mano') === '1';
   for (let i = entradas.length - 1; i >= 0; i -= 1) {
-    if (!almacen.visiblePara(entradas[i].pio, yo)) entradas.splice(i, 1);
+    if (!almacen.visiblePara(entradas[i].pio, yo) || (soloAMano && !entradas[i].pio.aMano)) entradas.splice(i, 1);
   }
 
   if (tipo !== 'usuario') {
@@ -818,6 +821,7 @@ function serializar(almacen, pio, yo) {
     // Con el mismo reloj: cuánto le queda a la mecha.
     bomba: !!pio.explota,
     explotaEn: pio.explota ? Math.max(0, pio.explota - Date.now()) : 0,
+    aMano: !!pio.aMano,
     adjunto: adjuntoPublico(almacen, pio.adjunto),
     corral: pio.corral || null,
     pregunta: pio.pregunta || null,

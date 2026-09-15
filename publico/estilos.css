@@ -570,6 +570,19 @@ a { color: inherit; text-decoration: none; }
 .mecha { flex: none; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--rojo); cursor: default; }
 .pio.bomba { box-shadow: inset 3px 0 0 var(--rojo); }
 
+/* --- escrito a mano ---------------------------------------------------- */
+
+/* Al piar, el sello se apaga si se pegó texto. */
+.sello-mano { font-size: 16px; cursor: default; transition: filter .2s, opacity .2s; }
+.sello-mano.perdido { filter: grayscale(1); opacity: .35; }
+.cabecera .filtro-mano { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); text-decoration: none; }
+.cabecera:has(.filtro-mano) { padding-right: 170px; }
+/* Angosto no hay lugar al costado: el interruptor baja debajo del subtítulo. */
+@media (max-width: 600px) {
+  .cabecera:has(.filtro-mano) { padding-right: 18px; }
+  .cabecera .filtro-mano { position: static; transform: none; display: block; width: fit-content; margin-top: 8px; }
+}
+
 .enlace-boton {
   border: 0; background: transparent; padding: 0; cursor: pointer;
   font: inherit; font-weight: 700; color: var(--pico);

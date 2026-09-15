@@ -20,6 +20,8 @@ const vacio = () => ({
   ocultos: [],
   // Las claves con que Pío firma las notificaciones, si no vienen del despliegue.
   vapid: null,
+  // Lo que el owner decide desde el panel: ver src/sitio.js.
+  sitio: null,
   corrales: [],
   // Solo los recientes. Un corral activo junta miles y no tiene sentido
   // tenerlos todos en memoria: el chat mira lo de ahora.
@@ -147,6 +149,7 @@ class DepositoSupabase {
     const ocultos = enMeta('ocultos');
     datos.ocultos = Array.isArray(ocultos) ? ocultos : [];
     datos.vapid = enMeta('vapid') || null;
+    datos.sitio = enMeta('sitio') || null;
     datos.corrales = (corrales || []).map((f) => f.datos).filter(Boolean);
     datos.mensajes = (mensajes || []).map((f) => f.datos).filter(Boolean).reverse();
     return datos;

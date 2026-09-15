@@ -53,6 +53,11 @@ function leerAjustes(directorio) {
     // de la aplicación, ni comprometiendo la base.
     admins: String(elegir('PIO_ADMINS', 'admins') || '')
       .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean),
+    // El owner: nombra administradores desde el panel y toca las
+    // configuraciones del sitio. También va sólo en el despliegue. Sin owner,
+    // los de PIO_ADMINS hacen de owner, como antes de que hubiera roles.
+    owner: String(elegir('PIO_OWNER', 'owner') || '')
+      .split(',').map((x) => x.trim().toLowerCase()).filter(Boolean),
     // La clave que abre /api/latido, la puerta que golpea un servicio de cron
     // gratuito para que el hospedaje no apague el sitio y para que el piobot
     // tenga su oportunidad. Sin clave, esa puerta no existe.

@@ -16,6 +16,7 @@ const PR = require('./preguntas');
 const D = require('./descanso');
 const B = require('./buzon');
 const CAD = require('./cadenas');
+const S = require('./sitio');
 
 // Dónde vive el sitio si nadie dice otra cosa. Pío nació en Chile.
 const ZONA_POR_DEFECTO = 'America/Santiago';
@@ -69,6 +70,7 @@ function crearApi(almacen, opciones = {}) {
     // Se normalizan una vez acá: comparar a mano en cada petición es donde se
     // cuela el descuido que deja entrar a quien no debe.
     admins: new Set((opciones.admins || []).map((x) => String(x).toLowerCase())),
+    owners: new Set((opciones.owner || []).map((x) => String(x).toLowerCase())),
     imagenes: crearSubidor(opciones, opciones.imagenes),
     gifs: crearGifs(opciones, opciones.gifs),
     enlaces: crearAcortador(opciones, opciones.enlaces),
@@ -77,6 +79,35 @@ function crearApi(almacen, opciones = {}) {
   // Para quien no dijo dónde duerme: el horario de silencio se cuenta en la
   // hora del sitio.
   almacen.zonaDelSitio = servicios.zona;
+
+  // El rol de una cuenta. Los que vienen del despliegue no se tocan desde la
+  // app; los administradores nombrados por el owner viven en la base.
+  servicios.rolDe = (usuario) => {
+    const u = String(usuario || '').toLowerCase();
+    if (!u) return null;
+    if (servicios.owners.has(u)) return 'owner';
+    // Sin owner configurado, PIO_ADMINS manda como mandaba antes de los roles.
+    if (servicios.admins.has(u)) return servicios.owners.size ? 'admin' : 'owner';
+    if (S.deDatos(almacen.datos.sitio).admins.includes(u)) return 'admin';
+    return null;
+  };
+
+  // Lleva lo que el owner decidió a donde se usa. Se llama al cargar y cada vez
+  // que cambia: pedirle el valor al sitio en cada uso lo desparramaría por todo.
+  // Un campo vacío vuelve a lo del despliegue o a lo de fábrica.
+  servicios.aplicarSitio = () => {
+    const l = S.deDatos(almacen.datos.sitio).limites;
+    altas.cuantos = l.altas || opciones.altas || ALTAS_POR_HORA;
+    servicios.subidas.cuantos = l.subidas || opciones.subidas || SUBIDAS_POR_HORA;
+    almacen.incubacion = l.incubacionSegundos != null ? l.incubacionSegundos * 1000 : almacen.incubacionBase;
+    almacen.mecha = l.mechaHoras ? l.mechaHoras * 60 * 60 * 1000 : almacen.mechaBase;
+    almacen.maxEslabones = l.eslabones || CAD.MAXIMO;
+    almacen.buzonPorDia = l.buzonPorDia || B.POR_DIA;
+    servicios.zona = l.zona || opciones.zonaHoraria || ZONA_POR_DEFECTO;
+    almacen.zonaDelSitio = servicios.zona;
+  };
+  servicios.opciones = opciones;
+  let sitioAplicado = false;
 
   // Cada aviso que se anota sale también al teléfono de quien lo recibe.
   almacen.alAvisar = (aviso) => servicios.push.programar(aviso);
@@ -88,6 +119,7 @@ function crearApi(almacen, opciones = {}) {
     // La primera petición espera a que termine la carga inicial; el resto la
     // encuentra resuelta y no paga nada.
     await almacen.listo;
+    if (!sitioAplicado) { servicios.aplicarSitio(); sitioAplicado = true; }
     // Que una barrida falle no es motivo para tirar abajo la petición.
     await almacen.barrerSesiones().catch(() => {});
     await almacen.detonar().catch(() => {});
@@ -117,11 +149,36 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
   const { altas, google, imagenes, gifs, enlaces } = servicios;
 
   // El alias no sirve: se compara contra el nombre de ahora. Si alguien se
-  // renombra, hay que actualizar PIO_ADMINS.
-  const mando = () => !!yo && servicios.admins.has(yo.usuario);
+  // renombra, hay que actualizar PIO_ADMINS y PIO_OWNER.
+  const miRol = yo ? servicios.rolDe(yo.usuario) : null;
+  const mando = () => !!miRol;
   const exigirMando = () => {
     exigir(yo);
     if (!mando()) throw new ErrorPio(403, 'Esto es del corral de los que mandan.', 'admin.no');
+  };
+  const exigirOwner = () => {
+    exigirMando();
+    if (miRol !== 'owner') throw new ErrorPio(403, S.mensaje('rol.owner'), 'rol.owner');
+  };
+  // Sobre el owner no actúa nadie, y un admin no actúa sobre otro.
+  const exigirTocable = (usuario) => {
+    const suRol = servicios.rolDe(usuario);
+    if (suRol === 'owner' || (suRol === 'admin' && miRol !== 'owner')) {
+      throw new ErrorPio(403, S.mensaje('rol.intocable'), 'rol.intocable');
+    }
+  };
+  const sitio = () => S.deDatos(almacen.datos.sitio);
+  const encendida = (funcion) => sitio().funciones[funcion];
+  const exigirFuncion = (funcion) => {
+    if (!encendida(funcion)) throw new ErrorPio(403, S.mensaje('funcion.apagada'), 'funcion.apagada', { funcion });
+  };
+  // Cerrado no entra nadie nuevo; con invitación, sólo quien trae el código.
+  const exigirRegistroAbierto = () => {
+    const registro = sitio().registro;
+    if (registro.modo === 'cerrado') throw new ErrorPio(403, S.mensaje('registro.cerrado'), 'registro.cerrado');
+    if (registro.modo === 'invitacion' && !S.invitacionValida(registro, cuerpo.invitacion)) {
+      throw new ErrorPio(403, S.mensaje('registro.invitacion'), 'registro.invitacion');
+    }
   };
   const dedonde = () => deDonde(req, {
     proxies: servicios.proxies,
@@ -135,6 +192,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
   if (recurso === 'registro' && metodo === 'POST') {
     // Se cuentan las altas que salieron bien, no los intentos: lo que se
     // quiere frenar es el alta en masa, y un pedido mal formado no crea nada.
+    exigirRegistroAbierto();
     const desde = dedonde();
     frenarAltas(altas, desde);
     const { cuenta, codigo } = await almacen.crearUsuario(cuerpo.usuario, cuerpo.nombre, cuerpo.clave);
@@ -187,11 +245,17 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     return {
       datos: {
         google: google.activo ? google.clienteId : null,
-        imagenes: imagenes.activo,
+        imagenes: imagenes.activo && encendida('imagenes'),
         proveedorImagenes: imagenes.nombre,
-        gifs: gifs.activo,
+        gifs: gifs.activo && encendida('gifs'),
         acortador: enlaces.activo,
         soyAdmin: mando(),
+        rol: miRol,
+        // Qué dibujar: un botón de algo apagado sólo lleva a un error.
+        funciones: sitio().funciones,
+        anuncio: sitio().anuncio ? { texto: sitio().anuncio.texto, creado: sitio().anuncio.creado } : null,
+        // El modo, nunca el código: el código es lo que se pide.
+        registro: sitio().registro.modo,
       },
     };
   }
@@ -210,7 +274,11 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
 
       // Entrar con Google no puede ser la puerta de atrás del límite de altas.
       const desde = dedonde();
-      if (!almacen.buscarPorGoogle(quien.sub)) frenarAltas(altas, desde);
+      // Ni la puerta de atrás del registro cerrado.
+      if (!almacen.buscarPorGoogle(quien.sub)) {
+        exigirRegistroAbierto();
+        frenarAltas(altas, desde);
+      }
 
       const { cuenta, nueva } = await almacen.desdeGoogle(quien);
       if (nueva) altas.anotar(desde);
@@ -318,14 +386,15 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       const pio = await almacen.publicar(
         yo, cuerpo.texto, cuerpo.respuestaA, adjuntoConEtiquetas(almacen, cuerpo.adjunto),
         dondeVa ? dondeVa.nombre : null,
-        { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null, bomba: cuerpo.bomba === true,
-          aMano: cuerpo.aMano === true, cadena: cuerpo.cadena === true },
+        { pregunta: cuerpo.pregunta ? PR.hoy(servicios.zona) : null, bomba: cuerpo.bomba === true && encendida('bomba'),
+          aMano: cuerpo.aMano === true && encendida('aMano'), cadena: cuerpo.cadena === true && encendida('cadenas') },
       );
       return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
     }
     if (metodo === 'POST' && id && accion === 'eslabon') {
       exigir(yo);
-      const eslabon = await almacen.sumarEslabon(yo, id, cuerpo.texto, { aMano: cuerpo.aMano === true });
+      exigirFuncion('cadenas');
+      const eslabon = await almacen.sumarEslabon(yo, id, cuerpo.texto, { aMano: cuerpo.aMano === true && encendida('aMano') });
       return { codigo: 201, datos: { pio: serializar(almacen, eslabon, yo) } };
     }
     if (metodo === 'POST' && id && accion === 'terminar') {
@@ -417,6 +486,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     // para no delatar un bloqueo.
     if (metodo === 'POST' && accion === 'buzon') {
       exigir(yo);
+      exigirFuncion('buzon');
       await almacen.preguntar(yo, id, cuerpo.texto, cuerpo.anonima === true);
       return { codigo: 201, datos: { ok: true } };
     }
@@ -440,6 +510,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
       };
     }
     if (metodo === 'PATCH' && !id) {
+      if (cuerpo.abierto === true) exigirFuncion('buzon');
       const b = await almacen.ajustarBuzon(yo, cuerpo);
       return { datos: { buzon: { abierto: b.abierto, anonimas: b.anonimas } } };
     }
@@ -452,7 +523,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
     if (metodo === 'POST' && id && accion === 'responder') {
       const pio = await almacen.responderPregunta(yo, id, cuerpo.texto, {
-        bomba: cuerpo.bomba === true, aMano: cuerpo.aMano === true,
+        bomba: cuerpo.bomba === true && encendida('bomba'), aMano: cuerpo.aMano === true && encendida('aMano'),
         adjunto: adjuntoConEtiquetas(almacen, cuerpo.adjunto),
       });
       return { codigo: 201, datos: { pio: serializar(almacen, pio, yo) } };
@@ -463,6 +534,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
 
   if (recurso === 'imagenes' && metodo === 'POST') {
     exigir(yo);
+    exigirFuncion('imagenes');
     if (!imagenes.activo) {
       throw new ErrorPio(501, 'Este Pío no tiene configurada la subida de imágenes.', 'imagen.apagada');
     }
@@ -521,20 +593,75 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
             alias: u.alias || [],
             pios: almacen.datos.pios.filter((p) => p.autor === u.usuario).length,
             seguidores: almacen.seguidores(u.usuario).length,
-            manda: servicios.admins.has(u.usuario),
+            manda: !!servicios.rolDe(u.usuario),
+            rol: servicios.rolDe(u.usuario),
+            // Nombrado desde el panel: el owner lo puede sacar. Los del despliegue, no.
+            nombrado: sitio().admins.includes(u.usuario),
             oculto: (almacen.datos.ocultos || []).includes(u.usuario),
           })).sort((a, b) => b.creado - a.creado),
         },
       };
     }
 
+    // Borrar una cuenta es irreversible: sólo el owner. Y al owner no se lo
+    // borra desde acá, que sería la forma más rápida de quedarse sin nadie.
     if (metodo === 'DELETE' && id === 'usuarios' && accion) {
-      // Quien manda no se puede borrar desde acá: sería la forma más rápida de
-      // quedarse sin nadie que administre el sitio.
-      if (servicios.admins.has(String(accion).toLowerCase())) {
+      exigirOwner();
+      const objetivo = almacen.buscarUsuario(accion);
+      if (objetivo && servicios.rolDe(objetivo.usuario) === 'owner') {
         throw new ErrorPio(403, 'A quien administra no se lo borra desde acá.', 'admin.protegido');
       }
       return { datos: { borrado: await almacen.borrarCuenta(accion) } };
+    }
+
+    // El owner nombra y saca administradores. Los del despliegue no se tocan
+    // desde acá: para eso está la configuración.
+    if (metodo === 'POST' && id === 'equipo' && accion) {
+      exigirOwner();
+      const objetivo = almacen.buscarUsuario(accion);
+      if (!objetivo) throw new ErrorPio(404, 'No existe ese pollito.', 'pollito.noexiste');
+      const actual = sitio();
+      const nombrado = actual.admins.includes(objetivo.usuario);
+      if (!nombrado && servicios.rolDe(objetivo.usuario)) {
+        throw new ErrorPio(403, S.mensaje('rol.intocable'), 'rol.intocable');
+      }
+      actual.admins = nombrado
+        ? actual.admins.filter((u) => u !== objetivo.usuario)
+        : [...actual.admins, objetivo.usuario];
+      await almacen.guardarSitio(actual);
+      return { datos: { usuario: objetivo.usuario, rol: servicios.rolDe(objetivo.usuario) } };
+    }
+
+    // Las configuraciones profundas: funciones, límites, registro y anuncio.
+    if (id === 'sitio') {
+      exigirOwner();
+      if (metodo === 'PUT') {
+        const hecho = S.combinar(almacen.datos.sitio, cuerpo, yo.usuario);
+        if (hecho.error) {
+          const texto = hecho.error.clave.startsWith('pio.') ? M.mensaje(hecho.error) : S.mensaje(hecho.error.clave);
+          throw new ErrorPio(400, texto, hecho.error.clave, hecho.error.datos);
+        }
+        await almacen.guardarSitio(hecho.sitio);
+        servicios.aplicarSitio();
+      }
+      if (metodo === 'GET' || metodo === 'PUT') {
+        return {
+          datos: {
+            sitio: sitio(),
+            rangos: S.LIMITES,
+            // Lo que rige cuando el campo está vacío, para mostrarlo al lado.
+            base: {
+              altas: servicios.opciones.altas || ALTAS_POR_HORA,
+              subidas: servicios.opciones.subidas || SUBIDAS_POR_HORA,
+              incubacionSegundos: Math.round(almacen.incubacionBase / 1000),
+              mechaHoras: Math.round(almacen.mechaBase / (60 * 60 * 1000)),
+              eslabones: CAD.MAXIMO,
+              buzonPorDia: B.POR_DIA,
+              zona: servicios.opciones.zonaHoraria || ZONA_POR_DEFECTO,
+            },
+          },
+        };
+      }
     }
 
     // La plaza deja afuera lo que se dijo adentro de un corral, y lo que no
@@ -587,16 +714,22 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
     }
 
     if (metodo === 'POST' && id === 'ocultos' && accion) {
+      exigirTocable(accion);
       return { datos: { oculto: await almacen.alternarOculto(accion) } };
     }
 
     if (metodo === 'DELETE' && id === 'pios' && accion) {
+      const pio = almacen.buscarPio(accion);
+      if (pio && pio.autor !== yo.usuario) exigirTocable(pio.autor);
       return { datos: { borrado: await almacen.borrarPio(accion) } };
     }
 
     if (metodo === 'DELETE' && id === 'corrales' && accion) {
       return { datos: { borrado: await almacen.borrarCorral(accion) } };
     }
+
+    // Los emojis cambian cómo se ve el texto de todos los píos: del owner.
+    if (id === 'emojis') exigirOwner();
 
     if (metodo === 'GET' && id === 'emojis') {
       // Van tambien los de fabrica: sin ellos, el panel no tiene de donde
@@ -656,6 +789,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
 
       if (metodo === 'POST' && accion === 'chat') {
         exigir(yo);
+        exigirFuncion('chat');
         const dicho = await almacen.decir(yo, corral, cuerpo.texto);
         return { codigo: 201, datos: { mensaje: serializarMensaje(almacen, dicho) } };
       }
@@ -705,6 +839,7 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
   // nuestra clave, disponible para cualquiera que encuentre la dirección.
   if (recurso === 'gifs' && metodo === 'GET') {
     exigir(yo);
+    exigirFuncion('gifs');
     if (!gifs.activo) {
       throw new ErrorPio(501, 'Este Pío no tiene configurada la búsqueda de GIF.', 'gif.apagado');
     }
@@ -1025,7 +1160,7 @@ function resumenDeCadena(almacen, raiz, yo) {
   const autorUltimo = almacen.buscarUsuario(ultimo.autor);
   return {
     total,
-    maximo: CAD.MAXIMO,
+    maximo: almacen.maxEslabones,
     terminada,
     // Sólo quien empezó la cadena la puede cerrar antes de tiempo.
     puedoTerminar: !!yo && raiz.autor === yo.usuario && !terminada,
@@ -1128,7 +1263,7 @@ function perfil(almacen, cuenta, yo) {
     loSigo: !!yo && yo.siguiendo.includes(cuenta.usuario),
     // Si el buzón está abierto lo ve cualquiera; cuántas esperan, sólo quien lo tiene.
     buzon: {
-      abierto: B.deCuenta(cuenta).abierto,
+      abierto: B.deCuenta(cuenta).abierto && S.deDatos(almacen.datos.sitio).funciones.buzon,
       anonimas: B.deCuenta(cuenta).anonimas,
       pendientes: propio ? B.deCuenta(cuenta).preguntas.length : undefined,
     },

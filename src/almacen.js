@@ -67,6 +67,12 @@ class Almacen {
     this.incubacion = ajustes.incubacion == null ? INCUBACION : Number(ajustes.incubacion);
     // Una mecha de cero sería un pío que explota al nacer: no tiene sentido.
     this.mecha = Number(ajustes.mecha) > 0 ? Number(ajustes.mecha) : MECHA;
+    // Los valores de base. El owner los puede cambiar desde el panel; si después
+    // vacía el campo, se vuelve a estos.
+    this.incubacionBase = this.incubacion;
+    this.mechaBase = this.mecha;
+    this.maxEslabones = CAD.MAXIMO;
+    this.buzonPorDia = B.POR_DIA;
     this.datos = vacio();
     this.proximaExplosion = 0;
     // Se arranca a cargar sin bloquear: quien necesite los datos espera esta
@@ -420,6 +426,11 @@ class Almacen {
     return i === -1;
   }
 
+  guardarSitio(sitio) {
+    this.datos.sitio = sitio;
+    return this.guardar([{ tabla: 'pio_meta', clave: 'sitio', valor: { clave: 'sitio', valor: sitio } }]);
+  }
+
   guardarOcultos() {
     return this.guardar([{
       tabla: 'pio_meta', clave: 'ocultos', valor: { clave: 'ocultos', valor: this.datos.ocultos },
@@ -556,6 +567,13 @@ class Almacen {
     if (k !== -1) {
       this.datos.ocultos[k] = nuevo;
       cambios.push({ tabla: 'pio_meta', clave: 'ocultos', valor: { clave: 'ocultos', valor: this.datos.ocultos } });
+    }
+    // Quien administra por nombramiento del owner lo sigue siendo con el nombre nuevo.
+    const adminsDelSitio = (this.datos.sitio && this.datos.sitio.admins) || [];
+    const a = adminsDelSitio.indexOf(viejo);
+    if (a !== -1) {
+      adminsDelSitio[a] = nuevo;
+      cambios.push({ tabla: 'pio_meta', clave: 'sitio', valor: { clave: 'sitio', valor: this.datos.sitio } });
     }
 
     for (const otro of this.datos.usuarios) {
@@ -783,7 +801,7 @@ class Almacen {
       ultimo,
       total,
       terminada,
-      motivo: CAD.motivoParaNoSumar({ terminada, total, ultimo, yo, ahora, esHuevo: (p, t) => this.esHuevo(p, t) }),
+      motivo: CAD.motivoParaNoSumar({ terminada, total, maximo: this.maxEslabones, ultimo, yo, ahora, esHuevo: (p, t) => this.esHuevo(p, t) }),
     };
   }
 
@@ -797,7 +815,7 @@ class Almacen {
     const eslabon = await this.publicar(cuenta, texto, null, null, null, { aMano: extra.aMano, eslabonDe: raiz.id });
     // El vigésimo cierra la cadena. Se anota que fue por llena y no porque la
     // cerró quien la empezó: si el vigésimo se deshace, la cadena se reabre.
-    if (total + 1 >= CAD.MAXIMO) {
+    if (total + 1 >= this.maxEslabones) {
       raiz.cadena.terminada = 'llena';
       await this.guardar([cambioPio(raiz)]);
     }
@@ -863,6 +881,11 @@ class Almacen {
     if (k !== -1) {
       this.datos.ocultos.splice(k, 1);
       cambios.push({ tabla: 'pio_meta', clave: 'ocultos', valor: { clave: 'ocultos', valor: this.datos.ocultos } });
+    }
+    const adminsDelSitio = (this.datos.sitio && this.datos.sitio.admins) || [];
+    if (adminsDelSitio.includes(quien)) {
+      this.datos.sitio.admins = adminsDelSitio.filter((u) => u !== quien);
+      cambios.push({ tabla: 'pio_meta', clave: 'sitio', valor: { clave: 'sitio', valor: this.datos.sitio } });
     }
     this.datos.usuarios = this.datos.usuarios.filter((u) => u.usuario !== quien);
 
@@ -1040,7 +1063,9 @@ class Almacen {
     const error = M.validarPio(texto);
     if (error) throw new ErrorPio(400, M.mensaje(error), error.clave, error.datos);
     const enviadas = buzon.envios[cuenta.usuario] || [];
-    if (enviadas.length >= B.POR_DIA) throw new ErrorPio(429, B.mensaje('buzon.muchas'), 'buzon.muchas');
+    if (enviadas.length >= this.buzonPorDia) {
+      throw new ErrorPio(429, B.mensaje('buzon.muchas', { n: this.buzonPorDia }), 'buzon.muchas', { n: this.buzonPorDia });
+    }
     if (buzon.preguntas.length >= B.PENDIENTES) throw new ErrorPio(429, B.mensaje('buzon.lleno'), 'buzon.lleno');
 
     buzon.envios[cuenta.usuario] = [...enviadas, ahora];

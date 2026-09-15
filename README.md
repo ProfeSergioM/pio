@@ -26,9 +26,9 @@ npm test
 ```
 
 Levanta un servidor real en un puerto libre, con datos en una carpeta
-temporal, y le pega por HTTP igual que el cliente. 769 comprobaciones: el
+temporal, y le pega por HTTP igual que el cliente. 822 comprobaciones: el
 límite de 100, cuentas, nido, repíos, hilos, borrado, avisos, búsqueda,
-persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio, buzón, cadenas, exportación y RSS,
+persistencia, altas masivas, nombres reservados, respuestas en cascada, píos bomba, escrito a mano, horario de silencio, buzón, cadenas, exportación y RSS, roles y ajustes del sitio,
 adjuntos, depósitos, subida de imágenes, búsqueda de GIF y verificación de
 tokens de Google. Ninguna sale a internet: los servicios externos se inyectan
 falseados.
@@ -70,7 +70,8 @@ descuido— y las variables son para el despliegue.
 | `SUPABASE_SERVICE_KEY` | `supabase.clave` | La `service_role`, nunca la `anon`. |
 | `PIO_DEPOSITO` | `deposito` | `archivo` fuerza el JSON local aunque haya credenciales. |
 | `PIO_PROXIES` | `proxies` | Cuántos proxies de confianza hay delante. En tu máquina 0, en Render 1. |
-| `PIO_ADMINS` | `admins` | Quiénes ven el panel de administración, separados por coma. |
+| `PIO_OWNER` | `owner` | El owner del sitio: nombra administradores y toca las configuraciones. |
+| `PIO_ADMINS` | `admins` | Administradores fijos, separados por coma. Sin owner, hacen de owner. |
 | `PIO_LATIDO_CLAVE` | `latidoClave` | Abre `/api/latido`. Sin ella esa puerta no existe. |
 | `PIOBOT_USUARIO` | `piobotUsuario` | A nombre de quién pía el latido. |
 
@@ -111,7 +112,7 @@ queda apagada y lo dice.
 | [`src/buzon.js`](src/buzon.js) | Las reglas del buzón de preguntas |
 | [`src/cadenas.js`](src/cadenas.js) | Las reglas de las cadenas: turnos y tope |
 | [`src/rss.js`](src/rss.js) | Los RSS de cada perfil y cada corral |
-| [`src/cadenas.js`](src/cadenas.js) | Las reglas de las cadenas: turnos y tope |
+| [`src/sitio.js`](src/sitio.js) | Roles y configuraciones del owner: funciones, límites, registro, anuncio |
 | [`pruebas/`](pruebas) | La batería de pruebas |
 
 ## Decisiones que vale la pena conocer
@@ -531,6 +532,9 @@ DELETE /api/admin/pios/:id     borra cualquier pío       ->  {borrado}
 DELETE /api/admin/corrales/:n  borra el corral, no sus píos -> {borrado}
 GET    /api/admin/buzones      las pendientes, con autor real -> {preguntas, total}
 DELETE /api/admin/buzones/:id  borra una pregunta        ->  {borrado}
+POST   /api/admin/equipo/:u   owner: nombra o saca un admin -> {usuario, rol}
+GET    /api/admin/sitio       owner: la configuración    ->  {sitio, rangos, base}
+PUT    /api/admin/sitio       owner: {funciones?, limites?, registro?, anuncio?} -> {sitio, rangos, base}
 GET    /api/admin/emojis       los guardados y los de fábrica -> {emojis, enUso, defecto}
 PUT    /api/admin/emojis       {emojis}                  ->  {emojis, enUso}
 ```
@@ -557,22 +561,53 @@ crezca sin control.
 
 ## El panel de administración
 
-Quien administra el sitio se fija en `PIO_ADMINS`, una lista de nombres de
-usuario separados por coma. Va en la configuración del despliegue y no en la
-base a propósito: así nadie se vuelve administrador desde adentro de la
-aplicación, ni comprometiendo la base de datos.
+Hay dos roles, y los dos se fijan en la configuración del despliegue, no en la
+base: así nadie se vuelve owner desde adentro de la aplicación, ni
+comprometiendo la base de datos.
 
 ```
-PIO_ADMINS=sergi,otro_nombre
+PIO_OWNER=sergi
+PIO_ADMINS=otro_nombre
 ```
 
-Sin esa variable no hay panel para nadie, que es el estado seguro. Con ella,
-a quien esté en la lista le aparece 🎛️ en el menú y entra por `#/admin`. Ahí
-hay cinco solapas: el resumen de cuántos hay de cada cosa, las cuentas, los
-últimos cincuenta píos —los de los corrales incluidos, porque lo que no se ve
-no se modera—, los corrales y el editor de emojis propios.
+- **Owner** (`PIO_OWNER`). Todo lo del panel, más lo que no tiene vuelta
+  atrás: borrar cuentas y editar los emojis. Nombra y saca administradores
+  desde **Pollitos**, y tiene la solapa **Ajustes**. Nadie actúa sobre el owner.
+- **Administradores**. Los de `PIO_ADMINS` y los que el owner nombra desde el
+  panel. Moderan: borran píos y preguntas del buzón, ocultan cuentas, borran
+  corrales. No borran cuentas, no tocan los emojis ni los ajustes, y un
+  administrador no actúa sobre otro. A los de `PIO_ADMINS` no se los saca
+  desde el panel; a los nombrados, sí.
 
-En **Pollitos**, además de borrar, se puede **Ocultar** una cuenta para todo el
+**Sin `PIO_OWNER`, los de `PIO_ADMINS` hacen de owner**, como antes de que
+hubiera roles: un despliegue que ya existía no pierde nada al actualizar. Sin
+ninguna de las dos no hay panel para nadie, que es el estado seguro.
+
+A quien tenga rol le aparece 🎛️ en el menú y entra por `#/admin`. Las
+solapas: el resumen, las cuentas, los últimos píos —los de los corrales
+incluidos, porque lo que no se ve no se modera—, los corrales, los buzones y,
+para el owner, los emojis y los ajustes. Cada ruta lo hace cumplir en el
+servidor; que el cliente esconda un botón es cortesía.
+
+**Ajustes**, sólo del owner ([`src/sitio.js`](src/sitio.js)). Se guardan en la
+base y rigen enseguida, sin reiniciar:
+
+- **Funciones.** Bomba, escrito a mano, buzón, cadenas, GIF, imágenes y chat de
+  los corrales, cada una con su interruptor. Lo apagado desaparece de la app y
+  el servidor lo rechaza, pero lo que ya existe se queda: una bomba armada
+  igual explota.
+- **Límites y tiempos.** Altas e imágenes por hora, segundos del huevo, horas de
+  la bomba, eslabones por cadena, preguntas por persona al día en el buzón y la
+  zona horaria del sitio. Cada uno con su rango; un campo vacío vuelve a lo del
+  despliegue o a lo de fábrica, que el panel muestra en gris.
+- **Registro.** Abierto, cerrado —sólo entran las cuentas que ya existen— o con
+  invitación, que pide un código de ocho letras. El código se acepta escrito
+  como salga, uno nuevo anula el anterior, y nunca viaja en la configuración
+  pública. Entrar con Google por primera vez pasa por la misma puerta.
+- **Anuncio.** Un aviso del sitio, de cien caracteres, arriba de la plaza y del
+  nido.
+
+En **Pollitos** se puede **Ocultar** una cuenta para todo el
 mundo. Sus píos se siguen guardando y puede seguir piando, pero no aparecen en
 la plaza, el nido, las etiquetas, la búsqueda, los avisos ni las tendencias de
 nadie; sólo en su propio perfil y en el panel. Está pensado para el piobot.
@@ -583,8 +618,8 @@ Tres cosas que conviene saber antes de apretar **Borrar**:
   sus mensajes y sus sesiones. No hay papelera.
 - Borrar un corral **no** borra sus píos: se quedan sin corral, o sea en la
   plaza. Que se evapore lo que la gente escribió sería peor que el desorden.
-- A quien administra no se lo puede borrar desde el panel. Sería la forma más
-  rápida de quedarse sin nadie que administre el sitio.
+- Borrar cuentas es sólo del owner, y al owner no se lo puede borrar desde el
+  panel. Sería la forma más rápida de quedarse sin nadie que administre el sitio.
 
 El editor de emojis reemplaza la lista entera: lo que quede escrito al
 guardar es lo que va a andar. Si se guarda vacía, vuelven los cinco de

@@ -239,6 +239,8 @@ function ponerModo(modo) {
   });
   document.querySelectorAll('.solo-registro').forEach((c) => { c.hidden = !esRegistro; });
   document.querySelectorAll('.solo-recuperar').forEach((c) => { c.hidden = !esRecuperar; });
+  // Con registro por invitación, crear una cuenta pide el código.
+  document.querySelectorAll('.solo-invitacion').forEach((c) => { c.hidden = !esRegistro || estado.registro !== 'invitacion'; });
 
   forma.nombre.required = esRegistro;
   forma.clave.autocomplete = (esRegistro || esRecuperar) ? 'new-password' : 'current-password';
@@ -280,7 +282,7 @@ $('#forma-acceso').addEventListener('submit', async (ev) => {
   const rutas = { registro: '/registro', entrar: '/sesion', recuperar: '/recuperar' };
   const cuerpo = modoAcceso === 'recuperar'
     ? { usuario, codigo: forma.get('codigo'), clave: forma.get('clave') }
-    : { usuario, clave: forma.get('clave'), nombre: forma.get('nombre') || usuario };
+    : { usuario, clave: forma.get('clave'), nombre: forma.get('nombre') || usuario, invitacion: forma.get('invitacion') || undefined };
 
   try {
     const datos = await api(rutas[modoAcceso], { metodo: 'POST', cuerpo });
@@ -332,9 +334,21 @@ let googleCargado = false;
 
 // El client id lo dice el servidor. Si no hay, ni siquiera se pide el script
 // de Google: sin configurar, Pío no habla con nadie de afuera.
+// Cómo está el registro: cerrado esconde "Crear pollito"; con invitación,
+// el alta pide el código.
+function prepararRegistro(config) {
+  estado.registro = config.registro || 'abierto';
+  const cerrado = estado.registro === 'cerrado';
+  $('#registro-cerrado').hidden = !cerrado;
+  document.querySelector('.pestana[data-modo="registro"]').hidden = cerrado;
+  if (cerrado && modoAcceso === 'registro') ponerModo('entrar');
+  else ponerModo(modoAcceso);
+}
+
 async function prepararGoogle() {
   try {
     const config = await api('/config');
+    prepararRegistro(config);
     if (!config.google) {
       $('#con-google').hidden = true;
       return;
@@ -369,7 +383,9 @@ async function entrarConGoogle(respuesta) {
   try {
     const datos = await api('/sesion/google', {
       metodo: 'POST',
-      cuerpo: { credencial: respuesta.credential },
+      // Una cuenta nueva por Google también pasa por el registro: si pide
+      // invitación, va el código que se haya escrito.
+      cuerpo: { credencial: respuesta.credential, invitacion: $('#forma-acceso').invitacion.value || undefined },
     });
     estado.token = datos.token;
     estado.yo = datos.yo;
@@ -473,6 +489,16 @@ function cabecera(titulo, subtitulo, extra = '') {
     </div>`;
 }
 
+// --- el anuncio del sitio ---------------------------------------------------
+
+const funcionEncendida = (f) => !estado.funciones || estado.funciones[f] !== false;
+
+// Lo pone el owner desde el panel: un aviso del sitio para todos, de cien.
+function cajaAnuncio() {
+  if (!estado.anuncio) return '';
+  return `<section class="anuncio" role="note"><span>📣 ${escapar(T('anuncio.etiqueta'))}</span><p>${enriquecer(estado.anuncio.texto)}</p></section>`;
+}
+
 // --- la pregunta del día ----------------------------------------------------
 
 let preguntaDeHoy = null;
@@ -541,7 +567,7 @@ function lineaConMarca(pios, visto) {
 async function vistaLinea(tipo, aMano = false) {
   // En la plaza, un interruptor para ver sólo lo escrito a mano. Vive en la
   // dirección, así se comparte y sobrevive a recargar.
-  const filtro = tipo === 'plaza'
+  const filtro = tipo === 'plaza' && funcionEncendida('aMano')
     ? `<a class="boton ${aMano ? 'principal' : 'fantasma'} chico filtro-mano" href="#/plaza${aMano ? '' : '?mano=1'}"
           aria-pressed="${aMano}" title="${escapar(T('mano.filtroExplica'))}">✍️ ${escapar(T('mano.filtro'))}</a>`
     : '';
@@ -564,7 +590,7 @@ async function vistaLinea(tipo, aMano = false) {
   const cuerpo = pios.length
     ? lineaConMarca(pios, visto) + pieLinea(datos.hayMas, pios[pios.length - 1].orden)
     : listaPios(pios, vacio);
-  $('#contenido').innerHTML = (pregunta ? cajaPregunta(pregunta) : '') + cuerpo;
+  $('#contenido').innerHTML = cajaAnuncio() + (pregunta ? cajaPregunta(pregunta) : '') + cuerpo;
   if (pios.length) guardarVisto(clave, Math.max(visto, pios[0].orden));
 
   engancharMas(`${tipo}${mano}`);
@@ -643,7 +669,9 @@ async function vistaPerfil(usuario, solapa) {
   const botonRelacion = perfil.soyYo
     ? `<div class="perfil-botones">
          <button class="boton" data-editar>${escapar(T('perfil.editar'))}</button>
-         <a class="boton" href="#/buzon">📮 ${escapar(T('buzon.boton'))}${perfil.buzon.pendientes ? ` <b>${perfil.buzon.pendientes}</b>` : ''}</a>
+         ${funcionEncendida('buzon')
+           ? `<a class="boton" href="#/buzon">📮 ${escapar(T('buzon.boton'))}${perfil.buzon.pendientes ? ` <b>${perfil.buzon.pendientes}</b>` : ''}</a>`
+           : ''}
          <button class="boton" data-clave>${escapar(T('perfil.clave'))}</button>
          <button class="boton fantasma" data-exportar title="${escapar(T('nido.exportarExplica'))}">🧺 ${escapar(T('nido.exportar'))}</button>
          <button class="boton fantasma" data-salir>${escapar(T('perfil.salir'))}</button>
@@ -1489,7 +1517,7 @@ async function vistaCorral(nombre, solapa) {
     </div>
     <div class="sub-pestanas">
       <button class="sub-pestana ${enChat ? '' : 'activa'}" data-solapa-corral="pios">${escapar(T('corral.solapa.pios'))}</button>
-      <button class="sub-pestana ${enChat ? 'activa' : ''}" data-solapa-corral="chat">${escapar(T('corral.solapa.chat'))}</button>
+      <button class="sub-pestana ${enChat ? 'activa' : ''}" data-solapa-corral="chat" ${funcionEncendida('chat') ? '' : 'hidden'}>${escapar(T('corral.solapa.chat'))}</button>
     </div>
     <div id="abajo-corral"></div>`;
 
@@ -2557,7 +2585,7 @@ function abrirDialogo(respuestaA = null, pregunta = null, buzon = null, eslabon 
   estado.eslabon = respuestaA || pregunta || buzon ? null : eslabon;
   estado.cadena = false;
   const suelto = !respuestaA && !estado.pregunta && !estado.buzon && !estado.eslabon;
-  $('#poner-cadena').hidden = !suelto;
+  $('#poner-cadena').hidden = !suelto || !funcionEncendida('cadenas');
   $('#poner-cadena').setAttribute('aria-pressed', 'false');
   $('#dialogo-titulo').textContent = T(respuestaA ? 'dialogo.respuesta'
     : (estado.pregunta ? 'dialogo.pregunta'
@@ -2629,7 +2657,7 @@ function perderSello(texto) {
 
 function pintarSelloMano() {
   const sello = $('#sello-mano');
-  sello.hidden = !areaTexto.value.trim();
+  sello.hidden = !areaTexto.value.trim() || !funcionEncendida('aMano');
   sello.classList.toggle('perdido', !estado.aMano);
   sello.title = T(estado.aMano ? 'mano.vale' : 'mano.perdido');
 }
@@ -2816,7 +2844,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
       pregunta: estado.pregunta || null,
       adjunto: adjunto ? Object.assign({}, adjunto, { texto: alt ? alt.value : '' }) : null,
       bomba: !!estado.bomba,
-      aMano: !!estado.aMano,
+      aMano: !!estado.aMano && funcionEncendida('aMano'),
       buzon: estado.buzon || null,
       eslabon: estado.eslabon || null,
       cadena: !!estado.cadena,
@@ -3207,12 +3235,19 @@ async function panelResumen(donde) {
     </p>`;
 }
 
+// Sobre el owner no actúa nadie, y un admin no actúa sobre otro. El servidor lo
+// hace cumplir igual; acá es para no mostrar botones que sólo dan error.
+function puedoTocar(cuenta) {
+  if (cuenta.rol === 'owner') return false;
+  return !(cuenta.rol === 'admin' && estado.rol !== 'owner');
+}
+
 async function panelPollitos(donde) {
   const { usuarios } = await api('/admin/usuarios');
   donde.innerHTML = `<div class="tarjeta" style="margin: 12px 16px">${
     usuarios.map((u) => {
       const sellos = [
-        u.manda ? T('admin.manda') : '',
+        u.rol ? T(`rol.sello.${u.rol}`) : '',
         u.porGoogle ? T('admin.porGoogle') : '',
         !u.tieneClave && !u.porGoogle ? T('admin.sinClave') : '',
       ].filter(Boolean);
@@ -3225,9 +3260,10 @@ async function panelPollitos(donde) {
           </a>
           ${u.oculto ? `<span class="sello" data-sello-oculto>${escapar(T('admin.ocultoSello'))}</span>` : ''}
           ${sellos.map((s) => `<span class="sello">${escapar(s)}</span>`).join('')}
-          <button class="boton fantasma chico" data-ocultar="${escapar(u.usuario)}"
-                  title="${escapar(T('admin.ocultarQue'))}">${escapar(T(u.oculto ? 'admin.mostrar' : 'admin.ocultar'))}</button>
-          ${u.manda ? '' : `<button class="boton peligro chico" data-borrar-pollito="${escapar(u.usuario)}">${escapar(T('admin.borrar'))}</button>`}
+          ${puedoTocar(u) && u.usuario !== estado.yo.usuario ? `<button class="boton fantasma chico" data-ocultar="${escapar(u.usuario)}"
+                  title="${escapar(T('admin.ocultarQue'))}">${escapar(T(u.oculto ? 'admin.mostrar' : 'admin.ocultar'))}</button>` : ''}
+          ${estado.rol === 'owner' && (!u.rol || u.nombrado) ? `<button class="boton fantasma chico" data-equipo="${escapar(u.usuario)}">${escapar(T(u.nombrado ? 'rol.sacar' : 'rol.nombrar'))}</button>` : ''}
+          ${estado.rol === 'owner' && u.rol !== 'owner' ? `<button class="boton peligro chico" data-borrar-pollito="${escapar(u.usuario)}">${escapar(T('admin.borrar'))}</button>` : ''}
         </div>`;
     }).join('')
   }</div>`;
@@ -3246,6 +3282,18 @@ async function panelPollitos(donde) {
         } else if (!oculto && sello) {
           sello.remove();
         }
+      } catch (err) {
+        avisar(err.message);
+      }
+    });
+  }
+
+  for (const boton of donde.querySelectorAll('[data-equipo]')) {
+    boton.addEventListener('click', async () => {
+      try {
+        const { usuario, rol } = await api(`/admin/equipo/${encodeURIComponent(boton.dataset.equipo)}`, { metodo: 'POST' });
+        avisar(T(rol ? 'rol.nombrado' : 'rol.sacado', { usuario }));
+        await panelPollitos(donde);
       } catch (err) {
         avisar(err.message);
       }
@@ -3433,8 +3481,108 @@ const SOLAPAS_PANEL = [
   ['pios', panelPios],
   ['corrales', panelCorrales],
   ['buzones', panelBuzones],
-  ['emojis', panelEmojis],
+  ['emojis', panelEmojis, 'owner'],
+  ['sitio', panelSitio, 'owner'],
 ];
+
+// --- ajustes del sitio (sólo el owner) ------------------------------------------
+
+const NOMBRES_DE_FUNCION = ['bomba', 'aMano', 'buzon', 'cadenas', 'gifs', 'imagenes', 'chat'];
+const NOMBRES_DE_LIMITE = ['altas', 'subidas', 'incubacionSegundos', 'mechaHoras', 'eslabones', 'buzonPorDia'];
+
+async function panelSitio(donde) {
+  const { sitio, rangos, base } = await api('/admin/sitio');
+  const r = sitio.registro;
+  donde.innerHTML = `
+    <section class="tarjeta ajustes-sitio">
+      <h2>🔌 ${escapar(T('sitio.funciones'))}</h2>
+      <p class="chico">${escapar(T('sitio.funcionesExplica'))}</p>
+      ${NOMBRES_DE_FUNCION.map((f) => `
+        <label class="descanso-fila">
+          <input type="checkbox" data-funcion="${f}" ${sitio.funciones[f] ? 'checked' : ''}>
+          <span>${escapar(T(`sitio.funcion.${f}`))}</span>
+        </label>`).join('')}
+    </section>
+
+    <section class="tarjeta ajustes-sitio">
+      <h2>⏱️ ${escapar(T('sitio.limites'))}</h2>
+      <p class="chico">${escapar(T('sitio.limitesExplica'))}</p>
+      <div class="rejilla-limites">
+        ${NOMBRES_DE_LIMITE.map((l) => `
+          <label class="campo">
+            <span>${escapar(T(`sitio.limite.${l}`))}</span>
+            <input type="number" data-limite="${l}" min="${rangos[l].min}" max="${rangos[l].max}" step="1"
+                   value="${sitio.limites[l] != null ? sitio.limites[l] : ''}" placeholder="${escapar(T('sitio.base', { valor: base[l] }))}">
+          </label>`).join('')}
+        <label class="campo">
+          <span>${escapar(T('sitio.limite.zona'))}</span>
+          <input data-limite="zona" value="${escapar(sitio.limites.zona || '')}" placeholder="${escapar(T('sitio.base', { valor: base.zona }))}">
+        </label>
+      </div>
+      <button class="boton principal chico" type="button" data-guardar-limites>${escapar(T('admin.emojis.guardar'))}</button>
+    </section>
+
+    <section class="tarjeta ajustes-sitio">
+      <h2>🚪 ${escapar(T('sitio.registro'))}</h2>
+      ${['abierto', 'invitacion', 'cerrado'].map((modo) => `
+        <label class="descanso-fila">
+          <input type="radio" name="modo-registro" value="${modo}" ${r.modo === modo ? 'checked' : ''}>
+          <span>${escapar(T(`sitio.registro.${modo}`))}</span>
+        </label>`).join('')}
+      ${r.modo === 'invitacion' && r.codigo ? `
+        <div class="codigo-invitacion">
+          <code>${escapar(r.codigo)}</code>
+          <button class="boton fantasma chico" type="button" data-nuevo-codigo>${escapar(T('sitio.nuevoCodigo'))}</button>
+        </div>
+        <p class="chico">${escapar(T('sitio.codigoExplica'))}</p>` : ''}
+    </section>
+
+    <section class="tarjeta ajustes-sitio">
+      <h2>📣 ${escapar(T('sitio.anuncio'))}</h2>
+      <p class="chico">${escapar(T('sitio.anuncioExplica'))}</p>
+      <textarea class="anuncio-texto" maxlength="200" rows="2" data-anuncio placeholder="${escapar(T('sitio.anuncioPh'))}">${escapar(sitio.anuncio ? sitio.anuncio.texto : '')}</textarea>
+      <div class="pregunta-buzon-acciones">
+        <button class="boton principal chico" type="button" data-publicar-anuncio>${escapar(T('sitio.publicar'))}</button>
+        ${sitio.anuncio ? `<button class="boton fantasma chico" type="button" data-quitar-anuncio>${escapar(T('sitio.quitar'))}</button>` : ''}
+      </div>
+    </section>`;
+
+  const guardar = async (cambios, aviso) => {
+    try {
+      await api('/admin/sitio', { metodo: 'PUT', cuerpo: cambios });
+      avisar(aviso || T('descanso.guardado'));
+      // Lo que ve el propio owner cambia enseguida: botones, anuncio.
+      await cargarConfig();
+      await panelSitio(donde);
+    } catch (err) {
+      avisar(err.message);
+    }
+  };
+
+  donde.querySelectorAll('[data-funcion]').forEach((caja) => caja.addEventListener('change', () => {
+    guardar({ funciones: { [caja.dataset.funcion]: caja.checked } });
+  }));
+  donde.querySelector('[data-guardar-limites]').addEventListener('click', () => {
+    const limites = {};
+    donde.querySelectorAll('[data-limite]').forEach((campo) => {
+      const valor = campo.value.trim();
+      limites[campo.dataset.limite] = campo.dataset.limite === 'zona'
+        ? (valor || null)
+        : (valor === '' ? null : Number(valor));
+    });
+    guardar({ limites });
+  });
+  donde.querySelectorAll('[name="modo-registro"]').forEach((opcion) => opcion.addEventListener('change', () => {
+    guardar({ registro: { modo: opcion.value } });
+  }));
+  const nuevoCodigo = donde.querySelector('[data-nuevo-codigo]');
+  if (nuevoCodigo) nuevoCodigo.addEventListener('click', () => guardar({ registro: { nuevoCodigo: true } }, T('sitio.codigoNuevo')));
+  donde.querySelector('[data-publicar-anuncio]').addEventListener('click', () => {
+    guardar({ anuncio: { texto: donde.querySelector('[data-anuncio]').value } }, T('sitio.anuncioPuesto'));
+  });
+  const quitar = donde.querySelector('[data-quitar-anuncio]');
+  if (quitar) quitar.addEventListener('click', () => guardar({ anuncio: null }, T('sitio.anuncioQuitado')));
+}
 
 // Las preguntas que esperan en todos los buzones, con quién las hizo de verdad.
 async function panelBuzones(donde) {
@@ -3461,10 +3609,12 @@ async function panelBuzones(donde) {
 
 async function vistaAdmin(solapa) {
   cabecera(T('admin.titulo'), T('admin.sub'));
-  const cual = SOLAPAS_PANEL.some(([n]) => n === solapa) ? solapa : 'resumen';
+  // Las del owner no se le muestran a un admin: el servidor igual las niega.
+  const solapas = SOLAPAS_PANEL.filter(([, , soloDe]) => !soloDe || soloDe === estado.rol);
+  const cual = solapas.some(([n]) => n === solapa) ? solapa : 'resumen';
   $('#contenido').innerHTML = `
     <div class="sub-pestanas muchas">
-      ${SOLAPAS_PANEL.map(([nombre]) => `
+      ${solapas.map(([nombre]) => `
         <button class="sub-pestana ${nombre === cual ? 'activa' : ''}" data-solapa-panel="${nombre}">${escapar(T(`admin.solapa.${nombre}`))}</button>`).join('')}
     </div>
     <div id="panel"><div class="cargando">${escapar(T('cargando'))}</div></div>`;
@@ -3475,7 +3625,7 @@ async function vistaAdmin(solapa) {
     });
   }
 
-  const dibujar = SOLAPAS_PANEL.find(([nombre]) => nombre === cual)[1];
+  const dibujar = solapas.find(([nombre]) => nombre === cual)[1];
   await dibujar($('#panel'));
 }
 
@@ -3519,7 +3669,12 @@ async function cargarConfig() {
   try {
     const config = await api('/config');
     estado.soyAdmin = !!config.soyAdmin;
+    estado.rol = config.rol || null;
+    // Lo que el owner apagó no se dibuja: un botón que lleva a un error es peor que ninguno.
+    estado.funciones = Object.assign({ bomba: true, aMano: true, buzon: true, cadenas: true, chat: true }, config.funciones || {});
+    estado.anuncio = config.anuncio || null;
     $('#nav-admin').hidden = !config.soyAdmin;
+    $('#poner-bomba').hidden = !estado.funciones.bomba;
     $('#acortar-enlaces').hidden = !config.acortador;
     $('#poner-imagen').hidden = !config.imagenes;
     // Sin servicio de imágenes no hay de dónde sacar la foto.

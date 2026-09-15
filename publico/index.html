@@ -30,6 +30,7 @@
     </div>
     <p class="lema"><span data-t="portada.lema1"></span><br><span data-t="portada.lema2"></span></p>
 
+    <p class="respondiendo" id="registro-cerrado" data-t="registro.cerradoAviso" hidden></p>
     <div class="pestanas" role="tablist">
       <button class="pestana activa" data-modo="entrar" role="tab" data-t="acceso.entrar"></button>
       <button class="pestana" data-modo="registro" role="tab" data-t="acceso.crear"></button>
@@ -48,6 +49,11 @@
       <label class="campo solo-registro" hidden>
         <span data-t="campo.nombre"></span>
         <input name="nombre" maxlength="30" placeholder="Pollito Primero">
+      </label>
+
+      <label class="campo solo-invitacion" hidden>
+        <span data-t="campo.invitacion"></span>
+        <input name="invitacion" autocomplete="off" data-t-ph="campo.invitacion.ph">
       </label>
 
       <label class="campo solo-recuperar" hidden>

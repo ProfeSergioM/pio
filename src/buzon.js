@@ -61,12 +61,15 @@ const MENSAJES = {
   'buzon.cerrado': 'Este buzón está cerrado.',
   'buzon.propio': 'No puedes dejarte preguntas a ti mismo.',
   'buzon.sinAnonimas': 'Este buzón sólo recibe preguntas firmadas.',
-  'buzon.muchas': 'Ya dejaste tres preguntas hoy en este buzón. Vuelve mañana.',
+  'buzon.muchas': (d) => `Ya dejaste ${d.n} preguntas hoy en este buzón. Vuelve mañana.`,
   'buzon.lleno': 'Este buzón está lleno. Vuelve más tarde.',
   'buzon.noesta': 'Esa pregunta ya no está.',
   'buzon.malo': 'Ese ajuste del buzón no se entiende.',
 };
 
-const mensaje = (clave) => MENSAJES[clave] || MENSAJES['buzon.malo'];
+const mensaje = (clave, datos = {}) => {
+  const m = MENSAJES[clave] || MENSAJES['buzon.malo'];
+  return typeof m === 'function' ? m(datos) : m;
+};
 
 module.exports = { POR_DIA, DIA, PENDIENTES, deCuenta, podar, publica, mensaje };

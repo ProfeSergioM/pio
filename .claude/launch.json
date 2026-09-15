@@ -15,7 +15,7 @@
       "runtimeExecutable": "node",
       "runtimeArgs": [
         "-e",
-        "const os=require('os'),fs=require('fs'),path=require('path'); const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pio-panel-')); process.env.PIO_DEPOSITO='archivo'; const {crearServidor}=require('./servidor'); crearServidor({datos:dir, api:{altas:200, admins:['jefa']}}).listen(3101, () => console.log('Pio de prueba del panel (jefa administra) en http://localhost:3101 — datos en '+dir));"
+        "const os=require('os'),fs=require('fs'),path=require('path'); const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pio-panel-')); process.env.PIO_DEPOSITO='archivo'; const {crearServidor}=require('./servidor'); crearServidor({datos:dir, api:{altas:200, owner:['jefa'], admins:['moder']}}).listen(3101, () => console.log('Pio de prueba del panel (jefa es owner, moder administra) en http://localhost:3101 — datos en '+dir));"
       ],
       "port": 3101
     }

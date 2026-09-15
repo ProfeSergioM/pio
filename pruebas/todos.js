@@ -2868,6 +2868,143 @@ async function main() {
   await new Promise((listo) => conNid.close(listo));
   fs.rmSync(carpetaNid, { recursive: true, force: true });
 
+  // --- roles: owner y administradores ------------------------------------------
+
+  grupo('Roles: owner y administradores');
+
+  const carpetaRol = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-rol-'));
+  let conRol = crearServidor({ datos: carpetaRol, api: { altas: 100, owner: ['duena'], admins: ['moder'] } });
+  await new Promise((listo) => conRol.listen(0, '127.0.0.1', listo));
+  let baseRol = `http://127.0.0.1:${conRol.address().port}`;
+  const pedirRol = async (ruta, o = {}) => {
+    const r = await fetch(`${baseRol}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' },
+        o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const naceRol = async (usuario, extra = {}) => pedirRol('/registro', {
+    metodo: 'POST', cuerpo: Object.assign({ usuario, nombre: usuario, clave: 'semillas' }, extra),
+  });
+  const duenaRolT = (await naceRol('duena')).datos.token;
+  const moderT = (await naceRol('moder')).datos.token;
+  const ayudanteT = (await naceRol('ayudante')).datos.token;
+  const comunT = (await naceRol('comun')).datos.token;
+  const rolDe = async (token) => (await pedirRol('/config', { token })).datos.rol;
+
+  probar('el owner es owner', (await rolDe(duenaRolT)) === 'owner');
+  probar('PIO_ADMINS con owner configurado es admin', (await rolDe(moderT)) === 'admin');
+  probar('una cuenta común no tiene rol', (await rolDe(comunT)) === null);
+  probar('sin sesión, tampoco', (await rolDe(null)) === null);
+
+  // Nombrar administradores.
+  probar('un admin no nombra admins', (await pedirRol('/admin/equipo/ayudante', { metodo: 'POST', token: moderT })).datos.clave === 'rol.owner');
+  const nombrado = await pedirRol('/admin/equipo/ayudante', { metodo: 'POST', token: duenaRolT });
+  probar('el owner nombra un admin desde el panel', nombrado.datos.rol === 'admin' && (await rolDe(ayudanteT)) === 'admin');
+  probar('a un admin del despliegue no se lo saca desde acá',
+    (await pedirRol('/admin/equipo/moder', { metodo: 'POST', token: duenaRolT })).datos.clave === 'rol.intocable');
+  probar('ni al owner', (await pedirRol('/admin/equipo/duena', { metodo: 'POST', token: duenaRolT })).datos.clave === 'rol.intocable');
+  probar('la lista de pollitos dice el rol de cada uno',
+    (await pedirRol('/admin/usuarios', { token: ayudanteT })).datos.usuarios.find((u) => u.usuario === 'ayudante').rol === 'admin');
+
+  // Lo que puede un admin, y lo que no.
+  const pioComun = (await pedirRol('/pios', { metodo: 'POST', token: comunT, cuerpo: { texto: 'algo para moderar' } })).datos.pio;
+  const pioDuena = (await pedirRol('/pios', { metodo: 'POST', token: duenaRolT, cuerpo: { texto: 'de la owner' } })).datos.pio;
+  const pioModer = (await pedirRol('/pios', { metodo: 'POST', token: moderT, cuerpo: { texto: 'de un admin' } })).datos.pio;
+  probar('un admin borra píos de cuentas comunes', (await pedirRol(`/admin/pios/${pioComun.id}`, { metodo: 'DELETE', token: ayudanteT })).estado === 200);
+  probar('no los del owner', (await pedirRol(`/admin/pios/${pioDuena.id}`, { metodo: 'DELETE', token: ayudanteT })).datos.clave === 'rol.intocable');
+  probar('ni los de otro admin', (await pedirRol(`/admin/pios/${pioModer.id}`, { metodo: 'DELETE', token: ayudanteT })).datos.clave === 'rol.intocable');
+  probar('el owner sí', (await pedirRol(`/admin/pios/${pioModer.id}`, { metodo: 'DELETE', token: duenaRolT })).estado === 200);
+  probar('un admin oculta cuentas comunes', (await pedirRol('/admin/ocultos/comun', { metodo: 'POST', token: moderT })).datos.oculto === true);
+  await pedirRol('/admin/ocultos/comun', { metodo: 'POST', token: moderT });
+  probar('no al owner', (await pedirRol('/admin/ocultos/duena', { metodo: 'POST', token: moderT })).datos.clave === 'rol.intocable');
+  probar('un admin no borra cuentas', (await pedirRol('/admin/usuarios/comun', { metodo: 'DELETE', token: moderT })).datos.clave === 'rol.owner');
+  probar('ni toca los emojis', (await pedirRol('/admin/emojis', { token: moderT })).datos.clave === 'rol.owner');
+  probar('ni la configuración del sitio', (await pedirRol('/admin/sitio', { token: moderT })).datos.clave === 'rol.owner');
+  probar('una cuenta común no entra al panel', (await pedirRol('/admin/resumen', { token: comunT })).estado === 403);
+  probar('al owner no lo borra ni el owner', (await pedirRol('/admin/usuarios/duena', { metodo: 'DELETE', token: duenaRolT })).estado === 403);
+
+  // Funciones.
+  const ajustarSitio = (cuerpo) => pedirRol('/admin/sitio', { metodo: 'PUT', token: duenaRolT, cuerpo });
+  probar('una función inventada no', (await ajustarSitio({ funciones: { teletransporte: false } })).datos.clave === 'sitio.malo');
+  await ajustarSitio({ funciones: { bomba: false, cadenas: false, buzon: false, chat: false, aMano: false } });
+  const configApagada = (await pedirRol('/config', { token: comunT })).datos;
+  probar('el cliente se entera de qué está apagado', configApagada.funciones.bomba === false && configApagada.funciones.gifs === true);
+  const sinBomba = (await pedirRol('/pios', { metodo: 'POST', token: comunT, cuerpo: { texto: 'boom?', bomba: true, cadena: true, aMano: true } })).datos.pio;
+  probar('con la bomba apagada, el pío sale sin mecha', sinBomba.bomba === false);
+  probar('y sin cadena ni sello', !sinBomba.cadena && sinBomba.aMano === false);
+  await pedirRol('/buzon', { metodo: 'PATCH', token: duenaRolT, cuerpo: { abierto: true } }).catch(() => {});
+  probar('con el buzón apagado no se abre', (await pedirRol('/buzon', { metodo: 'PATCH', token: comunT, cuerpo: { abierto: true } })).datos.clave === 'funcion.apagada');
+  await pedirRol('/corrales', { metodo: 'POST', token: comunT, cuerpo: { nombre: 'charla', titulo: 'Charla' } });
+  probar('con el chat apagado no se escribe',
+    (await pedirRol('/corrales/charla/chat', { metodo: 'POST', token: comunT, cuerpo: { texto: 'hola' } })).datos.clave === 'funcion.apagada');
+  await ajustarSitio({ funciones: { bomba: true, cadenas: true, buzon: true, chat: true, aMano: true } });
+  probar('encendida de nuevo, la bomba vuelve', (await pedirRol('/pios', { metodo: 'POST', token: comunT, cuerpo: { texto: 'boom', bomba: true } })).datos.pio.bomba === true);
+
+  // Límites y tiempos, aplicados sin reiniciar.
+  probar('un límite fuera de rango no', (await ajustarSitio({ limites: { mechaHoras: 500 } })).datos.clave === 'sitio.limite');
+  probar('ni con decimales', (await ajustarSitio({ limites: { eslabones: 2.5 } })).datos.clave === 'sitio.limite');
+  probar('ni una zona inventada', (await ajustarSitio({ limites: { zona: 'Marte/Olympus' } })).datos.clave === 'sitio.zona');
+  const conLimites = await ajustarSitio({ limites: { mechaHoras: 2, incubacionSegundos: 0, eslabones: 3, buzonPorDia: 1, altas: 2, zona: 'Europe/Madrid' } });
+  probar('los límites se guardan', conLimites.estado === 200 && conLimites.datos.sitio.limites.mechaHoras === 2);
+  const bombaCorta = (await pedirRol('/pios', { metodo: 'POST', token: comunT, cuerpo: { texto: 'mecha corta', bomba: true } })).datos.pio;
+  probar('la mecha nueva rige enseguida', bombaCorta.explotaEn <= 2 * 60 * 60 * 1000 && bombaCorta.explotaEn > 2 * 60 * 60 * 1000 - 5000);
+  probar('y el huevo también', bombaCorta.huevo === false);
+  const cadenaCorta = (await pedirRol('/pios', { metodo: 'POST', token: comunT, cuerpo: { texto: 'cadena corta', cadena: true } })).datos.pio;
+  probar('las cadenas toman el tope nuevo', cadenaCorta.cadena.maximo === 3);
+  probar('la zona del sitio cambia', conRol.almacen.zonaDelSitio === 'Europe/Madrid');
+  await pedirRol('/buzon', { metodo: 'PATCH', token: duenaRolT, cuerpo: { abierto: true } });
+  await pedirRol('/usuarios/duena/buzon', { metodo: 'POST', token: comunT, cuerpo: { texto: 'una' } });
+  probar('y el tope del buzón', (await pedirRol('/usuarios/duena/buzon', { metodo: 'POST', token: comunT, cuerpo: { texto: 'dos' } })).datos.clave === 'buzon.muchas');
+  await naceRol('altauno');
+  probar('y el de altas por hora', (await naceRol('altados')).estado === 429);
+  const vaciado = await ajustarSitio({ limites: { mechaHoras: null, altas: null } });
+  probar('vaciar un campo vuelve al valor de base', vaciado.datos.sitio.limites.mechaHoras === undefined && conRol.almacen.mecha === conRol.almacen.mechaBase);
+  probar('el panel dice cuál es la base', vaciado.datos.base.mechaHoras === 24);
+
+  // Registro.
+  await ajustarSitio({ registro: { modo: 'cerrado' } });
+  probar('con el registro cerrado no entra nadie nuevo', (await naceRol('tarde')).datos.clave === 'registro.cerrado');
+  probar('pero quien ya tiene cuenta entra', (await pedirRol('/sesion', { metodo: 'POST', cuerpo: { usuario: 'comun', clave: 'semillas' } })).estado === 200);
+  probar('el cliente sabe que está cerrado', (await pedirRol('/config')).datos.registro === 'cerrado');
+  const conInvitacion = await ajustarSitio({ registro: { modo: 'invitacion' } });
+  const codigoInv = conInvitacion.datos.sitio.registro.codigo;
+  probar('pasar a invitación estrena un código', /^[A-Z0-9]{8}$/.test(codigoInv || ''));
+  probar('el código no sale en la config pública', !JSON.stringify((await pedirRol('/config')).datos).includes(codigoInv));
+  probar('sin código no se entra', (await naceRol('recienllega')).datos.clave === 'registro.invitacion');
+  const conCodigo = await naceRol('recienllega', { invitacion: ` ${codigoInv.toLowerCase().slice(0, 4)}-${codigoInv.toLowerCase().slice(4)} ` });
+  probar('con el código sí, escrito como salga', conCodigo.estado === 201, JSON.stringify(conCodigo.datos));
+  const otroCodigo = (await ajustarSitio({ registro: { nuevoCodigo: true } })).datos.sitio.registro.codigo;
+  probar('un código nuevo anula el viejo', otroCodigo !== codigoInv && (await naceRol('otrallega', { invitacion: codigoInv })).estado === 403);
+  await ajustarSitio({ registro: { modo: 'abierto' } });
+
+  // Anuncio.
+  probar('el anuncio también entra en cien', (await ajustarSitio({ anuncio: { texto: 'a'.repeat(101) } })).datos.clave === 'pio.largo');
+  await ajustarSitio({ anuncio: { texto: 'Mañana hay mantenimiento a las 9' } });
+  probar('el anuncio sale en la config de todos', (await pedirRol('/config')).datos.anuncio.texto === 'Mañana hay mantenimiento a las 9');
+  await ajustarSitio({ anuncio: null });
+  probar('y se saca', (await pedirRol('/config')).datos.anuncio === null);
+
+  // La configuración y los nombramientos sobreviven a un reinicio, y siguen al renombre.
+  await pedirRol('/yo', { metodo: 'PATCH', token: ayudanteT, cuerpo: { usuario: 'ayudante2' } });
+  await ajustarSitio({ limites: { eslabones: 5 } });
+  await new Promise((listo) => conRol.close(listo));
+  conRol = crearServidor({ datos: carpetaRol, api: { altas: 100, owner: ['duena'], admins: ['moder'] } });
+  await new Promise((listo) => conRol.listen(0, '127.0.0.1', listo));
+  baseRol = `http://127.0.0.1:${conRol.address().port}`;
+  probar('un admin nombrado sigue siéndolo con su nombre nuevo, tras reiniciar', (await rolDe(ayudanteT)) === 'admin');
+  await pedirRol('/config');
+  probar('y los límites siguen aplicados', conRol.almacen.maxEslabones === 5);
+  await pedirRol('/admin/usuarios/ayudante2', { metodo: 'DELETE', token: duenaRolT });
+  probar('borrar la cuenta de un admin lo saca del equipo', !S_ROL().admins.includes('ayudante2'));
+
+  await new Promise((listo) => conRol.close(listo));
+  fs.rmSync(carpetaRol, { recursive: true, force: true });
+
+  function S_ROL() { return require('../src/sitio').deDatos(conRol.almacen.datos.sitio); }
+
   // --- la pregunta del día -------------------------------------------------
 
   grupo('La pregunta del día');

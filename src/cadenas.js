@@ -10,9 +10,9 @@
 const MAXIMO = 20;
 
 // Por qué alguien no puede sumar ahora. null es que puede.
-function motivoParaNoSumar({ terminada, total, ultimo, yo, ahora, esHuevo }) {
+function motivoParaNoSumar({ terminada, total, maximo = MAXIMO, ultimo, yo, ahora, esHuevo }) {
   if (terminada) return 'cadena.terminada';
-  if (total >= MAXIMO) return 'cadena.llena';
+  if (total >= maximo) return 'cadena.llena';
   if (yo && ultimo.autor === yo.usuario) return 'cadena.seguido';
   // El último todavía es huevo: quien lo escribió puede deshacerlo, y seguir
   // desde ahí sería contestarle a algo que nadie más ve.
@@ -23,7 +23,7 @@ function motivoParaNoSumar({ terminada, total, ultimo, yo, ahora, esHuevo }) {
 const MENSAJES = {
   'cadena.noes': 'Ese pío no es una cadena.',
   'cadena.terminada': 'Esa cadena ya terminó.',
-  'cadena.llena': `Esa cadena ya tiene sus ${MAXIMO} eslabones.`,
+  'cadena.llena': 'Esa cadena ya tiene todos sus eslabones.',
   'cadena.ocupada': 'Alguien está escribiendo el eslabón anterior. Espera unos segundos.',
   'cadena.seguido': 'El último eslabón es tuyo: deja que siga otro.',
   'cadena.enMedio': 'Sólo se puede borrar el último eslabón de una cadena.',

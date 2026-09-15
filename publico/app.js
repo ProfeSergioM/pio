@@ -129,18 +129,64 @@ function escapar(texto) {
 // mucho mejor que no ver el texto.
 let emojisDelSitio = new Map();
 
-// Enlaza #etiquetas y @menciones sobre el texto ya escapado, y cambia los
-// :nombre: por su imagen.
+// Convierte el texto en HTML: enlaces, :emojis:, #etiquetas y @menciones.
+//
+// Se recorre el texto crudo buscando esas piezas y se escapa cada una por su
+// lado. Hacerlo sobre el texto ya escapado, como antes, rompía dos cosas: una
+// dirección con # o @ adentro se partía en etiquetas y menciones, y un
+// apóstrofo escapado como &#39; se volvía la etiqueta #39.
+const PIEZAS = /(https?:\/\/[^\s<>"]+|www\.[a-z0-9-]+\.[^\s<>"]+)|:([a-z0-9_]{2,20}):|#([\p{L}\p{N}_]{1,50})|@([a-zA-Z0-9_]{3,15})/giu;
+
+// La puntuación pegada al final casi nunca es parte de la dirección: "mira
+// pio.cl." termina en punto, no en "cl.".
+const COLA_DE_ENLACE = /[.,;:!?)\]}'"»”]$/;
+
+// Se saca de a un carácter. Un paréntesis de cierre se queda si abre adentro
+// de la dirección: es.wikipedia.org/wiki/Pan_(comida) lo necesita.
+function sinCola(url) {
+  let pieza = url;
+  while (COLA_DE_ENLACE.test(pieza)) {
+    const abre = (pieza.match(/\(/g) || []).length;
+    const cierra = (pieza.match(/\)/g) || []).length;
+    if (pieza.endsWith(')') && cierra <= abre) break;
+    pieza = pieza.slice(0, -1);
+  }
+  return pieza;
+}
+
+// Lo que se ve del enlace: sin https://, sin www y, si es muy largo, cortado.
+// La dirección entera sigue estando en el enlace.
+function enlaceVisible(url) {
+  const limpio = url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+  const letras = [...limpio];
+  return letras.length > 40 ? `${letras.slice(0, 38).join('')}…` : limpio;
+}
+
 function enriquecer(texto) {
-  return escapar(texto)
-    .replace(/:([a-z0-9_]{2,20}):/g, (entero, nombre) => {
-      const src = emojisDelSitio.get(nombre);
-      return src
-        ? `<img class="emoji" src="${escapar(src)}" alt=":${escapar(nombre)}:" title=":${escapar(nombre)}:">`
-        : entero;
-    })
-    .replace(/#([\p{L}\p{N}_]{1,50})/gu, (m, e) => `<a href="#/e/${encodeURIComponent(e.toLowerCase())}">${m}</a>`)
-    .replace(/@([a-zA-Z0-9_]{3,15})/g, (m, u) => `<a href="#/u/${u.toLowerCase()}">${m}</a>`);
+  const crudo = String(texto == null ? '' : texto);
+  let salida = '';
+  let desde = 0;
+  for (const m of crudo.matchAll(PIEZAS)) {
+    let pieza = m[0];
+    if (m[1]) pieza = sinCola(pieza);
+    salida += escapar(crudo.slice(desde, m.index));
+    desde = m.index + pieza.length;
+
+    if (m[1]) {
+      const href = /^www\./i.test(pieza) ? `https://${pieza}` : pieza;
+      salida += `<a class="enlace" href="${escapar(href)}" target="_blank" rel="noopener noreferrer nofollow ugc" title="${escapar(href)}">${escapar(enlaceVisible(pieza))}</a>`;
+    } else if (m[2]) {
+      const src = emojisDelSitio.get(m[2].toLowerCase());
+      salida += src
+        ? `<img class="emoji" src="${escapar(src)}" alt=":${escapar(m[2])}:" title=":${escapar(m[2])}:">`
+        : escapar(pieza);
+    } else if (m[3]) {
+      salida += `<a href="#/e/${encodeURIComponent(m[3].toLowerCase())}">${escapar(pieza)}</a>`;
+    } else {
+      salida += `<a href="#/u/${escapar(m[4].toLowerCase())}">${escapar(pieza)}</a>`;
+    }
+  }
+  return salida + escapar(crudo.slice(desde));
 }
 
 function hace(ms) {
@@ -1889,7 +1935,7 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
 // --- el huevo -------------------------------------------------------------
 
 // Lo que se escribió, por si hay que devolverlo al deshacer. Sólo vive en esta
-// pestaña: pasados los quince segundos ya no sirve para nada.
+// pestaña: una vez que el pío nace ya no sirve para nada.
 const borradores = new Map();
 let barraHuevo = null;
 

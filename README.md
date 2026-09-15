@@ -125,7 +125,7 @@ el pío; los demás ven si ellos dieron el suyo.
 **💯 Cien justos.** Un pío de exactamente cien caracteres lleva la marca. Es un
 guiño, no un puntaje.
 
-**Todo pío nace como huevo.** Durante 15 segundos sólo lo ve quien lo escribió,
+**Todo pío nace como huevo.** Durante 10 segundos sólo lo ve quien lo escribió,
 con un "Deshacer" que lo borra y devuelve el texto al borrador para corregirlo.
 Nadie más lo ve: ni en las líneas, ni en la búsqueda, ni en las tendencias, y
 los avisos de menciones y respuestas esperan a que nazca. Es la pausa que frena

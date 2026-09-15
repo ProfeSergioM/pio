@@ -35,7 +35,7 @@ const ESPERA_CAMBIO = 30 * 24 * 60 * 60 * 1000;
 // Todo pío nace como huevo: durante estos segundos sólo lo ve quien lo
 // escribió, que todavía puede deshacerlo. Es la pausa que frena lo que se
 // escribe en caliente, sin necesidad de un botón de editar.
-const INCUBACION = 15 * 1000;
+const INCUBACION = 10 * 1000;
 
 // Cuanto vale una sesion, contado desde que se abrio. Es absoluto y no
 // deslizante a proposito: renovarlo con cada uso obligaria a escribir en la

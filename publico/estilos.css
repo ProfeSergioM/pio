@@ -249,6 +249,8 @@ a { color: inherit; text-decoration: none; }
 .texto { margin: 3px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .texto a { color: var(--pico); font-weight: 600; }
 .texto a:hover { text-decoration: underline; }
+/* Un enlace largo sin espacios no debe estirar la tarjeta. */
+.texto a.enlace { font-weight: 500; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 
 .contexto { grid-column: 1 / -1; font-size: 13px; color: var(--tenue); margin-bottom: 2px; }
 

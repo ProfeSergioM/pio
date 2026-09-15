@@ -305,11 +305,11 @@ a { color: inherit; text-decoration: none; }
    mano sin ocupar un renglón. */
 .pio { position: relative; }
 /* Como un pío es corto, sobra lugar para que los botones sean grandes: van en
-   dos filas, tres arriba y el resto abajo. */
-:root { --pestana-ancho: 156px; --pestana-alto: 84px; }
+   tres filas de a dos, angosta, para dejarle más ancho al texto. */
+:root { --pestana-ancho: 108px; --pestana-alto: 112px; }
 .acciones {
   position: absolute; top: 0; right: 0; z-index: 1;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px;
   width: var(--pestana-ancho);
   padding: 6px 8px 8px 12px;
   background: var(--panel-2);
@@ -1011,7 +1011,7 @@ iframe.spotify { display: block; width: 100%; border: 0; border-radius: 12px; }
   /* En el teléfono se pía con el botón redondo, por encima de la cinta. */
   .flotante { display: grid; place-items: center; bottom: 50px; }
 
-  :root { --pestana-ancho: 138px; --pestana-alto: 76px; }
+  :root { --pestana-ancho: 96px; --pestana-alto: 106px; }
   .pio .pio-usuario { display: none; }
   .accion { font-size: 17px; padding: 6px 2px; }
 }

@@ -304,28 +304,46 @@ a { color: inherit; text-decoration: none; }
    a la izquierda redondeada. Lo que se lee queda limpio y lo que se hace, a
    mano sin ocupar un renglón. */
 .pio { position: relative; }
+/* Como un pío es corto, sobra lugar para que los botones sean grandes: van en
+   dos filas, tres arriba y el resto abajo. */
+:root { --pestana-ancho: 156px; --pestana-alto: 84px; }
 .acciones {
   position: absolute; top: 0; right: 0; z-index: 1;
-  display: flex; align-items: center; gap: 0;
-  padding: 2px 6px 3px 10px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  width: var(--pestana-ancho);
+  padding: 6px 8px 8px 12px;
   background: var(--panel-2);
   border-left: 1px solid var(--borde); border-bottom: 1px solid var(--borde);
-  border-bottom-left-radius: 16px;
+  border-bottom-left-radius: 24px;
 }
-/* La hora y el nombre no se meten debajo de la pestaña. */
-.pio > .contexto, .pio .pio-cabecera, .comentario .com-cabeza { padding-right: 190px; }
+
+/* El texto rodea la pestaña en vez de quedar en una columna angosta: al lado
+   en los primeros renglones y a todo lo ancho debajo. Lo hace un hueco
+   flotante del tamaño de la pestaña, y lo que es imagen o reproductor empieza
+   recién debajo. flow-root hace que la tarjeta crezca hasta cubrir el hueco. */
+.pio:not(.quieto):not(.comentario) > div:last-child { display: flow-root; }
+.pio:not(.quieto):not(.comentario) > div:last-child::before,
+#cascada .pio.comentario::before {
+  content: ''; float: right;
+  width: calc(var(--pestana-ancho) - 2px);
+  height: calc(var(--pestana-alto) - 14px);
+}
+.pio .pio-imagen, .pio .pio-spotify { clear: right; }
+/* La línea de "en respuesta a" va arriba de todo y no rodea nada. */
+.pio > .contexto { padding-right: calc(var(--pestana-ancho) + 8px); }
 /* Nombre, usuario y hora en un solo renglón: si no caben, el nombre se corta
    con puntos suspensivos antes que partirse en tres líneas. */
-.pio .pio-cabecera, .comentario .com-cabeza { flex-wrap: nowrap; min-width: 0; }
+.pio .pio-cabecera, .comentario .com-cabeza { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
 /* Sin esto la columna de la grilla no se deja achicar y el renglón se sale de la tarjeta. */
 .pio > * { min-width: 0; }
 .pio .pio-nombre, .pio .pio-usuario { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pio .pio-fecha, .cien-justos { flex: none; white-space: nowrap; }
 .accion {
   border: 0; background: transparent; cursor: pointer; color: var(--tenue);
-  display: inline-flex; align-items: center; gap: 3px;
-  padding: 4px 7px; border-radius: 999px; font-size: 12px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  padding: 6px 4px; border-radius: 12px; font-size: 19px; line-height: 1;
 }
+.accion span { font-size: 12px; font-weight: 600; }
 .accion span:empty { display: none; }
 .accion:hover { background: var(--panel); color: var(--texto); }
 .accion.activa { color: var(--rojo); font-weight: 700; }
@@ -379,11 +397,10 @@ a { color: inherit; text-decoration: none; }
 /* Un comentario no es una tarjeta: sin caja, sin sombra, sin nada que los
    temas le hayan puesto al pío. Lo que ordena es la línea, no el recuadro. */
 #cascada .pio.comentario {
-  display: block; position: relative; padding: 8px 4px 0; margin: 0;
+  display: flow-root; position: relative; padding: 8px 4px 0; margin: 0;
   border: 0; border-radius: 0; background: transparent; box-shadow: none; transform: none;
   cursor: default;
 }
-#cascada .pio.comentario::before { content: none; }
 #cascada .pio.comentario:hover { background: transparent; box-shadow: none; transform: none; }
 
 .avatar.mini { width: 24px; height: 24px; font-size: 12px; }
@@ -994,7 +1011,7 @@ iframe.spotify { display: block; width: 100%; border: 0; border-radius: 12px; }
   /* En el teléfono se pía con el botón redondo, por encima de la cinta. */
   .flotante { display: grid; place-items: center; bottom: 50px; }
 
-  .pio > .contexto, .pio .pio-cabecera, .comentario .com-cabeza { padding-right: 160px; }
+  :root { --pestana-ancho: 138px; --pestana-alto: 76px; }
   .pio .pio-usuario { display: none; }
-  .accion { padding: 4px 5px; }
+  .accion { font-size: 17px; padding: 6px 2px; }
 }

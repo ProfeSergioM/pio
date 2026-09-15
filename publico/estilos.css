@@ -165,46 +165,86 @@ a { color: inherit; text-decoration: none; }
 
 /* --- estructura ----------------------------------------------------- */
 
-.app {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 620px) 320px;
-  gap: 24px;
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 0 16px;
-  align-items: start;
-}
+.app { min-height: 100vh; }
 
-.barra-superior { display: none; }
-
-.lateral {
-  position: sticky; top: 0; padding: 20px 0; display: flex; flex-direction: column; gap: 4px;
+/* La barra de arriba: la marca, las secciones al medio y lo de uno a la derecha. */
+.barra-superior {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 14px;
+  padding: 8px 20px; background: var(--panel); border-bottom: 1px solid var(--borde);
 }
-.lateral .marca { margin-bottom: 14px; padding-left: 12px; }
+.barra-superior .marca { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.barra-acciones { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.menu {
+  display: flex; align-items: center; justify-content: center; gap: 2px;
+  flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+.menu::-webkit-scrollbar { display: none; }
 
 .nav {
-  display: flex; align-items: center; gap: 12px;
-  padding: 11px 14px; border-radius: 999px; font-weight: 600; color: var(--tenue);
-  /* Sirve tanto para los <a> como para el <button> del tema. */
-  background: transparent; border: 0; cursor: pointer; text-align: left; font-size: 15px;
+  display: flex; align-items: center; gap: 7px; flex: none;
+  padding: 8px 12px; border-radius: 999px; font-weight: 600; color: var(--tenue);
+  background: transparent; border: 0; cursor: pointer; font-size: 14px;
 }
 .nav:hover { background: var(--panel-2); }
 .nav.activa { background: var(--panel-2); color: var(--texto); }
-.nav span { font-size: 19px; }
+.nav span { font-size: 18px; }
 .nav em { font-style: normal; }
 
-.yo-lateral { margin-top: auto; padding-top: 16px; }
-.yo-lateral .fila-usuario { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; }
+/* Arriba sólo la foto: el nombre ya está en el perfil. */
+.yo-lateral .fila-usuario { display: flex; align-items: center; padding: 3px; border-radius: 50%; }
 .yo-lateral .fila-usuario:hover { background: var(--panel-2); }
+.yo-lateral .crece { display: none; }
+
+/* El cuerpo: la columna de lectura y, a su lado, a quién seguir. */
+.cuerpo {
+  display: grid; grid-template-columns: minmax(0, 640px) 300px; justify-content: center;
+  gap: 24px; padding: 0 16px 56px; align-items: start;
+}
 
 .columna {
   border-left: 1px solid var(--borde);
   border-right: 1px solid var(--borde);
-  min-height: 100vh;
+  min-height: calc(100vh - var(--alto-barra, 56px));
   background: var(--panel);
 }
 
-.derecha { position: sticky; top: 0; padding: 20px 0; display: flex; flex-direction: column; gap: 16px; }
+.derecha {
+  position: sticky; top: calc(var(--alto-barra, 56px) + 16px);
+  padding: 16px 0; display: flex; flex-direction: column; gap: 16px;
+}
+
+/* --- la cinta de tendencias ------------------------------------------ */
+
+.cinta {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+  display: flex; align-items: stretch; height: 36px;
+  background: var(--panel); border-top: 1px solid var(--borde); font-size: 13px;
+}
+.cinta-titulo {
+  display: flex; align-items: center; flex: none; padding: 0 14px;
+  background: var(--amarillo); color: #201d16; font-weight: 700;
+  border-top-right-radius: 14px;
+}
+.cinta-ventana { position: relative; flex: 1; overflow: hidden; }
+.cinta-pista { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center; white-space: nowrap; }
+.cinta-tanda { display: flex; align-items: center; padding-right: 28px; }
+.cinta-pista.corre { animation: cinta var(--duracion, 30s) linear infinite; }
+/* Se detiene bajo el mouse: una etiqueta que se escapa mientras se la apunta no se puede tocar. */
+.cinta:hover .cinta-pista.corre { animation-play-state: paused; }
+@keyframes cinta { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.tendencia { display: inline-flex; gap: 5px; align-items: baseline; padding: 0 14px; }
+.tendencia b { font-weight: 700; }
+.tendencia span { color: var(--tenue); font-size: 12px; }
+.tendencia:hover b { color: var(--pico); }
+.tendencia.vacia { color: var(--tenue); }
+.cinta-punto { color: var(--tenue); }
+@media (prefers-reduced-motion: reduce) {
+  .cinta-pista.corre { animation: none; }
+  .cinta-ventana { overflow-x: auto; }
+  .cinta-pista { position: static; }
+}
 
 .tarjeta { background: var(--panel-2); border: 1px solid var(--borde); border-radius: var(--radio); padding: 16px; }
 .tarjeta h2 { font-size: 16px; margin: 0 0 10px; }
@@ -212,7 +252,7 @@ a { color: inherit; text-decoration: none; }
 /* --- cabecera de vista ---------------------------------------------- */
 
 .cabecera {
-  position: sticky; top: 0; z-index: 5;
+  position: sticky; top: var(--alto-barra, 56px); z-index: 5;
   background: color-mix(in srgb, var(--panel) 88%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--borde);
@@ -259,12 +299,34 @@ a { color: inherit; text-decoration: none; }
 
 .contexto { grid-column: 1 / -1; font-size: 13px; color: var(--tenue); margin-bottom: 2px; }
 
-.acciones { display: flex; gap: 4px; margin-top: 8px; margin-left: -8px; }
+/* Los botones de cada pío van en una pestaña colgada de la esquina de arriba a
+   la derecha, a continuación de la hora: un rectángulo con la esquina de abajo
+   a la izquierda redondeada. Lo que se lee queda limpio y lo que se hace, a
+   mano sin ocupar un renglón. */
+.pio { position: relative; }
+.acciones {
+  position: absolute; top: 0; right: 0; z-index: 1;
+  display: flex; align-items: center; gap: 0;
+  padding: 2px 6px 3px 10px;
+  background: var(--panel-2);
+  border-left: 1px solid var(--borde); border-bottom: 1px solid var(--borde);
+  border-bottom-left-radius: 16px;
+}
+/* La hora y el nombre no se meten debajo de la pestaña. */
+.pio > .contexto, .pio .pio-cabecera, .comentario .com-cabeza { padding-right: 190px; }
+/* Nombre, usuario y hora en un solo renglón: si no caben, el nombre se corta
+   con puntos suspensivos antes que partirse en tres líneas. */
+.pio .pio-cabecera, .comentario .com-cabeza { flex-wrap: nowrap; min-width: 0; }
+/* Sin esto la columna de la grilla no se deja achicar y el renglón se sale de la tarjeta. */
+.pio > * { min-width: 0; }
+.pio .pio-nombre, .pio .pio-usuario { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pio .pio-fecha, .cien-justos { flex: none; white-space: nowrap; }
 .accion {
   border: 0; background: transparent; cursor: pointer; color: var(--tenue);
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 10px; border-radius: 999px; font-size: 13px;
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 4px 7px; border-radius: 999px; font-size: 12px; line-height: 1;
 }
+.accion span:empty { display: none; }
 .accion:hover { background: var(--panel); color: var(--texto); }
 .accion.activa { color: var(--rojo); font-weight: 700; }
 .accion.repio.activa { color: var(--verde); }
@@ -331,7 +393,6 @@ a { color: inherit; text-decoration: none; }
 /* El texto se alinea con el nombre, no con el avatar. */
 .com-cuerpo { position: relative; padding-left: 30px; }
 .com-cuerpo .texto { margin-top: 2px; }
-.com-cuerpo .acciones { margin-top: 0; }
 
 /* Mientras un comentario tiene respuestas a la vista, la línea ya baja desde
    debajo de su avatar, a lo largo de su propio texto. */
@@ -404,10 +465,6 @@ a { color: inherit; text-decoration: none; }
 
 /* --- listas auxiliares ---------------------------------------------- */
 
-.tendencia { display: block; padding: 8px 6px; border-radius: 10px; }
-.tendencia:hover { background: var(--panel); }
-.tendencia b { display: block; }
-.tendencia span { font-size: 12px; color: var(--tenue); }
 
 .sugerencia { display: flex; align-items: center; gap: 10px; padding: 8px 6px; }
 .sugerencia .crece { flex: 1; min-width: 0; }
@@ -511,7 +568,7 @@ a { color: inherit; text-decoration: none; }
 .enlace-boton:hover { text-decoration: underline; }
 
 .huevo-barra {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+  position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 60;
   display: flex; gap: 16px; align-items: center;
   padding: 10px 18px; border-radius: 999px;
   background: var(--texto); color: var(--fondo);
@@ -797,13 +854,14 @@ iframe.spotify { display: block; width: 100%; border: 0; border-radius: 12px; }
 /* --- aviso flotante -------------------------------------------------- */
 
 .aviso {
-  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%);
   background: var(--texto); color: var(--fondo);
   padding: 10px 18px; border-radius: 999px; font-weight: 600; z-index: 60;
   box-shadow: var(--sombra);
 }
 
 .flotante {
+  display: none;
   position: fixed; right: 18px; bottom: 76px; z-index: 20;
   width: 58px; height: 58px; border-radius: 50%; border: 0; cursor: pointer;
   background: var(--amarillo); font-size: 26px; box-shadow: var(--sombra);
@@ -811,44 +869,32 @@ iframe.spotify { display: block; width: 100%; border: 0; border-radius: 12px; }
 
 /* --- adaptable ------------------------------------------------------- */
 
-.solo-movil { display: none; }
-
+/* Ancho medio: sin la columna de "a quién seguir", y el menú sólo con íconos. */
 @media (max-width: 1100px) {
-  .app { grid-template-columns: 88px minmax(0, 1fr); }
+  .cuerpo { grid-template-columns: minmax(0, 660px); }
   .derecha { display: none; }
-  .lateral .marca, .nav em, .solo-escritorio { display: none; }
-  .nav { justify-content: center; }
-  /* Sin el boton Piar del lateral, el flotante pasa a ser la unica forma de piar. */
-  .flotante { display: grid; place-items: center; bottom: 24px; }
+  .nav em { display: none; }
+  .nav { padding: 9px 11px; }
 }
 
 @media (max-width: 700px) {
   .portada { grid-template-columns: 1fr; padding: 20px; }
   .portada-arte { display: none; }
 
-  .app { grid-template-columns: 1fr; gap: 0; padding: 0; }
-  .solo-movil { display: inline-flex; }
-  .oculto-movil { display: none !important; }
-  .flotante { bottom: 76px; }
+  /* Dos filas: arriba la marca y lo de uno; abajo, las secciones de lado a lado. */
+  .barra-superior { flex-wrap: wrap; gap: 4px 8px; padding: 6px 10px 0; }
+  .barra-acciones { margin-left: auto; }
+  .menu { order: 3; flex-basis: 100%; justify-content: space-between; padding-bottom: 2px; }
+  .nav { padding: 8px 10px; }
+  #piar-lateral, .yo-lateral { display: none; }
 
-  .barra-superior {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    position: sticky; top: 0; z-index: 10;
-    padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--borde);
-  }
-
-  .lateral {
-    /* top: 0 viene de la versión de escritorio; sin anularlo la barra se estira
-       a toda la altura y tapa la columna. */
-    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 20;
-    flex-direction: row; justify-content: space-around;
-    padding: 6px 4px; background: var(--panel); border-top: 1px solid var(--borde);
-    /* Con el panel de administración son ocho iconos, y en un teléfono angosto
-       el último se caía por el borde sin que nada lo avisara. */
-    overflow-x: auto; scrollbar-width: none;
-  }
-  .lateral::-webkit-scrollbar { display: none; }
-  .nav { padding: 8px 10px; flex: 0 0 auto; }
+  .cuerpo { padding: 0 0 48px; }
   .columna { border: 0; }
-  .contenido { padding-bottom: 72px; }
+
+  /* En el teléfono se pía con el botón redondo, por encima de la cinta. */
+  .flotante { display: grid; place-items: center; bottom: 50px; }
+
+  .pio > .contexto, .pio .pio-cabecera, .comentario .com-cabeza { padding-right: 160px; }
+  .pio .pio-usuario { display: none; }
+  .accion { padding: 4px 5px; }
 }

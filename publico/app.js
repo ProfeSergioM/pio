@@ -440,7 +440,6 @@ async function pintar() {
     else if (vista === 'p') await vistaHilo(argumento);
     else if (vista === 'e') await vistaEtiqueta(argumento);
     else if (vista === 'avisos') await vistaAvisos();
-    else if (vista === 'disenos') await vistaDisenos();
     else if (vista === 'admin') await vistaAdmin(params.get('ver'));
     else if (vista === 'pregunta') await vistaPregunta(argumento);
     else if (vista === 'corrales') await vistaCorrales();
@@ -725,11 +724,11 @@ function comentario(nodo) {
           <span class="pio-usuario">@${escapar(nodo.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(nodo.creado)}</span>
           ${cienJustos(nodo)}
+          ${accionesDePio(nodo)}
         </div>
         <div class="com-cuerpo">
           ${nodo.texto ? `<p class="texto">${enriquecer(nodo.texto)}</p>` : ''}
           ${adjuntoDePio(nodo)}
-          ${accionesDePio(nodo)}
         </div>
       </article>
       ${hijos.length && cerrada ? `
@@ -1266,10 +1265,10 @@ function tarjetaPio(pio, opciones = {}) {
           <span class="pio-usuario">@${escapar(pio.autor.usuario)}</span>
           <span class="pio-fecha">· ${hace(pio.creado)}</span>
           ${cienJustos(pio)}
+          ${accionesDePio(pio)}
         </div>
         ${pio.texto ? `<p class="texto">${enriquecer(pio.texto)}</p>` : ''}
         ${adjuntoDePio(pio)}
-        ${accionesDePio(pio)}
       </div>
     </article>`;
 }
@@ -1536,14 +1535,6 @@ document.body.addEventListener('click', async (ev) => {
     if (plegadas.has(id)) plegadas.delete(id);
     else plegadas.add(id);
     pintarCascada();
-    return;
-  }
-
-  const otroDiseno = ev.target.closest('[data-diseno]');
-  if (otroDiseno) {
-    ev.preventDefault();
-    aplicarDiseno(otroDiseno.dataset.diseno);
-    await vistaDisenos();
     return;
   }
 
@@ -2577,16 +2568,44 @@ document.addEventListener('click', (ev) => {
 
 // --- columna derecha ------------------------------------------------------
 
+// Las tendencias corren de derecha a izquierda, como la franja de un
+// noticiero. La tanda va dos veces seguida y la pista se corre justo media
+// vuelta: cuando termina, la segunda tanda está donde empezó la primera y el
+// salto no se ve. La velocidad depende del largo, para que se lea igual con
+// dos etiquetas que con ocho.
+let ultimasTendencias = '';
+
 async function cargarTendencias() {
   try {
     const { tendencias } = await api('/tendencias');
-    $('#tendencias').innerHTML = tendencias.length
-      ? tendencias.map((t) => `
-          <a class="tendencia" href="#/e/${encodeURIComponent(t.etiqueta)}">
-            <b>#${escapar(t.etiqueta)}</b><span>${escapar(T('tendencia.pios', { n: t.total }))}</span>
-          </a>`).join('')
-      : `<p class="chico">${escapar(T('tendencias.vacio'))}</p>`;
-  } catch { /* la columna lateral no rompe la vista */ }
+    const firma = JSON.stringify(tendencias);
+    // Si no cambió nada no se toca: rearmarla reiniciaría la cinta a la mitad
+    // de una lectura, cada vez que se cambia de vista.
+    if (firma === ultimasTendencias) return;
+    ultimasTendencias = firma;
+    const pista = $('#tendencias');
+    if (!tendencias.length) {
+      pista.classList.remove('corre');
+      pista.innerHTML = `<span class="tendencia vacia">${escapar(T('tendencias.vacio'))}</span>`;
+      return;
+    }
+    const tanda = tendencias.map((t) => `
+      <a class="tendencia" href="#/e/${encodeURIComponent(t.etiqueta)}">
+        <b>#${escapar(t.etiqueta)}</b> <span>${escapar(T('tendencia.pios', { n: t.total }))}</span>
+      </a>`).join('<span class="cinta-punto" aria-hidden="true">·</span>');
+    pista.innerHTML = `<div class="cinta-tanda">${tanda}</div><div class="cinta-tanda" aria-hidden="true">${tanda}</div>`;
+    const ancho = pista.firstElementChild.scrollWidth;
+    pista.style.setProperty('--duracion', `${Math.max(12, Math.round(ancho / 45))}s`);
+    pista.classList.add('corre');
+  } catch { /* la cinta no rompe la vista */ }
+}
+
+// El alto de la barra de arriba cambia —en el teléfono tiene dos filas—, y la
+// cabecera de cada vista se pega justo debajo: se mide en vez de adivinarlo.
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(([entrada]) => {
+    document.documentElement.style.setProperty('--alto-barra', `${Math.round(entrada.target.getBoundingClientRect().height)}px`);
+  }).observe($('#barra'));
 }
 
 async function cargarSugerencias() {
@@ -2617,31 +2636,6 @@ async function cargarSugerencias() {
 function aplicarTema(tema) {
   document.documentElement.dataset.tema = tema;
   localStorage.setItem('pio.tema', tema);
-}
-
-// --- diseños --------------------------------------------------------------
-
-// Cada diseño es una hoja que se cuelga DESPUÉS de estilos.css y la sobrescribe
-// por cascada. El DOM no cambia nunca: por eso las diez conviven y todas andan.
-const DISENOS = [
-  { slug: '', nombre: null, que: null },
-  { slug: 'fichas', nombre: 'Fichas', que: 'Tarjetas flotando con mucho aire entre una y otra.' },
-  { slug: 'revista', nombre: 'Revista', que: 'Titulares grandes y maquetación asimétrica.' },
-  { slug: 'pixel', nombre: 'Pixel', que: 'Ocho bits: bordes escalonados y paleta corta.' },
-];
-
-function disenoActual() {
-  const guardado = localStorage.getItem('pio.diseno') || '';
-  return DISENOS.some((d) => d.slug === guardado) ? guardado : '';
-}
-
-function aplicarDiseno(slug) {
-  const hoja = $('#hoja-diseno');
-  const elegido = DISENOS.some((d) => d.slug === slug) ? slug : '';
-  hoja.href = elegido ? `temas/${elegido}.css` : '';
-  localStorage.setItem('pio.diseno', elegido);
-  // El botón de Google se dibuja con el tema de su propio iframe.
-  if (!$('#portada').hidden) prepararGoogle();
 }
 
 // --- el panel de administración -------------------------------------------
@@ -2926,37 +2920,15 @@ async function vistaAdmin(solapa) {
   await dibujar($('#panel'));
 }
 
-async function vistaDisenos() {
-  cabecera(T('disenos.titulo'), T('disenos.sub'));
-  const actual = disenoActual();
-  $('#contenido').innerHTML = `<div class="tarjeta" style="margin:12px 16px">${
-    DISENOS.map((d) => {
-      const nombre = d.nombre || T('disenos.base.nombre');
-      const que = d.que || T('disenos.base.que');
-      const puesto = d.slug === actual;
-      return `
-        <div class="sugerencia">
-          <div class="crece">
-            <b>${escapar(nombre)}</b><span>${escapar(que)}</span>
-          </div>
-          <button class="boton ${puesto ? 'fantasma' : 'principal'}" data-diseno="${escapar(d.slug)}"
-                  ${puesto ? 'disabled' : ''}>${escapar(T(puesto ? 'disenos.enUso' : 'disenos.usar'))}</button>
-        </div>`;
-    }).join('')
-  }</div>`;
-}
-
 function alternarTema() {
   aplicarTema(document.documentElement.dataset.tema === 'oscuro' ? 'claro' : 'oscuro');
   // El botón de Google viene con su propio tema; hay que volver a dibujarlo.
   if (!$('#portada').hidden) prepararGoogle();
 }
 
-// Uno vive en la barra de arriba (móvil) y el otro en el menú lateral.
+// Los dos viven en la barra de arriba.
 $('#tema').addEventListener('click', alternarTema);
-$('#tema-lateral').addEventListener('click', alternarTema);
 $('#idioma').addEventListener('click', alternarIdioma);
-$('#idioma-lateral').addEventListener('click', alternarIdioma);
 
 aplicarTema(localStorage.getItem('pio.tema')
   || (matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro'));
@@ -3033,7 +3005,6 @@ let pedidoDeInstalar = null;
 
 function mostrarBotonesInstalar(mostrar) {
   $('#instalar-barra').hidden = !mostrar;
-  $('#instalar-lateral').hidden = !mostrar;
 }
 
 window.addEventListener('beforeinstallprompt', (ev) => {
@@ -3062,7 +3033,6 @@ async function instalar() {
 }
 
 $('#instalar-barra').addEventListener('click', instalar);
-$('#instalar-lateral').addEventListener('click', instalar);
 
 // --- notificaciones al teléfono --------------------------------------------------
 
@@ -3172,7 +3142,6 @@ window.addEventListener('online', () => {
 pintarConexion();
 
 (async function arrancar() {
-  aplicarDiseno(disenoActual());
   traducir();
   if (estado.token) {
     try {

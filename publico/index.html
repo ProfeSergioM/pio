@@ -15,7 +15,6 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="stylesheet" href="estilos.css">
-<link rel="stylesheet" id="hoja-diseno" href="">
 </head>
 <body>
 
@@ -81,53 +80,55 @@
 
 <div id="app" class="app" hidden>
 
-  <header class="barra-superior">
-    <button class="icono solo-movil" id="atras" data-t-titulo="barra.volver" hidden>←</button>
-    <h1 class="marca chica"><img class="marca-pollito" src="/logo.svg" alt=""> Pío</h1>
+  <!-- Una sola barra arriba, en todos los anchos: la marca, las secciones y lo
+       de uno. En el teléfono las secciones pasan a una segunda fila. -->
+  <header class="barra-superior" id="barra">
+    <button class="icono" id="atras" data-t-titulo="barra.volver" hidden>←</button>
+    <a class="marca chica" href="#/nido"><img class="marca-pollito" src="/logo.svg" alt=""> <span class="marca-nombre">Pío</span></a>
+
+    <nav class="menu" data-t-aria="barra.menu">
+      <a class="nav" href="#/nido" data-nav="nido"><span>🪹</span><em data-t="nav.nido"></em></a>
+      <a class="nav" href="#/plaza" data-nav="plaza"><span>🌎</span><em data-t="nav.plaza"></em></a>
+      <a class="nav" href="#/avisos" data-nav="avisos">
+        <span class="con-insignia">🔔<b class="insignia" id="insignia" hidden></b></span><em data-t="nav.avisos"></em>
+      </a>
+      <a class="nav" href="#/corrales" data-nav="corrales"><span>🚜</span><em data-t="nav.corrales"></em></a>
+      <a class="nav" href="#/buscar" data-nav="buscar"><span>🔍</span><em data-t="nav.buscar"></em></a>
+      <a class="nav" href="#/yo" data-nav="yo"><span>🐣</span><em data-t="nav.perfil"></em></a>
+      <a class="nav" href="#/admin" data-nav="admin" id="nav-admin" hidden><span>🎛️</span><em data-t="nav.admin"></em></a>
+    </nav>
+
     <div class="barra-acciones">
       <button class="icono" id="instalar-barra" data-t-titulo="nav.instalar" hidden>📲</button>
       <button class="icono" id="idioma" data-t-titulo="barra.idioma">🌐</button>
       <button class="icono" id="tema" data-t-titulo="barra.tema">◐</button>
+      <button class="boton principal" id="piar-lateral" data-t="boton.piar"></button>
+      <div class="yo-lateral" id="yo-lateral"></div>
     </div>
   </header>
 
-  <nav class="lateral">
-    <h1 class="marca solo-escritorio"><img class="marca-pollito" src="/logo.svg" alt=""> Pío</h1>
-    <a class="nav" href="#/nido" data-nav="nido"><span>🪹</span><em data-t="nav.nido"></em></a>
-    <a class="nav" href="#/plaza" data-nav="plaza"><span>🌎</span><em data-t="nav.plaza"></em></a>
-    <a class="nav" href="#/avisos" data-nav="avisos">
-      <span class="con-insignia">🔔<b class="insignia" id="insignia" hidden></b></span><em data-t="nav.avisos"></em>
-    </a>
-    <a class="nav" href="#/corrales" data-nav="corrales"><span>🚜</span><em data-t="nav.corrales"></em></a>
-    <a class="nav" href="#/buscar" data-nav="buscar"><span>🔍</span><em data-t="nav.buscar"></em></a>
-    <a class="nav" href="#/yo" data-nav="yo"><span>🐣</span><em data-t="nav.perfil"></em></a>
-    <a class="nav" href="#/disenos" data-nav="disenos"><span>🎨</span><em data-t="nav.disenos"></em></a>
-    <a class="nav" href="#/admin" data-nav="admin" id="nav-admin" hidden><span>🎛️</span><em data-t="nav.admin"></em></a>
-    <button class="nav oculto-movil" id="idioma-lateral" type="button"><span>🌐</span><em data-t="nav.idioma"></em></button>
-    <button class="nav oculto-movil" id="tema-lateral" type="button"><span>◐</span><em data-t="nav.tema"></em></button>
-    <button class="nav oculto-movil" id="instalar-lateral" type="button" hidden><span>📲</span><em data-t="nav.instalar"></em></button>
-    <button class="boton principal ancho solo-escritorio" id="piar-lateral" data-t="boton.piar"></button>
-    <div class="yo-lateral solo-escritorio" id="yo-lateral"></div>
-  </nav>
+  <div class="cuerpo">
+    <main class="columna" id="columna">
+      <div id="cabecera-vista"></div>
+      <div id="contenido" class="contenido"></div>
+    </main>
 
-  <main class="columna" id="columna">
-    <div id="cabecera-vista"></div>
-    <div id="contenido" class="contenido"></div>
-  </main>
+    <aside class="derecha">
+      <section class="tarjeta">
+        <h2 data-t="lateral.seguir"></h2>
+        <div id="sugerencias" class="sugerencias"></div>
+      </section>
+      <p class="chico pie" data-t="lateral.pie"></p>
+    </aside>
+  </div>
 
-  <aside class="derecha">
-    <section class="tarjeta">
-      <h2 data-t="lateral.tendencias"></h2>
-      <div id="tendencias" class="tendencias"></div>
-    </section>
-    <section class="tarjeta">
-      <h2 data-t="lateral.seguir"></h2>
-      <div id="sugerencias" class="sugerencias"></div>
-    </section>
-    <p class="chico pie" data-t="lateral.pie"></p>
-  </aside>
+  <!-- Las tendencias pasan como en la franja de un noticiero. -->
+  <div class="cinta" id="cinta">
+    <span class="cinta-titulo" data-t="cinta.titulo"></span>
+    <div class="cinta-ventana"><div class="cinta-pista" id="tendencias"></div></div>
+  </div>
 
-  <button class="flotante solo-movil" id="piar-flotante" data-t-titulo="boton.piar">🐤</button>
+  <button class="flotante" id="piar-flotante" data-t-titulo="boton.piar">🐤</button>
 </div>
 
 <dialog id="dialogo-piar" class="dialogo">

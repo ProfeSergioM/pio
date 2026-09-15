@@ -407,8 +407,13 @@ async function pintar() {
     pararChat();
   }
 
+  // Lo anterior se queda en pantalla hasta que lo nuevo está listo. El
+  // "cargando" sólo aparece si la respuesta tarda: si llega rápido, vaciar la
+  // vista primero es un parpadeo que no le sirve a nadie.
   const contenido = $('#contenido');
-  contenido.innerHTML = `<div class="cargando">${escapar(T('cargando'))}</div>`;
+  const avisoCargando = setTimeout(() => {
+    contenido.innerHTML = `<div class="cargando">${escapar(T('cargando'))}</div>`;
+  }, 250);
 
   try {
     if (vista === 'plaza') await vistaLinea('plaza');
@@ -426,6 +431,8 @@ async function pintar() {
     else await vistaLinea('nido');
   } catch (err) {
     contenido.innerHTML = `<div class="vacio"><span class="emoji">💥</span>${escapar(err.message)}</div>`;
+  } finally {
+    clearTimeout(avisoCargando);
   }
 
   cargarTendencias();
@@ -638,7 +645,7 @@ async function vistaPerfil(usuario, solapa) {
       ${perfil.bio ? `<p class="perfil-bio">${enriquecer(perfil.bio)}</p>` : ''}
       <div class="perfil-datos">
         <span><b>${perfil.siguiendo}</b> ${escapar(T('perfil.siguiendo'))}</span>
-        <span><b>${perfil.seguidores}</b> ${escapar(T('perfil.seguidores'))}</span>
+        <span><b data-seguidores-de="${escapar(perfil.usuario)}">${perfil.seguidores}</b> ${escapar(T('perfil.seguidores'))}</span>
         ${perfil.proxima ? `<span class="chico">${escapar(T('medalla.proxima', {
           faltan: perfil.proxima.faltan,
           nombre: T(`medalla.${perfil.proxima.clave}`),
@@ -691,7 +698,7 @@ function comentario(nodo) {
   // dispararía también las acciones del pío.
   return `
     <div class="comentario-rama">
-      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''} ${nodo.bloqueadoHasta ? 'borroso' : ''} ${nodo.id === hiloResaltado ? 'resaltado' : ''}" data-id="${nodo.id}">
+      <article class="pio comentario ${abiertos ? 'con-hijos' : ''} ${nodo.huevo ? 'huevo' : ''} ${nodo.bloqueadoHasta ? 'borroso' : ''} ${nodo.id === hiloResaltado ? 'resaltado' : ''}" data-id="${nodo.id}" data-autor="${escapar(nodo.autor.usuario)}">
         ${avisoBloqueo(nodo)}
         ${cascaronDe(nodo)}
         <div class="com-cabeza">
@@ -1078,7 +1085,7 @@ async function vistaCorral(nombre, solapa) {
   $('#contenido').innerHTML = `
     <div class="perfil-caja">
       <div class="perfil-datos">
-        <span><b>${corral.suscritos}</b> ${escapar(T('corral.gente', { n: corral.suscritos }).replace(/^\d+\s/, ''))}</span>
+        <span><b data-suscritos-de="${escapar(corral.nombre)}">${corral.suscritos}</b> ${escapar(T('corral.gente', { n: corral.suscritos }).replace(/^\d+\s/, ''))}</span>
         <span>${escapar(T('corral.pios', { n: corral.pios }))}</span>
         <span>${escapar(T('corral.dueno', { usuario: corral.dueno }))}</span>
       </div>
@@ -1228,7 +1235,7 @@ function tarjetaPio(pio, opciones = {}) {
   const cascaron = cascaronDe(pio);
 
   return `
-    <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''} ${pio.bloqueadoHasta ? 'borroso' : ''}" data-id="${pio.id}">
+    <article class="pio ${opciones.destacado ? 'destacado' : ''} ${pio.huevo ? 'huevo' : ''} ${pio.bloqueadoHasta ? 'borroso' : ''}" data-id="${pio.id}" data-autor="${escapar(pio.autor.usuario)}">
       ${avisoBloqueo(pio)}
       ${cascaron}
       ${contexto}
@@ -1309,7 +1316,7 @@ function abrirMenuBloqueo(boton) {
       avisar(perfil.bloqueadoHasta
         ? T('bloqueo.puesto', { usuario: perfil.usuario, fecha: fechaBloqueo(perfil.bloqueadoHasta) })
         : T('bloqueo.quitado', { usuario: perfil.usuario }));
-      await pintar();
+      pintarBloqueo(perfil);
     } catch (err) {
       avisar(err.message);
     }
@@ -1475,7 +1482,7 @@ document.body.addEventListener('click', async (ev) => {
     try {
       const { corral } = await api(`/corrales/${encodeURIComponent(alCorral.dataset.corral)}/seguir`, { metodo: 'POST' });
       avisar(T(corral.estoy ? 'corral.adentro' : 'corral.salir'));
-      await pintar();
+      pintarCorralSeguido(corral);
     } catch (err) { avisar(err.message); }
     return;
   }
@@ -1516,7 +1523,7 @@ document.body.addEventListener('click', async (ev) => {
   if (otroDiseno) {
     ev.preventDefault();
     aplicarDiseno(otroDiseno.dataset.diseno);
-    await pintar();
+    await vistaDisenos();
     return;
   }
 
@@ -1568,7 +1575,7 @@ document.body.addEventListener('click', async (ev) => {
     try {
       const { perfil } = await api(`/usuarios/${encodeURIComponent(silenciar.dataset.silenciar)}/silenciar`, { metodo: 'POST' });
       avisar(T(perfil.loSilencio ? 'toast.silenciado' : 'toast.sinSilencio', { usuario: perfil.usuario }));
-      await pintar();
+      pintarSilencio(perfil);
     } catch (err) { avisar(err.message); }
     return;
   }
@@ -1580,7 +1587,7 @@ document.body.addEventListener('click', async (ev) => {
     try {
       const { perfil } = await api(`/usuarios/${encodeURIComponent(seguir.dataset.seguir)}/seguir`, { metodo: 'POST' });
       avisar(T(perfil.loSigo ? 'toast.sigue' : 'toast.noSigue', { usuario: perfil.usuario }));
-      await pintar();
+      pintarSeguir(perfil);
     } catch (err) { avisar(err.message); }
     return;
   }
@@ -1619,8 +1626,8 @@ document.body.addEventListener('click', async (ev) => {
         avisar(T('toast.borrado'));
         // Si se borró el pío que se estaba mirando, no queda nada que mirar.
         if (location.hash.startsWith(`#/p/${id}`)) { history.back(); return; }
+        await sacarPio(id);
       }
-      await pintar();
     } catch (err) { avisar(err.message); }
     return;
   }
@@ -2097,8 +2104,11 @@ $('#forma-perfil').addEventListener('submit', async (ev) => {
     $('#dialogo-perfil').close();
     avisar(T('perfil.guardado'));
     pintarYoLateral();
-    location.hash = `#/u/${yo.usuario}`;
-    await pintar();
+    // Si ya se estaba en el perfil propio, se vuelve a armar sólo esa vista;
+    // si cambió el nombre, la dirección cambia y la navegación hace el resto.
+    const destino = `#/u/${yo.usuario}`;
+    if (location.hash.split('?')[0] === destino) await vistaPerfil(yo.usuario, rutaActual().params.get('ver') || 'pios');
+    else location.hash = destino;
   } catch (err) {
     error.textContent = err.message;
     error.hidden = false;
@@ -2317,6 +2327,60 @@ $('#forma-piar').addEventListener('submit', async (ev) => {
     error.hidden = false;
   }
 });
+
+// --- actualizar sólo lo que cambió ---------------------------------------------
+
+// Cada acción devuelve lo que quedó —el perfil, el corral— y con eso se
+// retocan sus botones y cifras donde sea que estén en pantalla: en la
+// cabecera del perfil, en "a quién seguir", en una búsqueda. El resto de la
+// vista no se toca.
+const conDato = (atributo, valor) => document.querySelectorAll(`[${atributo}="${CSS.escape(valor)}"]`);
+
+function pintarSeguir(perfil) {
+  for (const boton of conDato('data-seguir', perfil.usuario)) {
+    boton.classList.toggle('fantasma', perfil.loSigo);
+    boton.classList.toggle('principal', !perfil.loSigo);
+    boton.textContent = T(perfil.loSigo ? 'perfil.siguiendoYa' : 'perfil.seguir');
+  }
+  for (const cifra of conDato('data-seguidores-de', perfil.usuario)) cifra.textContent = perfil.seguidores;
+}
+
+function pintarSilencio(perfil) {
+  for (const boton of conDato('data-silenciar', perfil.usuario)) {
+    boton.title = T(perfil.loSilencio ? 'perfil.quitarSilencio' : 'perfil.silenciar');
+    boton.textContent = `${perfil.loSilencio ? '🔇' : '🔈'} ${T(perfil.loSilencio ? 'perfil.silenciado' : 'perfil.silenciar')}`;
+  }
+}
+
+function pintarBloqueo(perfil) {
+  const hasta = perfil.bloqueadoHasta;
+  for (const boton of conDato('data-bloquear', perfil.usuario)) {
+    boton.dataset.hasta = hasta || '';
+    boton.textContent = `⛔ ${hasta ? T('bloqueo.hasta', { fecha: fechaBloqueo(hasta) }) : T('bloqueo.boton')}`;
+  }
+  // Sus píos a la vista se nublan o se aclaran ahí mismo.
+  for (const pio of conDato('data-autor', perfil.usuario)) {
+    const viejo = pio.querySelector(':scope > .bloqueo-aviso');
+    if (viejo) viejo.remove();
+    pio.classList.toggle('borroso', !!hasta);
+    if (hasta) pio.insertAdjacentHTML('afterbegin', avisoBloqueo({ autor: { usuario: perfil.usuario }, bloqueadoHasta: hasta }));
+  }
+}
+
+function pintarCorralSeguido(corral) {
+  for (const boton of conDato('data-corral', corral.nombre)) {
+    boton.classList.toggle('fantasma', corral.estoy);
+    boton.classList.toggle('principal', !corral.estoy);
+    boton.textContent = T(corral.estoy ? 'corral.salir' : 'corral.entrar');
+  }
+  for (const cifra of conDato('data-suscritos-de', corral.nombre)) cifra.textContent = corral.suscritos;
+  // En el chat, entrar o salir cambia si se puede escribir: se rearma sólo
+  // esa parte.
+  const { partes, params } = rutaActual();
+  if (partes[0] === 'c' && partes[1] === corral.nombre && params.get('ver') === 'chat' && $('#abajo-corral')) {
+    pintarChat(corral, $('#abajo-corral'));
+  }
+}
 
 // --- entrar y salir con suavidad ------------------------------------------------
 
@@ -2602,7 +2666,6 @@ async function panelPollitos(donde) {
     usuarios.map((u) => {
       const sellos = [
         u.manda ? T('admin.manda') : '',
-        u.oculto ? T('admin.ocultoSello') : '',
         u.porGoogle ? T('admin.porGoogle') : '',
         !u.tieneClave && !u.porGoogle ? T('admin.sinClave') : '',
       ].filter(Boolean);
@@ -2613,6 +2676,7 @@ async function panelPollitos(donde) {
             <b>${escapar(u.nombre)}</b>
             <span>@${escapar(u.usuario)} · ${escapar(T('admin.cuentas', { pios: u.pios, seguidores: u.seguidores }))}</span>
           </a>
+          ${u.oculto ? `<span class="sello" data-sello-oculto>${escapar(T('admin.ocultoSello'))}</span>` : ''}
           ${sellos.map((s) => `<span class="sello">${escapar(s)}</span>`).join('')}
           <button class="boton fantasma chico" data-ocultar="${escapar(u.usuario)}"
                   title="${escapar(T('admin.ocultarQue'))}">${escapar(T(u.oculto ? 'admin.mostrar' : 'admin.ocultar'))}</button>
@@ -2627,7 +2691,14 @@ async function panelPollitos(donde) {
       try {
         const { oculto } = await api(`/admin/ocultos/${encodeURIComponent(quien)}`, { metodo: 'POST' });
         avisar(T(oculto ? 'admin.ocultado' : 'admin.mostrado', { usuario: quien }));
-        await panelPollitos(donde);
+        boton.textContent = T(oculto ? 'admin.mostrar' : 'admin.ocultar');
+        const fila = boton.closest('.sugerencia');
+        const sello = fila.querySelector('[data-sello-oculto]');
+        if (oculto && !sello) {
+          fila.querySelector('.crece').insertAdjacentHTML('afterend', `<span class="sello" data-sello-oculto>${escapar(T('admin.ocultoSello'))}</span>`);
+        } else if (!oculto && sello) {
+          sello.remove();
+        }
       } catch (err) {
         avisar(err.message);
       }
@@ -2639,7 +2710,7 @@ async function panelPollitos(donde) {
     boton.addEventListener('click', () => borrarDesdePanel(
       `/admin/usuarios/${encodeURIComponent(quien)}`,
       T('admin.seguro.pollito', { usuario: quien }),
-      () => panelPollitos(donde),
+      () => cerrarDeAPoco(boton.closest('.sugerencia')),
     ));
   }
 }
@@ -2741,7 +2812,7 @@ async function panelCorrales(donde) {
     boton.addEventListener('click', () => borrarDesdePanel(
       `/admin/corrales/${encodeURIComponent(cual)}`,
       T('admin.seguro.corral', { corral: cual }),
-      () => panelCorrales(donde),
+      () => cerrarDeAPoco(boton.closest('.sugerencia')),
     ));
   }
 }

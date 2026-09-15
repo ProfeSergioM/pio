@@ -11,6 +11,7 @@ const C = require('./corrales');
 const MSG = require('./mensajes');
 const E = require('./emojis');
 const { crearLatido } = require('./latido');
+const PUSH = require('./push');
 const PR = require('./preguntas');
 
 // Dónde vive el sitio si nadie dice otra cosa. Pío nació en Chile.
@@ -60,6 +61,7 @@ function crearApi(almacen, opciones = {}) {
     }),
     google: new Google(opciones.googleClienteId, opciones.google),
     latido: crearLatido(almacen, opciones),
+    push: PUSH.crearPush(almacen, opciones),
     zona: opciones.zonaHoraria || ZONA_POR_DEFECTO,
     // Se normalizan una vez acá: comparar a mano en cada petición es donde se
     // cuela el descuido que deja entrar a quien no debe.
@@ -68,6 +70,9 @@ function crearApi(almacen, opciones = {}) {
     gifs: crearGifs(opciones, opciones.gifs),
     enlaces: crearAcortador(opciones, opciones.enlaces),
   };
+
+  // Cada aviso que se anota sale también al teléfono de quien lo recibe.
+  almacen.alAvisar = (aviso) => servicios.push.programar(aviso);
 
   // Devuelve true si la peticion era de la API (y ya fue respondida).
   return async function api(req, res, url) {
@@ -140,6 +145,25 @@ async function enrutar(almacen, req, url, partes, cuerpo, yo, servicios) {
   // La puerta que golpea el cron de afuera. La clave va en la cabecera y no
   // en la direccion: una direccion con la clave adentro queda escrita en todos
   // los registros por los que pasa.
+  // --- notificaciones al teléfono -------------------------------------------
+
+  if (recurso === 'push') {
+    if (metodo === 'GET' && id === 'clave') {
+      return { datos: { clave: await servicios.push.clavePublica() } };
+    }
+    exigir(yo);
+    if (metodo === 'POST' && id === 'suscribir') {
+      const suscripcion = PUSH.limpiarSuscripcion(cuerpo);
+      if (!suscripcion) throw new ErrorPio(400, 'Esa suscripción no se entiende.', 'push.mala');
+      await almacen.suscribir(yo, suscripcion, PUSH.SUSCRIPCIONES_POR_CUENTA);
+      return { datos: { ok: true } };
+    }
+    if (metodo === 'POST' && id === 'desuscribir') {
+      await almacen.desuscribir(yo, String(cuerpo.endpoint || ''));
+      return { datos: { ok: true } };
+    }
+  }
+
   if (recurso === 'latido') {
     const { latido } = servicios;
     if (!latido.activo) throw new ErrorPio(404, 'Acá no hay nada.', 'ruta.noexiste');

@@ -539,6 +539,34 @@ Si alguna vez hace falta obligar a todos a tirar lo guardado, se cambia
 `VERSION` en `sw.js`.
 
 
+## Notificaciones al teléfono
+
+En **Avisos** está "🔔 Activar notificaciones". Con eso, cada aviso de la campana
+llega también al teléfono o la computadora, aunque Pío esté cerrado. Tocar la
+notificación abre el pío. En el iPhone sólo funcionan con Pío agregado a la
+pantalla de inicio.
+
+Es el estándar de la web (Web Push), hecho sin dependencias en
+[`src/push.js`](src/push.js): cada envío se firma con claves VAPID (RFC 8292) y
+se cifra con las claves del navegador (RFC 8291), de modo que Google o Apple lo
+llevan sin poder leerlo. Las pruebas comparan el cifrado, byte por byte, con el
+ejemplo del propio estándar.
+
+- **Sin configurar nada funciona:** si no hay claves, Pío arma unas y las guarda en
+  la base. Para fijarlas en el despliegue: `PIO_VAPID_PUBLICA`, `PIO_VAPID_PRIVADA`
+  y `PIO_VAPID_CONTACTO` (un `mailto:` al que Google o Apple pueden escribir).
+  Cambiarlas obliga a cada navegador a suscribirse de nuevo, cosa que la app hace
+  sola al abrirse.
+- **Sólo a servicios conocidos:** la dirección a la que se manda la da el
+  navegador, así que se acepta sólo si es de Google, Mozilla, Apple o Microsoft.
+  Si no, cualquiera podría hacer que el servidor le pegue a la dirección que quiera.
+- **Respeta lo de siempre:** nada de cuentas bloqueadas, silenciadas u ocultas; lo
+  que es huevo espera a nacer, y lo que se deshace no suena nunca. Los me gusta de
+  un mismo pío se reemplazan entre sí.
+- Un navegador queda con una sola cuenta, cerrar sesión lo da de baja, y los que
+  el servicio declara muertos se borran solos.
+
+
 ## Lo que todavía no está
 
 - Varios procesos a la vez: cada uno tendría su propia copia en memoria.

@@ -300,6 +300,9 @@ $('#forma-acceso').addEventListener('submit', async (ev) => {
 });
 
 function cerrarSesion(porExpiracion) {
+  // Quien cierra la sesión deja de recibir las notificaciones de esa cuenta en
+  // este navegador: el teléfono prestado no sigue avisando de lo ajeno.
+  apagarNotificacionesDeEsteNavegador().catch(() => {});
   api('/sesion', { metodo: 'DELETE' }).catch(() => {});
   estado.token = null;
   estado.yo = null;
@@ -899,7 +902,9 @@ function queParece(tipo) {
 }
 
 async function vistaAvisos() {
-  cabecera(T('avisos.titulo'), T('avisos.sub'));
+  cabecera(T('avisos.titulo'), T('avisos.sub'),
+    `<button class="boton fantasma chico" id="boton-notificaciones" type="button" hidden></button>`);
+  pintarBotonNotificaciones();
   const { notificaciones } = await api('/notificaciones');
 
   $('#contenido').innerHTML = notificaciones.length
@@ -2998,6 +3003,7 @@ async function mostrarApp() {
   $('#portada').hidden = true;
   $('#app').hidden = false;
   await cargarConfig();
+  sincronizarNotificaciones();
   cargarEmojis();
   codigoSiFalta();
   pintarYoLateral();
@@ -3057,6 +3063,101 @@ async function instalar() {
 
 $('#instalar-barra').addEventListener('click', instalar);
 $('#instalar-lateral').addEventListener('click', instalar);
+
+// --- notificaciones al teléfono --------------------------------------------------
+
+const hayNotificaciones = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+function claveComoBytes(b64url) {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64url.length % 4)) % 4);
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+async function suscripcionActual() {
+  if (!hayNotificaciones()) return null;
+  const registro = await navigator.serviceWorker.ready;
+  return registro.pushManager.getSubscription();
+}
+
+// Dice lo que se puede hacer en este navegador: activarlas, desactivarlas, o
+// por qué no se puede.
+async function pintarBotonNotificaciones() {
+  const boton = $('#boton-notificaciones');
+  if (!boton) return;
+  let clave = null;
+  if (!hayNotificaciones()) {
+    // En el iPhone sólo funcionan con Pío instalado en la pantalla de inicio.
+    clave = esIphone() && !yaInstalada() ? 'notif.iphone' : null;
+  } else if (Notification.permission === 'denied') {
+    clave = 'notif.bloqueadas';
+  } else {
+    const suscrita = await suscripcionActual().catch(() => null);
+    clave = suscrita && Notification.permission === 'granted' ? 'notif.apagar' : 'notif.activar';
+  }
+  boton.hidden = !clave;
+  if (clave) {
+    boton.textContent = T(clave);
+    boton.dataset.estado = clave;
+  }
+}
+
+async function activarNotificaciones() {
+  const permiso = await Notification.requestPermission();
+  if (permiso !== 'granted') { avisar(T('notif.sinPermiso')); return; }
+  const registro = await navigator.serviceWorker.ready;
+  const { clave } = await api('/push/clave');
+  const suscripcion = await registro.pushManager.subscribe({
+    userVisibleOnly: true, applicationServerKey: claveComoBytes(clave),
+  });
+  await api('/push/suscribir', { metodo: 'POST', cuerpo: Object.assign(suscripcion.toJSON(), { idioma }) });
+  avisar(T('notif.activadas'));
+}
+
+async function apagarNotificacionesDeEsteNavegador() {
+  const suscripcion = await suscripcionActual();
+  if (!suscripcion) return;
+  if (estado.token) await api('/push/desuscribir', { metodo: 'POST', cuerpo: { endpoint: suscripcion.endpoint } }).catch(() => {});
+  await suscripcion.unsubscribe();
+}
+
+// Al abrir la app: si este navegador ya tenía notificaciones, se le vuelve a
+// contar al servidor —por si se cambió de cuenta o de idioma—, y si Pío
+// cambió sus claves, se suscribe de nuevo con las nuevas.
+async function sincronizarNotificaciones() {
+  try {
+    if (!hayNotificaciones() || Notification.permission !== 'granted') return;
+    let suscripcion = await suscripcionActual();
+    if (!suscripcion) return;
+    const { clave } = await api('/push/clave');
+    const actual = suscripcion.options && suscripcion.options.applicationServerKey;
+    const nueva = claveComoBytes(clave);
+    if (actual && !new Uint8Array(actual).every((b, i) => b === nueva[i])) {
+      await suscripcion.unsubscribe();
+      const registro = await navigator.serviceWorker.ready;
+      suscripcion = await registro.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: nueva });
+    }
+    await api('/push/suscribir', { metodo: 'POST', cuerpo: Object.assign(suscripcion.toJSON(), { idioma }) });
+  } catch (err) {
+    /* si no se puede, queda la campana, que es lo de siempre */
+  }
+}
+
+document.addEventListener('click', async (ev) => {
+  const boton = ev.target.closest('#boton-notificaciones');
+  if (!boton) return;
+  boton.disabled = true;
+  try {
+    if (boton.dataset.estado === 'notif.activar') await activarNotificaciones();
+    else if (boton.dataset.estado === 'notif.apagar') { await apagarNotificacionesDeEsteNavegador(); avisar(T('notif.apagadas')); }
+    else if (boton.dataset.estado === 'notif.iphone') avisar(T('instalar.iphone'), 7000);
+    else if (boton.dataset.estado === 'notif.bloqueadas') avisar(T('notif.comoDesbloquear'), 7000);
+  } catch (err) {
+    avisar(err.message || T('error.generico'));
+  } finally {
+    boton.disabled = false;
+    pintarBotonNotificaciones();
+  }
+});
 
 // Sin conexión se dice arriba, y no con un error por cada cosa que falle.
 function pintarConexion() {

@@ -57,6 +57,12 @@ function leerAjustes(directorio) {
     // gratuito para que el hospedaje no apague el sitio y para que el piobot
     // tenga su oportunidad. Sin clave, esa puerta no existe.
     latidoClave: elegir('PIO_LATIDO_CLAVE', 'latidoClave'),
+    // Las claves para las notificaciones. Si no se ponen, Pío arma unas y las
+    // guarda en la base: funciona igual, sin configurar nada.
+    vapidPublica: elegir('PIO_VAPID_PUBLICA', 'vapidPublica'),
+    vapidPrivada: elegir('PIO_VAPID_PRIVADA', 'vapidPrivada'),
+    // A quién puede escribirle Google o Apple si algo anda mal con los envíos.
+    vapidContacto: elegir('PIO_VAPID_CONTACTO', 'vapidContacto'),
     // A nombre de quien pia el latido. Es una cuenta normal del sitio.
     piobotUsuario: elegir('PIOBOT_USUARIO', 'piobotUsuario'),
     // Para trabajar sin ensuciar la base real: PIO_DEPOSITO=archivo

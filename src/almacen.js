@@ -859,7 +859,47 @@ class Almacen {
       leida: false,
     };
     this.datos.notificaciones.push(nuevo);
+    // Quien quiera enterarse —las notificaciones al teléfono— se engancha acá.
+    if (typeof this.alAvisar === 'function') this.alAvisar(nuevo);
     return nuevo;
+  }
+
+  // --- notificaciones al teléfono ---
+
+  guardarVapid(claves) {
+    this.datos.vapid = claves;
+    return this.guardar([{ tabla: 'pio_meta', clave: 'vapid', valor: { clave: 'vapid', valor: claves } }]);
+  }
+
+  // Un navegador que se suscribe queda con una sola cuenta: si antes estaba
+  // con otra —el mismo teléfono, otra sesión—, deja de recibir las de aquella.
+  async suscribir(cuenta, suscripcion, maximo) {
+    const cambios = [];
+    for (const otra of this.datos.usuarios) {
+      if (otra === cuenta || !(otra.suscripciones || []).some((s) => s.endpoint === suscripcion.endpoint)) continue;
+      otra.suscripciones = otra.suscripciones.filter((s) => s.endpoint !== suscripcion.endpoint);
+      cambios.push(cambioUsuario(otra));
+    }
+    const resto = (cuenta.suscripciones || []).filter((s) => s.endpoint !== suscripcion.endpoint);
+    cuenta.suscripciones = [...resto, suscripcion].slice(-maximo);
+    cambios.push(cambioUsuario(cuenta));
+    await this.guardar(cambios);
+  }
+
+  async desuscribir(cuenta, endpoint) {
+    const antes = (cuenta.suscripciones || []).length;
+    cuenta.suscripciones = (cuenta.suscripciones || []).filter((s) => s.endpoint !== endpoint);
+    if (cuenta.suscripciones.length !== antes) await this.guardar([cambioUsuario(cuenta)]);
+  }
+
+  async quitarSuscripciones(endpoints) {
+    const cambios = [];
+    for (const cuenta of this.datos.usuarios) {
+      const antes = (cuenta.suscripciones || []).length;
+      cuenta.suscripciones = (cuenta.suscripciones || []).filter((s) => !endpoints.includes(s.endpoint));
+      if (cuenta.suscripciones.length !== antes) cambios.push(cambioUsuario(cuenta));
+    }
+    if (cambios.length) await this.guardar(cambios);
   }
 
   // Devuelve los avisos que se llevó, no un sí o un no: quien llama necesita

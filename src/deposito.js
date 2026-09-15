@@ -18,6 +18,8 @@ const vacio = () => ({
   emojis: [],
   // Cuentas que el panel escondió para todo el mundo. Sus píos se guardan igual.
   ocultos: [],
+  // Las claves con que Pío firma las notificaciones, si no vienen del despliegue.
+  vapid: null,
   corrales: [],
   // Solo los recientes. Un corral activo junta miles y no tiene sentido
   // tenerlos todos en memoria: el chat mira lo de ahora.
@@ -144,6 +146,7 @@ class DepositoSupabase {
     datos.emojis = Array.isArray(guardados) ? guardados : [];
     const ocultos = enMeta('ocultos');
     datos.ocultos = Array.isArray(ocultos) ? ocultos : [];
+    datos.vapid = enMeta('vapid') || null;
     datos.corrales = (corrales || []).map((f) => f.datos).filter(Boolean);
     datos.mensajes = (mensajes || []).map((f) => f.datos).filter(Boolean).reverse();
     return datos;

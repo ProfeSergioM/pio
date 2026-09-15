@@ -2732,6 +2732,196 @@ async function main() {
   await new Promise((listo) => conApp.close(listo));
   fs.rmSync(carpetaApp, { recursive: true, force: true });
 
+  // --- notificaciones al teléfono -------------------------------------------
+
+  grupo('Notificaciones');
+  const PUSH = require('../src/push');
+  const b64u = (s) => Buffer.from(s, 'base64url');
+
+  // El ejemplo del estándar (RFC 8291, apéndice A): con esas claves y esa sal,
+  // el mensaje cifrado tiene que salir idéntico, byte por byte.
+  const delRfc = PUSH.cifrar('When I grow up, I want to be a watermelon',
+    'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4',
+    'BTBZMqHH6r4Tts7J_aSIgg',
+    { efimera: b64u('yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw'), sal: b64u('DGv6ra1nlYgDCS1FRnbzlw') });
+  probar('el cifrado coincide con el ejemplo del estándar', delRfc.toString('base64url')
+    === 'DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN');
+
+  const clavesPrueba = PUSH.generarClaves();
+  probar('las claves VAPID salen en el formato de siempre', PUSH.clavesValidas(clavesPrueba)
+    && b64u(clavesPrueba.publica).length === 65 && b64u(clavesPrueba.privada).length === 32);
+
+  const jwt = PUSH.tokenVapid(clavesPrueba, 'https://fcm.googleapis.com/fcm/send/xyz', 'mailto:a@b.c');
+  const [jCab, jCuerpo, jFirma] = jwt.split('.');
+  const punto = b64u(clavesPrueba.publica);
+  const publicaJwk = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: punto.subarray(1, 33).toString('base64url'), y: punto.subarray(33).toString('base64url') }, format: 'jwk' });
+  probar('el token VAPID está bien firmado', crypto.verify('sha256', Buffer.from(`${jCab}.${jCuerpo}`), { key: publicaJwk, dsaEncoding: 'ieee-p1363' }, b64u(jFirma)));
+  const reclamos = JSON.parse(b64u(jCuerpo).toString());
+  probar('y dice para qué servicio es y hasta cuándo vale', reclamos.aud === 'https://fcm.googleapis.com'
+    && reclamos.exp > Date.now() / 1000 && reclamos.exp <= Date.now() / 1000 + 24 * 3600 && reclamos.sub === 'mailto:a@b.c');
+
+  // Un navegador de mentira: sus claves y cómo descifra lo que le llega.
+  const navegadorFalso = () => {
+    const ecdh = crypto.createECDH('prime256v1');
+    ecdh.generateKeys();
+    const auth = crypto.randomBytes(16);
+    return {
+      ecdh, auth,
+      suscripcion: (sufijo) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${sufijo}`, keys: { p256dh: ecdh.getPublicKey().toString('base64url'), auth: auth.toString('base64url') } }),
+      descifrar(cuerpo) {
+        const sal = cuerpo.subarray(0, 16);
+        const largoClave = cuerpo[20];
+        const suya = cuerpo.subarray(21, 21 + largoClave);
+        const cifrado = cuerpo.subarray(21 + largoClave);
+        const compartido = ecdh.computeSecret(suya);
+        const info = Buffer.concat([Buffer.from('WebPush: info\0'), ecdh.getPublicKey(), suya]);
+        const ikm = Buffer.from(crypto.hkdfSync('sha256', compartido, auth, info, 32));
+        const cek = Buffer.from(crypto.hkdfSync('sha256', ikm, sal, Buffer.from('Content-Encoding: aes128gcm\0'), 16));
+        const nonce = Buffer.from(crypto.hkdfSync('sha256', ikm, sal, Buffer.from('Content-Encoding: nonce\0'), 12));
+        const d = crypto.createDecipheriv('aes-128-gcm', cek, nonce);
+        d.setAuthTag(cifrado.subarray(-16));
+        const plano = Buffer.concat([d.update(cifrado.subarray(0, -16)), d.final()]);
+        return JSON.parse(plano.subarray(0, plano.lastIndexOf(2)).toString());
+      },
+    };
+  };
+
+  // El servidor sólo le escribe a los servicios de avisos conocidos.
+  const nav0 = navegadorFalso();
+  probar('una suscripción de Google se acepta', !!PUSH.limpiarSuscripcion(nav0.suscripcion('a')));
+  probar('a una dirección cualquiera no se le manda nada',
+    PUSH.limpiarSuscripcion(Object.assign(nav0.suscripcion('a'), { endpoint: 'https://mi-servidor.example/robar' })) === null);
+  probar('ni a una red interna', PUSH.limpiarSuscripcion(Object.assign(nav0.suscripcion('a'), { endpoint: 'https://169.254.169.254/latest' })) === null);
+  probar('ni sin https', PUSH.limpiarSuscripcion(Object.assign(nav0.suscripcion('a'), { endpoint: 'http://fcm.googleapis.com/fcm/send/a' })) === null);
+  probar('ni con claves de otro largo',
+    PUSH.limpiarSuscripcion({ endpoint: 'https://fcm.googleapis.com/fcm/send/a', keys: { p256dh: 'AAAA', auth: 'BBBB' } }) === null);
+
+  // --- con un servicio de avisos de mentira ---
+
+  const enviados = [];
+  let respuestaDelServicio = 201;
+  const carpetaPush = fs.mkdtempSync(path.join(os.tmpdir(), 'pio-push-'));
+  const armarServidorPush = (extra = {}) => crearServidor({
+    datos: carpetaPush,
+    api: Object.assign({
+      altas: 100, demoraPush: 20, vapidContacto: 'mailto:prueba@pio.test',
+      pedirPush: async (url, init) => { enviados.push({ url, init }); return { status: respuestaDelServicio }; },
+    }, extra),
+  });
+  let conPush = armarServidorPush();
+  await new Promise((listo) => conPush.listen(0, '127.0.0.1', listo));
+  let basePush = `http://127.0.0.1:${conPush.address().port}`;
+  const pedirPush = async (ruta, o = {}) => {
+    const r = await fetch(`${basePush}/api${ruta}`, {
+      method: o.metodo || 'GET',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, o.token ? { Authorization: `Bearer ${o.token}` } : {}),
+      body: o.cuerpo ? JSON.stringify(o.cuerpo) : undefined,
+    });
+    return { estado: r.status, datos: await r.json().catch(() => ({})) };
+  };
+  const nacePush = async (usuario) => (await pedirPush('/registro', {
+    metodo: 'POST', cuerpo: { usuario, nombre: usuario, clave: 'semillas' },
+  })).datos.token;
+  const esperarEnvios = () => new Promise((listo) => setTimeout(listo, 150));
+
+  const clave1 = (await pedirPush('/push/clave')).datos.clave;
+  probar('el servidor da su clave pública', b64u(clave1).length === 65);
+  probar('y es siempre la misma', (await pedirPush('/push/clave')).datos.clave === clave1);
+
+  const receptoraT = await nacePush('receptora');
+  const avisadorT = await nacePush('avisador');
+  const otraPushT = await nacePush('otracuenta');
+  const telefono = navegadorFalso();
+
+  probar('suscribirse pide sesión', (await pedirPush('/push/suscribir', { metodo: 'POST', cuerpo: telefono.suscripcion('tel') })).estado === 401);
+  probar('una suscripción mala se rechaza',
+    (await pedirPush('/push/suscribir', { metodo: 'POST', token: receptoraT, cuerpo: { endpoint: 'https://mi-servidor.example/x', keys: {} } })).estado === 400);
+  probar('una buena se guarda',
+    (await pedirPush('/push/suscribir', { metodo: 'POST', token: receptoraT, cuerpo: Object.assign(telefono.suscripcion('tel'), { idioma: 'es' }) })).estado === 200);
+
+  enviados.length = 0;
+  const mencionPush = await pedirPush('/pios', { metodo: 'POST', token: avisadorT, cuerpo: { texto: 'hola @receptora, ¿vienes?' } });
+  await esperarEnvios();
+  probar('una mención sale al teléfono', enviados.length === 1 && enviados[0].url === 'https://fcm.googleapis.com/fcm/send/tel',
+    String(enviados.length));
+  const cabeceras = enviados[0] ? enviados[0].init.headers : {};
+  probar('firmada con VAPID', /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=/.test(cabeceras.Authorization || '') && cabeceras.Authorization.endsWith(clave1));
+  probar('y cifrada como pide el estándar', cabeceras['Content-Encoding'] === 'aes128gcm' && cabeceras.TTL === '86400');
+  const carga = enviados[0] ? telefono.descifrar(enviados[0].init.body) : {};
+  probar('el teléfono la descifra y dice quién y qué', carga.titulo === '@avisador te mencionó'
+    && carga.cuerpo === 'hola @receptora, ¿vienes?' && carga.url === `/#/p/${mencionPush.datos.pio.id}`, JSON.stringify(carga));
+
+  // Diez corazones no son diez notificaciones: se reemplazan entre sí.
+  const suyoPush = (await pedirPush('/pios', { metodo: 'POST', token: receptoraT, cuerpo: { texto: 'un pío mío' } })).datos.pio.id;
+  enviados.length = 0;
+  await pedirPush(`/pios/${suyoPush}/megusta`, { metodo: 'POST', token: avisadorT });
+  await pedirPush(`/pios/${suyoPush}/megusta`, { metodo: 'POST', token: otraPushT });
+  await esperarEnvios();
+  const etiquetas = enviados.map((e) => telefono.descifrar(e.init.body).tag);
+  probar('los me gusta de un mismo pío comparten etiqueta', etiquetas.length === 2 && etiquetas[0] === etiquetas[1] && etiquetas[0] === `megusta-${suyoPush}`);
+
+  // Con una cuenta bloqueada o silenciada no suena nada.
+  await pedirPush('/usuarios/avisador/bloquear', { metodo: 'POST', token: receptoraT, cuerpo: { minutos: 60 } });
+  enviados.length = 0;
+  await pedirPush('/pios', { metodo: 'POST', token: avisadorT, cuerpo: { texto: 'otra vez @receptora' } });
+  await esperarEnvios();
+  probar('de una cuenta bloqueada no llega', enviados.length === 0);
+  await pedirPush('/usuarios/avisador/bloquear', { metodo: 'POST', token: receptoraT, cuerpo: { minutos: 0 } });
+  await pedirPush('/usuarios/avisador/silenciar', { metodo: 'POST', token: receptoraT });
+  enviados.length = 0;
+  await pedirPush('/pios', { metodo: 'POST', token: avisadorT, cuerpo: { texto: 'y otra @receptora' } });
+  await esperarEnvios();
+  probar('ni de una silenciada', enviados.length === 0);
+  await pedirPush('/usuarios/avisador/silenciar', { metodo: 'POST', token: receptoraT });
+
+  // El mismo teléfono con otra cuenta: deja de recibir las de la primera.
+  await pedirPush('/push/suscribir', { metodo: 'POST', token: otraPushT, cuerpo: telefono.suscripcion('tel') });
+  probar('un navegador queda con una sola cuenta', !(conPush.almacen.buscarUsuario('receptora').suscripciones || []).length
+    && conPush.almacen.buscarUsuario('otracuenta').suscripciones.length === 1);
+  await pedirPush('/push/suscribir', { metodo: 'POST', token: receptoraT, cuerpo: telefono.suscripcion('tel') });
+
+  // Si el servicio dice que ese navegador ya no existe, se borra.
+  respuestaDelServicio = 410;
+  await pedirPush('/pios', { metodo: 'POST', token: avisadorT, cuerpo: { texto: 'última @receptora' } });
+  await esperarEnvios();
+  await esperarEnvios();
+  probar('una suscripción vencida se borra sola', (conPush.almacen.buscarUsuario('receptora').suscripciones || []).length === 0);
+  respuestaDelServicio = 201;
+
+  // Las claves sobreviven a un reinicio: si cambiaran, todas las suscripciones morirían.
+  await new Promise((listo) => conPush.close(listo));
+  conPush = armarServidorPush();
+  await new Promise((listo) => conPush.listen(0, '127.0.0.1', listo));
+  basePush = `http://127.0.0.1:${conPush.address().port}`;
+  probar('la clave sobrevive a un reinicio', (await pedirPush('/push/clave')).datos.clave === clave1);
+  await new Promise((listo) => conPush.close(listo));
+
+  // Con huevo: el aviso espera a que nazca, y si se deshace no llega nunca.
+  conPush = armarServidorPush({ incubacion: 300 });
+  await new Promise((listo) => conPush.listen(0, '127.0.0.1', listo));
+  basePush = `http://127.0.0.1:${conPush.address().port}`;
+  const receptora2T = (await pedirPush('/sesion', { metodo: 'POST', cuerpo: { usuario: 'receptora', clave: 'semillas' } })).datos.token;
+  const avisador2T = (await pedirPush('/sesion', { metodo: 'POST', cuerpo: { usuario: 'avisador', clave: 'semillas' } })).datos.token;
+  await pedirPush('/push/suscribir', { metodo: 'POST', token: receptora2T, cuerpo: telefono.suscripcion('tel2') });
+  enviados.length = 0;
+  await pedirPush('/pios', { metodo: 'POST', token: avisador2T, cuerpo: { texto: 'huevo para @receptora' } });
+  await esperarEnvios();
+  probar('mientras el pío es huevo, no suena', enviados.length === 0);
+  await new Promise((listo) => setTimeout(listo, 400));
+  probar('al nacer, llega', enviados.length === 1);
+  enviados.length = 0;
+  const arrepentidoPush = (await pedirPush('/pios', { metodo: 'POST', token: avisador2T, cuerpo: { texto: 'mejor no @receptora' } })).datos.pio.id;
+  await pedirPush(`/pios/${arrepentidoPush}`, { metodo: 'DELETE', token: avisador2T });
+  await new Promise((listo) => setTimeout(listo, 600));
+  probar('si se deshace antes de nacer, no llega nunca', enviados.length === 0);
+
+  probar('desuscribirse la borra',
+    (await pedirPush('/push/desuscribir', { metodo: 'POST', token: receptora2T, cuerpo: { endpoint: 'https://fcm.googleapis.com/fcm/send/tel2' } })).estado === 200
+    && (conPush.almacen.buscarUsuario('receptora').suscripciones || []).length === 0);
+
+  await new Promise((listo) => conPush.close(listo));
+  fs.rmSync(carpetaPush, { recursive: true, force: true });
+
   // --- resumen ------------------------------------------------------------
 
   console.log(`\n${'─'.repeat(46)}`);

@@ -12,7 +12,7 @@
 // compartir. Mostrar píos viejos como si fueran de ahora sería peor que no
 // mostrar nada.
 
-const VERSION = 'pio-cascara-1';
+const VERSION = 'pio-cascara-2';
 
 // Lo mínimo para que la app abra sin red.
 const CASCARA = [
@@ -72,3 +72,35 @@ async function primeroLaRed(pedido) {
     return Response.error();
   }
 }
+
+// --- notificaciones --------------------------------------------------------
+
+// Llegan cifradas; el navegador las descifra antes de dárnoslas. Adentro va
+// qué decir y a dónde llevar al tocarla.
+self.addEventListener('push', (evento) => {
+  let carga = {};
+  try { carga = evento.data ? evento.data.json() : {}; } catch (err) { /* una rota se muestra igual, genérica */ }
+  evento.waitUntil(self.registration.showNotification(carga.titulo || 'Pío', {
+    body: carga.cuerpo || '',
+    icon: '/iconos/pio-192.png',
+    tag: carga.tag || undefined,
+    data: { url: carga.url || '/#/avisos' },
+  }));
+});
+
+// Tocarla abre Pío donde corresponde: si ya hay una ventana abierta se usa
+// esa, en vez de abrir otra más.
+self.addEventListener('notificationclick', (evento) => {
+  evento.notification.close();
+  const destino = new URL((evento.notification.data && evento.notification.data.url) || '/#/avisos', self.location.origin).href;
+  evento.waitUntil((async () => {
+    const ventanas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const propia = ventanas.find((v) => new URL(v.url).origin === self.location.origin);
+    if (propia) {
+      await propia.focus();
+      if (propia.navigate) await propia.navigate(destino);
+      return;
+    }
+    await self.clients.openWindow(destino);
+  })());
+});
